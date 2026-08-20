@@ -125,6 +125,53 @@ services:
       - api
     profiles: ["dev", "prod"]
 
+  # --- Gözlemlenebilirlik (profil: gozlem) --------------------------------- #
+  # Motor servisleri bu makinede systemd kullanıcı servisi olarak çalışır,
+  # Docker'da değil. UFW etkin olduğu için köprü ağındaki bir konteyner host'un
+  # portlarına ulaşamaz (`host.docker.internal` denendi: bağlantı zaman aşımına
+  # uğruyor). İki seçenek vardı — güvenlik duvarına Docker alt ağı için delik
+  # açmak ya da bu iki konteyneri host ağına almak. İkincisi seçildi: güvenlik
+  # duruşu değişmiyor ve UFW dışarıdan gelen erişimi kesmeye devam ediyor.
+  #
+  # Host ağı kullanıldığı için `ports:` yoktur; portlar doğrudan host'ta açılır
+  # ve Grafana 3000'i panele bırakıp 3001'e taşınır.
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      # 90 gün: 60 günlük paper penceresinin tamamı geriye dönük incelenebilsin.
+      - --storage.tsdb.retention.time=90d
+      - --web.listen-address=:${PROMETHEUS_PORT:-9090}
+    volumes:
+      - ./docker/prometheus:/etc/prometheus:ro
+      - promdata:/prometheus
+    profiles: ["gozlem"]
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      GF_SERVER_HTTP_PORT: ${GRAFANA_PORT:-3001}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      # Panel gibi Grafana da varsayılan olarak yalnızca yerel ağa açıktır.
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafanadata:/var/lib/grafana
+    depends_on:
+      - prometheus
+    profiles: ["gozlem"]
+
 volumes:
   pgdata:
   redisdata:
+  promdata:
+  grafanadata:

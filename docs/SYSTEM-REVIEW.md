@@ -308,9 +308,9 @@ yaklaşmayacağı **ölçülebilir** hâle gelir. Neden şimdi yapılmadı:
 
 | Ne | Durum |
 |---|---|
-| `/metrics` ucu | **Var, HTTP 200** — ama hiçbir toplayıcı okumuyor |
-| Prometheus / Grafana | Kurulmadı |
-| Sentry | Kurulmadı |
+| `/metrics` ucu | **Var ve okunuyor** — API `:8000`, marketdata `:9101`, süpervizör `:9102`, bildirimci `:9103`, worker'lar `9110+bot_id` |
+| Prometheus / Grafana | **Kuruldu** — `make gozlem`, 11 hedef, 7 alarm kuralı. Pano: `docker/grafana/dashboards/sarnic-sistem.json` |
+| Sentry | **Kuruldu** — `SARNIC_SENTRY_DSN` boşsa kapalı. İstisnalar structlog zincirinden yığın iziyle gider |
 | Playwright E2E | `package.json`'da bağımlılık var, **tek test yok** (`apps/web/tests` dizini bile yok) |
 | Görsel regresyon | Yok |
 | Gecelik yedek + geri yükleme provası | **Var** — `scripts/yedek-al.sh` (gecelik 04:00) + `scripts/yedek-prova.sh` (haftalık, pazar 05:00). İlk prova 20 Ağustos 2026'da geçti: 1.594.173 satırlık `ohlcv` dâhil tüm tablolar geri geldi |

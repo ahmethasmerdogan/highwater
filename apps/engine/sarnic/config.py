@@ -74,6 +74,25 @@ class Settings(BaseSettings):
     # --- TUI / istemci ---
     api_base_url: str = "http://localhost:8000"
 
+    # --- gözlemlenebilirlik ---
+    # API'nin kendi /metrics ucu vardır (api_port). Arka plan servislerinin
+    # HTTP sunucusu yoktur, bu yüzden her biri kendi portunda /metrics açar.
+    # 0 = kapalı.
+    metrics_port_marketdata: int = 9101
+    metrics_port_supervisor: int = 9102
+    metrics_port_notifier: int = 9103
+    # Worker'lar süpervizörün alt süreçleridir; her birinin kendi kayıt defteri
+    # vardır, dolayısıyla kendi portunu açmalıdır. Port = taban + bot_id, yani
+    # 1 numaralı bot 9111'dedir. Sabit ve öngörülebilir olması Prometheus hedef
+    # listesini elle yazılabilir kılar.
+    metrics_port_worker_base: int = 9110
+    # Boşsa Sentry tamamen kapalıdır. sentry.io veya kendi kurulumunuzun DSN'i.
+    sentry_dsn: str = ""
+    sentry_release: str = ""
+    # İşlem izleme örnekleme oranı. 1 saatlik karar döngüsünde performans izi
+    # bir şey anlatmaz; varsayılan kapalı — hata takibi için gerekmez.
+    sentry_traces_sample_rate: float = 0.0
+
     # --- ilk yönetici (yalnızca boş DB'de seed edilir) ---
     bootstrap_admin_email: str = "admin@sarnic.local"
     bootstrap_admin_password: str = ""

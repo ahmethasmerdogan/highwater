@@ -1,0 +1,52 @@
+# Prometheus — SARNIÇ ölçüm toplayıcısı.
+#
+# Motor servisleri bu makinede **systemd kullanıcı servisi** olarak çalışır,
+# Docker'da değil. Prometheus host ağında koştuğu için hedefler doğrudan
+# `localhost` üzerinden konuşulur (gerekçe: compose.yml'deki not).
+#
+# Karar birimi 1 saatlik mum kapanışıdır; saniyelik çözünürlüğe ihtiyaç yoktur.
+# 15 saniyelik aralık, panelin canlı hissetmesi için fazlasıyla yeterli.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/alarmlar.yml
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: sarnic-api
+    static_configs:
+      - targets: ["localhost:8000"]
+        labels: {component: api}
+
+  - job_name: sarnic-servisler
+    static_configs:
+      - targets: ["localhost:9101"]
+        labels: {component: marketdata}
+      - targets: ["localhost:9102"]
+        labels: {component: supervisor}
+      - targets: ["localhost:9103"]
+        labels: {component: notifier}
+
+  # Worker'lar süpervizörün alt süreçleridir ve her biri kendi kayıt defterini
+  # tutar. Port = 9110 + bot_id. Liste elle yazılır; bot eklenince buraya bir
+  # satır eklemek gerekir — bilinçli bir takas: keşif mekanizması kurmak, altı
+  # botluk bir sistem için fazla makine.
+  - job_name: sarnic-worker
+    static_configs:
+      - targets: ["localhost:9111"]
+        labels: {component: worker, bot_id: "1"}
+      - targets: ["localhost:9112"]
+        labels: {component: worker, bot_id: "2"}
+      - targets: ["localhost:9113"]
+        labels: {component: worker, bot_id: "3"}
+      - targets: ["localhost:9114"]
+        labels: {component: worker, bot_id: "4"}
+      - targets: ["localhost:9115"]
+        labels: {component: worker, bot_id: "5"}
+      - targets: ["localhost:9116"]
+        labels: {component: worker, bot_id: "6"}

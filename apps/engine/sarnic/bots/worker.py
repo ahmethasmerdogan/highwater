@@ -40,6 +40,7 @@ from sarnic.core.enums import (
 )
 from sarnic.core.events import EventBus, get_event_bus
 from sarnic.core.logging import get_logger
+from sarnic.core.observability import DECISION_ERRORS
 from sarnic.data.marketdata import data_is_stale, read_last_bars, read_tickers
 from sarnic.data.store import last_closed_bar, load_frame
 from sarnic.db.models import Bot, BotEvent, Order, Position, Score, Trade
@@ -192,6 +193,7 @@ class BotWorker:
             except asyncio.CancelledError:
                 raise
             except Exception:
+                DECISION_ERRORS.labels(str(self.bot_id)).inc()
                 log.exception("decision_loop_error", bot_id=self.bot_id)
             await asyncio.sleep(20)
 

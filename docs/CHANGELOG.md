@@ -16,6 +16,65 @@ cevap veren tek şey odur.
 
 ---
 
+## [Faz 11] Prometheus + Grafana + Sentry — 2026-08-20 (akşam)
+
+**Yapıldı:** `SYSTEM-REVIEW.md`'nin "en yüksek getirili parça" dediği iş: gözlemlenebilirlik.
+O belgedeki cümle şuydu — *"Bu tur bulunan beş kusurun beşi de logları elle okuyarak bulundu.
+Bir toplayıcı olsaydı `decision_loop_error` sayacı 22:05'te üç kez artıp gözle görülür bir
+alarm üretirdi."*
+
+**Ölçüler — tek hook, çok ölçü.** Alan olayları zaten tek bir yerden (`EventBus.publish`)
+geçtiği için `sarnic_events_total{kind,level}` tek satırla pozisyonları, emirleri, devre
+kesicileri ve bot durum değişimlerini kapsıyor. Her olay tipine ayrı sayaç serpiştirmek koda
+yayılır ve biri eklenmeyi unutur. Yanına dört nokta daha: karar döngüsü istisnası (bot
+bazında), yazılan bar, WS yeniden bağlanma, havuz boyutu, olay yayın hatası.
+
+**Ölçüm portları.** Motor servisleri bu makinede systemd kullanıcı servisi olarak koşuyor ve
+API dışında HTTP sunucuları yok; her biri kendi `/metrics` portunu açıyor (marketdata 9101,
+süpervizör 9102, bildirimci 9103). Worker'lar süpervizörün alt süreçleri olduğu ve kendi kayıt
+defterlerini tuttukları için port = `9110 + bot_id`. Prometheus hedef listesi elle yazıldı —
+altı botluk bir sistem için keşif mekanizması kurmak fazla makine.
+
+**Prometheus host ağında koşuyor.** İlk denemede hedefler `host.docker.internal` üzerinden
+konuşuldu ve hepsi zaman aşımına uğradı: UFW etkin, köprü ağındaki konteyner host'un
+portlarına ulaşamıyor. İki seçenek vardı — güvenlik duvarına Docker alt ağı için delik açmak
+ya da bu iki konteyneri host ağına almak. İkincisi seçildi; güvenlik duruşu değişmiyor.
+Grafana bu yüzden 3000'i panele bırakıp 3001'e taşındı.
+
+**Alarmlar.** Yedi kural (`docker/prometheus/alarmlar.yml`), hepsi daha önce **sessizce** olmuş
+olaylardan türetildi: servis düştü, karar döngüsü hatası, bar akışı durdu, olay yayınlanamadı,
+devre kesici tetiklendi, havuz küçüldü, WS sürekli kopuyor.
+
+**Sentry — ve yığın izi sorunu.** İlk kurulum "çalışıyor" görünüyordu: olay Sentry'ye gidiyordu.
+Ama `exception` alanı **boştu**. Sebep: `structlog.processors.format_exc_info` `exc_info`'yu
+tüketip metne çeviriyor, kayıt stdlib `logging`'e ulaştığında Sentry'nin logging entegrasyonunun
+göreceği bir istisna kalmıyor — yani Sentry'nin var olma sebebi kayboluyor. İstisna artık
+zincirde `format_exc_info`'dan **önce**, `component` ve `log_event` etiketleriyle ve `bot_id`
+gibi bağlam alanlarıyla gönderiliyor. Sentry'nin kendi logging entegrasyonu olay üretmeyecek
+biçimde kapatıldı (aksi hâlde her istisna iki kez raporlanırdı: biri izli, biri izsiz).
+Sıranın bozulması sessiz bir bozulma olduğu için testi yazıldı.
+
+**Bilinçli olarak yapılmadı:**
+- **Alertmanager kurulmadı.** Kurallar Prometheus'ta değerlendiriliyor ve `:9090/alerts`'te
+  görünüyor ama hiçbir yere bildirim göndermiyor. Discord köprüsü zaten var; alarmları oraya
+  bağlamak ayrı bir iş ve hangi kanala gideceği belli değil.
+- **Sentry kendi kurulumumuzda değil.** SDK herhangi bir DSN ile çalışır; self-hosted Sentry
+  ~10 konteynerlik bir yığındır ve bu makinede işlem motorunun yanında durması orantısız.
+- Panele (Next.js) Sentry eklenmedi — hatalar motorda oluyor, panel bir istemci.
+- İzleme (tracing) kapalı: 1 saatlik karar döngüsünde performans izi bir şey anlatmaz.
+- Grafana'ya iş göstergesi panosu (puan dağılımı, pozisyonlar, P&L) eklenmedi. Bunların yeri
+  paneldir; Grafana **sistemin** sağlığını gösterir, stratejinin değil.
+
+**Kabul kriteri:** ✅ 460 motor testi geçti, `ruff check` temiz. Prometheus'ta **11 hedefin
+11'i `up`**, 7 alarm kuralı yüklü. Grafana `:3001` sağlıklı, veri kaynağı ve pano kod olarak
+sağlanıyor. Sentry, sahte DSN ile uçtan uca doğrulandı: tek olay, `ValueError` tipi, yığın izi
+dolu, `log_event=decision_loop_error`, `bot_id=42`.
+
+**Açık kalan:** Alarmların gideceği bir yer yok (Alertmanager → Discord). `sarnic_universe_size`
+yalnızca süpervizör tarafından yazılıyor; süpervizör yeniden başladığında ilk turda anlık
+görüntüden okunuyor ama diğer süreçlerde 0 görünür — Prometheus'ta `max()` ile toplanmalı,
+pano bunu yapıyor. Caddy + SSL ve `BinanceSpotAdapter` hâlâ Faz 11'de bekliyor.
+
 ## [Bakım] Kalibrasyon panelde eksik ölçüyordu; yedek hiç yoktu — 2026-08-20
 
 **Yapıldı:** Üç boşluk kapatıldı; strateji parametrelerine dokunulmadı.

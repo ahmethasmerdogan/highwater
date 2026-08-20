@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from sarnic.core.enums import TIMEFRAME_MINUTES
 from sarnic.core.logging import get_logger
+from sarnic.core.observability import BARS_WRITTEN
 from sarnic.data.binance import Kline
 from sarnic.db.models import OHLCV, SymbolInfo
 
@@ -60,6 +61,7 @@ async def upsert_klines(session: AsyncSession, klines: list[Kline]) -> int:
     size = chunk_size_for(len(rows[0]))
     for batch in chunks(rows, size):
         await _upsert_kline_batch(session, batch)
+    BARS_WRITTEN.inc(len(rows))
     return len(rows)
 
 

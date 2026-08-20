@@ -21,6 +21,7 @@ from sarnic.core.clock import utcnow
 from sarnic.core.enums import EventKind, PositionStatus
 from sarnic.core.events import EventBus, get_event_bus
 from sarnic.core.logging import get_logger
+from sarnic.core.observability import UNIVERSE_SIZE
 from sarnic.core.settings_store import load_group
 from sarnic.data.marketdata import read_tickers
 from sarnic.data.store import load_frames
@@ -296,6 +297,7 @@ class UniverseEngine:
         session.add(snapshot)
         await session.flush()  # snapshot.id lazım
 
+        UNIVERSE_SIZE.set(len(symbols))
         log.info(
             "universe_refreshed",
             reason=reason,

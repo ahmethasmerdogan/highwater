@@ -36,6 +36,10 @@ def configure_logging(json_output: bool | None = None, level: str | None = None)
         structlog.stdlib.add_logger_name,
         structlog.processors.TimeStamper(fmt="iso", utc=True),
         structlog.processors.StackInfoRenderer(),
+        # Sentry, istisna metne çevrilmeden önce görmelidir; `format_exc_info`
+        # `exc_info`'yu tüketir ve sonrasında yığın izi kalmaz. Geç içe aktarım
+        # döngüsel bağımlılığı önler (observability -> logging -> observability).
+        _sentry_processor,
         structlog.processors.format_exc_info,
     ]
     processors.append(
@@ -51,6 +55,12 @@ def configure_logging(json_output: bool | None = None, level: str | None = None)
         cache_logger_on_first_use=True,
     )
     _configured = True
+
+
+def _sentry_processor(logger, method_name, event_dict):
+    from sarnic.core.observability import sentry_structlog_processor
+
+    return sentry_structlog_processor(logger, method_name, event_dict)
 
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:

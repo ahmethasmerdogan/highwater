@@ -20,6 +20,7 @@ from sarnic.config import settings
 from sarnic.core.clock import utcnow
 from sarnic.core.enums import EventKind
 from sarnic.core.logging import get_logger
+from sarnic.core.observability import EVENT_PUBLISH_FAILURES, EVENTS
 
 log = get_logger(__name__)
 
@@ -92,6 +93,9 @@ class EventBus:
             self._redis = None
 
     async def publish(self, event: Event) -> None:
+        # Alan olaylarının tek yazma noktası, dolayısıyla ölçümün de tek hook'u:
+        # pozisyonlar, emirler, devre kesiciler, bot durumları buradan geçer.
+        EVENTS.labels(str(event.kind), event.level).inc()
         try:
             r = await self.connect()
             await r.xadd(
@@ -101,6 +105,7 @@ class EventBus:
                 approximate=True,
             )
         except Exception as exc:
+            EVENT_PUBLISH_FAILURES.inc()
             log.warning("event_publish_failed", kind=str(event.kind), error=str(exc))
 
     async def emit(self, kind: EventKind | str, **payload: Any) -> None:

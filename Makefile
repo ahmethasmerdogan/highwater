@@ -6,7 +6,7 @@ WEB    := apps/web
 
 .PHONY: help up down logs migrate bootstrap test lint fmt api tui web build ci \
         terminal terminal-log terminal-autostart terminal-autostart-off \
-        yedek yedek-prova
+        yedek yedek-prova gozlem gozlem-kapat
 
 help:
 	@grep -E '^[a-z-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -61,6 +61,12 @@ yedek:     ## PostgreSQL yedeği al (gecelik timer bunu çağırır)
 
 yedek-prova: ## Son yedeği ayrı bir veritabanına geri yükleyip doğrula
 	scripts/yedek-prova.sh
+
+gozlem:    ## Prometheus + Grafana'yı başlat (:9090 / :3001)
+	docker compose --profile gozlem up -d
+
+gozlem-kapat: ## Gözlem yığınını durdur
+	docker compose --profile gozlem down
 
 terminal-autostart-off: ## Otomatik açılışı kaldır
 	rm -f $(HOME)/.config/autostart/sarnic-terminal.desktop

@@ -24,6 +24,7 @@ from sarnic.api.ws import router as ws_router
 from sarnic.config import settings
 from sarnic.core.enums import BotState
 from sarnic.core.logging import configure_logging, get_logger
+from sarnic.core.observability import init_sentry
 from sarnic.data.marketdata import data_is_stale
 from sarnic.db.models import Bot, UniverseSnapshot
 from sarnic.db.session import dispose_engine, get_sessionmaker
@@ -37,6 +38,7 @@ LATENCY = Histogram("sarnic_http_request_seconds", "HTTP gecikmesi", ["method", 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging()
+    init_sentry("api")
     log.info("api_starting", env=settings.env)
     await hub.start()
     yield

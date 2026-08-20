@@ -164,7 +164,7 @@ DB'de şifreli, panelde maskeli.
 
 ## Faz 11 — Sertleştirme ve terfi kapısı
 
-Prometheus metrikleri + Grafana, Sentry, gecelik yedek + geri yükleme provası, Caddy + SSL (dışarı
+Prometheus metrikleri + Grafana ✅, Sentry ✅, gecelik yedek + geri yükleme provası ✅, Caddy + SSL (dışarı
 açılacaksa), `BinanceSpotAdapter` (kapalı gelir), canlıya geçiş kapısı.
 
 **Canlıya geçiş kapısı — hepsi sağlanmadan `BinanceSpotAdapter` açılmaz:**

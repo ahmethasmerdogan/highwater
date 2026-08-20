@@ -1,0 +1,10 @@
+# Veri kaynağı kod olarak sağlanır; Grafana arayüzünden elle eklenmez.
+# Konteyner silinip yeniden kurulduğunda ayar kaybolmasın diye.
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://localhost:9090
+    isDefault: true
+    editable: false

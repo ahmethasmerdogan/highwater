@@ -194,6 +194,55 @@ uv run python ../../research/phase0a.py report
 
 ---
 
+## Gözlemlenebilirlik
+
+```bash
+make gozlem          # Prometheus (:9090) + Grafana (:3001)
+make gozlem-kapat
+```
+
+Grafana açılışta hazır gelir: veri kaynağı ve **SARNIÇ — Sistem** panosu kod
+olarak sağlanır (`docker/grafana/provisioning/`), elle kurulum gerekmez.
+Giriş bilgileri `.env`'deki `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD`.
+
+### Ölçüler
+
+| Ölçü | Ne söyler |
+|---|---|
+| `sarnic_events_total{kind,level}` | Tüm alan olayları — pozisyon, emir, devre kesici, bot durumu. Tek hook: `EventBus.publish` |
+| `sarnic_decision_loop_errors_total{bot_id}` | Karar döngüsü istisnası. **Bu sıfırdan farklıysa bot bar atlıyor olabilir** |
+| `sarnic_bars_written_total` | DB'ye yazılan kapanmış bar. Sıfıra düşmesi, veri akışının durduğunu `data.stale` olayından önce gösterir |
+| `sarnic_ws_reconnects_total` | Binance akışının kararlılığı |
+| `sarnic_universe_size` | Havuzdaki sembol sayısı (hedef 100) |
+| `sarnic_event_publish_failures_total` | Redis erişilemiyor; olaylar sessizce düşüyor |
+| `sarnic_http_requests_total`, `sarnic_http_request_seconds` | API trafiği ve gecikmesi |
+
+Motor servisleri bu makinede systemd kullanıcı servisi olarak çalıştığı için
+her biri kendi `/metrics` portunu açar: API `:8000`, marketdata `:9101`,
+süpervizör `:9102`, bildirimci `:9103`, worker'lar `9110 + bot_id`.
+UFW etkin olduğundan Prometheus ve Grafana **host ağında** koşar — güvenlik
+duvarına Docker alt ağı için delik açmamak için (gerekçe: `compose.yml`).
+
+Alarm kuralları `docker/prometheus/alarmlar.yml`'de. Hepsi, daha önce sessizce
+olmuş ve elle log okunarak bulunmuş olaylardan türetildi.
+
+### Sentry
+
+`.env`'ye DSN yazın; boşsa tamamen kapalıdır:
+
+```bash
+SARNIC_SENTRY_DSN=https://...@....ingest.sentry.io/...
+```
+
+İstisnalar structlog zincirinden **yığın iziyle** gider. Bu önemsiz bir ayrıntı
+değil: `structlog.processors.format_exc_info` `exc_info`'yu metne çevirdiği
+için, Sentry'nin kendi logging entegrasyonuna bırakılsaydı olay giderdi ama
+`exception` alanı boş kalırdı. Olay `component` (hangi servis) ve `log_event`
+(hangi log olayı) etiketleriyle, `bot_id` gibi bağlam alanlarıyla birlikte
+gönderilir. Testi: `tests/test_observability.py`.
+
+---
+
 ## Yedek
 
 Kalıcı durumun tamamı PostgreSQL'dedir; Redis'teki her şey yeniden üretilebilir.

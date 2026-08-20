@@ -26,6 +26,7 @@ from sqlalchemy import func, select
 from sarnic.config import settings
 from sarnic.core.enums import Role
 from sarnic.core.logging import configure_logging, get_logger
+from sarnic.core.observability import init_sentry, start_metrics_server
 from sarnic.core.security import generate_totp_secret, hash_password, totp_provisioning_uri
 from sarnic.db.models import Strategy, StrategyVersion, User
 from sarnic.db.session import session_scope
@@ -108,6 +109,8 @@ def marketdata(
 ) -> None:
     """MarketDataService — piyasa verisinin **tek** çıkış noktası (bozulmaz kural 5)."""
     configure_logging()
+    init_sentry("marketdata")
+    start_metrics_server(settings.metrics_port_marketdata, "marketdata")
     asyncio.run(_marketdata(backfill_days))
 
 
@@ -247,6 +250,8 @@ def supervisor() -> None:
     """Bot süpervizörü — worker süreçlerini yönetir, havuzu yeniler."""
     from sarnic.bots.supervisor import run_supervisor
 
+    init_sentry("supervisor")
+    start_metrics_server(settings.metrics_port_supervisor, "supervisor")
     asyncio.run(run_supervisor())
 
 
@@ -255,6 +260,8 @@ def worker(bot_id: int) -> None:
     """Tek bot worker'ı. Normalde doğrudan çağrılmaz; süpervizör çağırır."""
     from sarnic.bots.worker import run_worker
 
+    init_sentry("worker")
+    start_metrics_server(settings.metrics_port_worker_base + bot_id, f"worker-{bot_id}")
     asyncio.run(run_worker(bot_id))
 
 
@@ -263,6 +270,8 @@ def notifier() -> None:
     """Olay veriyolunu bildirimlere ve Discord'a bağlar."""
     from sarnic.notify.service import run_notifier
 
+    init_sentry("notifier")
+    start_metrics_server(settings.metrics_port_notifier, "notifier")
     asyncio.run(run_notifier())
 
 

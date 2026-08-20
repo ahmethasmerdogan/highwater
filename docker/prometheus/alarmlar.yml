@@ -1,0 +1,59 @@
+# Alarm kuralları. `SYSTEM-REVIEW.md`'nin "somut alarm adayları" listesinden
+# türetildi: hepsi, daha önce **sessizce** olmuş ve elle log okuyarak bulunmuş
+# olaylardır.
+groups:
+  - name: sarnic
+    rules:
+      - alert: ServisDustu
+        expr: up == 0
+        for: 2m
+        labels: {severity: kritik}
+        annotations:
+          summary: "{{ $labels.component }} ölçüm vermiyor"
+          description: "2 dakikadır scrape başarısız. Servis çökmüş veya port kapanmış olabilir."
+
+      - alert: KararDonguHatasi
+        expr: increase(sarnic_decision_loop_errors_total[15m]) > 0
+        for: 0m
+        labels: {severity: kritik}
+        annotations:
+          summary: "Bot {{ $labels.bot_id }} karar döngüsünde istisna aldı"
+          description: "Bot bar atlıyor olabilir. Stack trace için Sentry'ye bakın."
+
+      - alert: BarAkisiDurdu
+        expr: increase(sarnic_bars_written_total[30m]) == 0
+        for: 10m
+        labels: {severity: kritik}
+        annotations:
+          summary: "30 dakikadır DB'ye kapanmış bar yazılmadı"
+          description: "Piyasa verisi akışı durmuş olabilir; data.stale olayından önce görünür."
+
+      - alert: OlayYayinlanamadi
+        expr: increase(sarnic_event_publish_failures_total[10m]) > 0
+        labels: {severity: uyari}
+        annotations:
+          summary: "Olay veriyoluna yayın başarısız"
+          description: "Redis erişilemiyor olabilir. Yayın sessizce düşer; motor durmaz ama panel ve Discord kör kalır."
+
+      - alert: DevreKesiciTetiklendi
+        expr: increase(sarnic_events_total{kind="risk.circuit_breaker"}[5m]) > 0
+        labels: {severity: uyari}
+        annotations:
+          summary: "Devre kesici tetiklendi"
+          description: "Hangi kesici olduğu için panel → Loglar sayfasına bakın."
+
+      - alert: HavuzKucuk
+        # `max()` şart: gösterge her süreçte tanımlıdır ve yalnızca süpervizör
+        # yazar; diğerleri 0 yayınlar. Toplamadan okumak sürekli sahte alarm demek.
+        expr: max(sarnic_universe_size) < 80
+        for: 2h
+        labels: {severity: uyari}
+        annotations:
+          summary: "Havuz {{ $value }} sembole düştü (hedef 100)"
+          description: "Likidite filtresi sıkışmış veya veri olgunlaşmamış olabilir."
+
+      - alert: WsSurekliKopuyor
+        expr: increase(sarnic_ws_reconnects_total[15m]) > 5
+        labels: {severity: uyari}
+        annotations:
+          summary: "WebSocket 15 dakikada {{ $value }} kez yeniden bağlandı"

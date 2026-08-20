@@ -23,6 +23,7 @@ import websockets
 from sarnic.config import settings
 from sarnic.core.enums import TIMEFRAME_MINUTES
 from sarnic.core.logging import get_logger
+from sarnic.core.observability import WS_RECONNECTS
 from sarnic.data.ratelimiter import IPBannedError, RateLimitedError, RateLimiter, get_rate_limiter
 
 log = get_logger(__name__)
@@ -341,6 +342,7 @@ class BinanceWebSocket:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
+                WS_RECONNECTS.inc()
                 log.warning("ws_disconnected", error=str(exc), reconnect_in=backoff)
                 with contextlib.suppress(asyncio.TimeoutError):
                     await asyncio.wait_for(self._stop.wait(), timeout=backoff)

@@ -25,6 +25,7 @@ from sarnic.core.clock import utcnow
 from sarnic.core.enums import BotState, EventKind, PositionStatus
 from sarnic.core.events import EventBus, get_event_bus
 from sarnic.core.logging import get_logger
+from sarnic.core.observability import UNIVERSE_SIZE
 from sarnic.db.models import Bot, BotEvent, Position
 from sarnic.db.session import session_scope
 from sarnic.sizing.clusters import clusters_are_stale, compute_clusters
@@ -285,6 +286,11 @@ class BotSupervisor:
                 async with session_scope() as session:
                     snapshot = await self.universe.latest_snapshot(session)
                     size = len(snapshot.symbols) if snapshot else 0
+                    # Gösterge her turda mevcut anlık görüntüden yazılır.
+                    # Yalnızca yenileme anında yazılsaydı, süpervizör yeniden
+                    # başladığında bir sonraki yenilemeye kadar 0 görünür ve
+                    # "havuz küçüldü" alarmı sahte olarak çalardı.
+                    UNIVERSE_SIZE.set(size)
                     due = await self.universe.is_due(session)
                     underfilled = size < self.universe.config.top_n
 
