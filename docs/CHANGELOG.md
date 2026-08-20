@@ -16,6 +16,59 @@ cevap veren tek şey odur.
 
 ---
 
+## [Bakım] Gözlem katmanının kendi kör noktaları — 2026-08-20 (gece)
+
+Kurduğumuz gözlem katmanı ilk gerçek sınavını verdi ve **dört kusuru kendisi gösterdi.**
+
+**1. Alarmın kendisi sahte alarm veriyordu.** `BarAkisiDurdu` kuralı
+`increase(sarnic_bars_written_total[30m]) == 0` yazılmıştı. Ölçü her süreçte tanımlı olduğu
+için — modül içe aktarıldığı anda kayıt defterine girer — on bir hedefin dokuzu onu sabit 0
+yayınlıyor ve kural o dokuz seri için sürekli çalıyordu. Aynı hatanın bir kopyası panoda iki
+panelde vardı. Kural artık modülün başında yazılı: **sayaçlarda `sum(...)`, göstergelerde
+`max(...)`.**
+
+**2. Ölçüm 19 hata yolundan yalnızca birini görüyordu.** PostgreSQL yeniden başlatıldığında
+süpervizör `manage_loop_error` ve `heartbeat_failed` verdi; Prometheus hiçbir şey görmedi.
+Kodda 19 ERROR seviyeli log çağrısı var (`worker_crashed`, `worker_restart_storm`,
+`supervisor_reconcile_failed`, `backtest_failed`, …) ve sayacı olan tek yol
+`decision_loop_error`'dı. Her yola elle sayaç koymak, yeni bir yol eklendiğinde unutulur;
+log zinciri ise hepsinden geçer. `sarnic_log_errors_total{event,level}` structlog işlemcisine
+takıldı, iki alarm kuralı (`HataLoglandi`, `BotCoktu`) ve bir pano paneli eklendi.
+
+**3. PostgreSQL'in paylaşımlı belleği tükeniyordu — ve bu, veritabanının hiç
+çözümlenmemesine yol açmıştı.** `VACUUM (ANALYZE) scores` şu hatayla düşüyordu:
+`could not resize shared memory segment ... No space left on device`. Sebep Docker'ın
+varsayılan 64 MB'lık `/dev/shm`'i. Sonuç sinsiydi: en büyük tablo (787 MB, 354.274 satır) hiç
+çözümlenmemişti ve **planlayıcı satır sayısını 15.130 sanıyordu — 23 kat yanlış.** 356 tablonun
+yalnızca 8'i `analyze` görmüştü. `shm_size: 1gb` eklendi, veritabanının tamamı çözümlendi
+(356/356), `scores`'ta ölü satır 4.380 → 0.
+
+**4. Repoda 183 MB webpack önbelleği vardı.** `apps/web/.next.root-owned-2026-08-17` — 17
+Ağustos'taki Docker derleme kazasından kalan dizin. `.gitignore`'daki `.next/` bu ismi
+yakalamıyor, dolayısıyla ilk işlemeye 97 dosya girmişti. Geçmiş yeniden yazıldı (uzak depo yok,
+iki yerel işleme), dizin diskten silindi, `.gitignore`'a `.next.root-owned-*/` eklendi.
+`.git` 43 MB → 912 KB.
+
+**Bilinçli olarak yapılmadı:**
+- **Strateji parametrelerine yine dokunulmadı.** Bot 6 (4 saat) hâlâ hiç giriş açmadı ve
+  incelendi: yapılandırma doğru, fırsat çıkmamış. Giriş eşiği 80 ve kurulduğundan beri geçen
+  8 barda en yüksek 4h puanı **79,8**. Eşik düşürülmedi.
+- `scores` tablosuna saklama politikası konmadı. Günde ~15 bin satır, ~30 MB büyüyor
+  (~1 GB/ay). Disk 87 GB boş, acil değil; ama kaç günlük puan geçmişi tutulacağı bir ürün
+  kararıdır ve sorulmadan verilmez. Kalibrasyon ayrı tabloyu (`score_observations`) kullanır.
+- WebSocket kimlik doğrulaması olduğu gibi bırakıldı. `?token=...` sorgu dizgesinde gittiği
+  için panel proxy'si hata verdiğinde JWT düz metin olarak journal'a düşüyor. Kalıcı çözüm
+  tek kullanımlık kısa ömürlü bir WS bileti; auth akışını değiştirir, sorulmadan yapılmadı.
+- Alertmanager hâlâ yok: alarmlar `:9090/alerts`'te görünüyor, hiçbir yere bildirim gitmiyor.
+
+**Kabul kriteri:** ✅ 463 test geçti, `ruff` temiz. 11/11 hedef `up`, 9 alarm kuralının
+9'u sessiz, panonun 14 panelinin 14'ünde sorgu başarılı. Veritabanı yeniden başlatıldı ve beş
+servis de kendiliğinden toparlandı.
+
+**Açık kalan:** Veritabanı yeniden başlatması `manage_loop_error` üretti; bu yol artık ölçülüyor
+ama bir yere bildirim gitmiyor (Alertmanager → Discord). Yedekler hâlâ makine dışına
+kopyalanmıyor.
+
 ## [Faz 11] Prometheus + Grafana + Sentry — 2026-08-20 (akşam)
 
 **Yapıldı:** `SYSTEM-REVIEW.md`'nin "en yüksek getirili parça" dediği iş: gözlemlenebilirlik.

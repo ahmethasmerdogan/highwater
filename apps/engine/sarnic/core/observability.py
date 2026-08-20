@@ -10,7 +10,14 @@ artıp gözle görülür bir alarm üretirdi."* Bu modül o toplayıcıyı besle
    geçtiği için `sarnic_events_total` tek satırla pozisyonları, emirleri, devre
    kesicileri ve bot durum değişimlerini kapsar. Her olay tipi için ayrı sayaç
    serpiştirmek koda yayılır ve biri eklenmeyi unutur.
-2. **Yoksa sessizce kapalı.** Sentry DSN verilmemişse `init_sentry` hiçbir şey
+2. **Sorguda daima toplayın.** Buradaki her ölçü **her süreçte** tanımlıdır;
+   modül içe aktarıldığı anda kayıt defterine girer. Yani `sarnic_bars_written_total`
+   yalnızca marketdata tarafından artırılsa da on bir hedefin hepsi onu yayınlar,
+   onu sıfır olarak. `increase(...) == 0` gibi bir kural toplamadan yazılırsa o
+   sıfır serileri yüzünden sürekli alarm verir; `sarnic_universe_size` gibi bir
+   gösterge toplamadan okunursa 0 görünür. Kural: sayaçlarda `sum(...)`,
+   göstergelerde `max(...)`.
+3. **Yoksa sessizce kapalı.** Sentry DSN verilmemişse `init_sentry` hiçbir şey
    yapmaz; ölçüm sunucusu portu meşgulse servis çökmez, uyarır. Gözlem katmanı
    işlem motorunu asla durdurmaz.
 """
@@ -35,8 +42,22 @@ log = get_logger(__name__)
 #: `risk.circuit_breaker`, `data.stale`, …), `level` olayın önem derecesi.
 EVENTS = Counter("sarnic_events_total", "Yayınlanan alan olayları", ["kind", "level"])
 
+#: ERROR ve üstü **her** log olayı, olay adına göre.
+#:
+#: Neden ayrı bir sayaç yerine tek hook: kodda 19 ERROR seviyeli log çağrısı
+#: var (`worker_crashed`, `supervisor_reconcile_failed`, `manage_loop_error`,
+#: `backtest_failed`, …) ve başlangıçta yalnızca birinin sayacı vardı. Ölçüldü:
+#: veritabanı yeniden başlatıldığında süpervizör `manage_loop_error` ve
+#: `heartbeat_failed` verdi, Prometheus hiçbir şey görmedi. Her hata yoluna elle
+#: sayaç koymak, yeni bir hata yolu eklendiğinde unutulur; log zinciri ise
+#: hepsinden geçer.
+#:
+#: Etiket kardinalitesi sınırlıdır: `event` adları koddaki sabit sözcüklerdir.
+LOG_ERRORS = Counter("sarnic_log_errors_total", "ERROR ve üstü log olayları", ["event", "level"])
+
 #: Karar döngüsü istisnaları. Bir bot bunu artırıyorsa o bot bar atlıyor demektir —
-#: en yüksek öncelikli alarm adayı.
+#: en yüksek öncelikli alarm adayı. `LOG_ERRORS` ile örtüşür ama bot etiketi
+#: taşır: hangi botun sustuğunu ancak bu söyler.
 DECISION_ERRORS = Counter(
     "sarnic_decision_loop_errors_total", "Karar döngüsü istisnaları", ["bot_id"]
 )
@@ -85,6 +106,14 @@ def start_metrics_server(port: int, component: str) -> None:
 # --------------------------------------------------------------------------- #
 #  Sentry
 # --------------------------------------------------------------------------- #
+
+
+def error_metrics_processor(logger: Any, method_name: str, event_dict: dict) -> dict:
+    """ERROR ve üstü her log olayını sayar. structlog zincirine takılır."""
+    seviye = str(event_dict.get("level") or method_name).lower()
+    if seviye in ("error", "critical", "exception"):
+        LOG_ERRORS.labels(str(event_dict.get("event", "?")), seviye).inc()
+    return event_dict
 
 
 def sentry_structlog_processor(logger: Any, method_name: str, event_dict: dict) -> dict:

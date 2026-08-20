@@ -39,7 +39,7 @@ def configure_logging(json_output: bool | None = None, level: str | None = None)
         # Sentry, istisna metne çevrilmeden önce görmelidir; `format_exc_info`
         # `exc_info`'yu tüketir ve sonrasında yığın izi kalmaz. Geç içe aktarım
         # döngüsel bağımlılığı önler (observability -> logging -> observability).
-        _sentry_processor,
+        _observability_processor,
         structlog.processors.format_exc_info,
     ]
     processors.append(
@@ -57,9 +57,15 @@ def configure_logging(json_output: bool | None = None, level: str | None = None)
     _configured = True
 
 
-def _sentry_processor(logger, method_name, event_dict):
-    from sarnic.core.observability import sentry_structlog_processor
+def _observability_processor(logger, method_name, event_dict):
+    """Ölçüm ve hata takibi zincire buradan girer.
 
+    Geç içe aktarım döngüsel bağımlılığı önler
+    (observability -> logging -> observability).
+    """
+    from sarnic.core.observability import error_metrics_processor, sentry_structlog_processor
+
+    event_dict = error_metrics_processor(logger, method_name, event_dict)
     return sentry_structlog_processor(logger, method_name, event_dict)
 
 

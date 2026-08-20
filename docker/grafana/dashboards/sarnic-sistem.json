@@ -403,6 +403,60 @@
       }
     },
     {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Loglanan hatalar — olay bazında",
+      "description": "Koddaki her ERROR seviyeli log olayı. Bu grafik boş kalmalıdır. `decision_loop_error` ayrıca kendi panelinde bot bazında durur.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum by (event) (increase(sarnic_log_errors_total[15m]))",
+          "legendFormat": "{{event}}",
+          "refId": "A",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 45,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
       "id": 10,
       "type": "timeseries",
       "title": "Karar döngüsü hataları — bot bazında",
@@ -415,7 +469,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 4
+        "y": 11
       },
       "targets": [
         {
@@ -470,7 +524,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 4
+        "y": 11
       },
       "targets": [
         {
@@ -525,7 +579,7 @@
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 11
+        "y": 18
       },
       "targets": [
         {
@@ -533,7 +587,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "rate(sarnic_bars_written_total[10m]) * 600",
+          "expr": "sum(rate(sarnic_bars_written_total[10m])) * 600",
           "legendFormat": "bar / 10 dk",
           "refId": "A",
           "instant": false,
@@ -580,7 +634,7 @@
         "h": 6,
         "w": 8,
         "x": 8,
-        "y": 11
+        "y": 18
       },
       "targets": [
         {
@@ -635,7 +689,7 @@
         "h": 6,
         "w": 8,
         "x": 16,
-        "y": 11
+        "y": 18
       },
       "targets": [
         {
@@ -690,7 +744,7 @@
         "h": 6,
         "w": 12,
         "x": 0,
-        "y": 17
+        "y": 24
       },
       "targets": [
         {
@@ -745,7 +799,7 @@
         "h": 6,
         "w": 12,
         "x": 12,
-        "y": 17
+        "y": 24
       },
       "targets": [
         {
@@ -753,7 +807,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "increase(sarnic_ws_reconnects_total[15m])",
+          "expr": "sum(increase(sarnic_ws_reconnects_total[15m]))",
           "legendFormat": "kopma / 15 dk",
           "refId": "A",
           "instant": false,

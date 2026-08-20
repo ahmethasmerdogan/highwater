@@ -210,6 +210,7 @@ Giriş bilgileri `.env`'deki `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD`.
 | Ölçü | Ne söyler |
 |---|---|
 | `sarnic_events_total{kind,level}` | Tüm alan olayları — pozisyon, emir, devre kesici, bot durumu. Tek hook: `EventBus.publish` |
+| `sarnic_log_errors_total{event,level}` | ERROR ve üstü **her** log olayı, adına göre. Koddaki 19 hata yolunun tamamı buradan geçer |
 | `sarnic_decision_loop_errors_total{bot_id}` | Karar döngüsü istisnası. **Bu sıfırdan farklıysa bot bar atlıyor olabilir** |
 | `sarnic_bars_written_total` | DB'ye yazılan kapanmış bar. Sıfıra düşmesi, veri akışının durduğunu `data.stale` olayından önce gösterir |
 | `sarnic_ws_reconnects_total` | Binance akışının kararlılığı |
@@ -225,6 +226,13 @@ duvarına Docker alt ağı için delik açmamak için (gerekçe: `compose.yml`).
 
 Alarm kuralları `docker/prometheus/alarmlar.yml`'de. Hepsi, daha önce sessizce
 olmuş ve elle log okunarak bulunmuş olaylardan türetildi.
+
+> **Sorguda daima toplayın.** Her ölçü her süreçte tanımlıdır: modül içe
+> aktarıldığı anda kayıt defterine girer. `sarnic_bars_written_total` yalnızca
+> marketdata tarafından artırılsa da on bir hedefin hepsi onu yayınlar — sıfır
+> olarak. Sayaçlarda `sum(...)`, göstergelerde `max(...)` kullanın; yoksa
+> "increase(...) == 0" gibi bir kural o sıfır serileri yüzünden sürekli alarm
+> verir. Bu tam olarak başımıza geldi.
 
 ### Sentry
 

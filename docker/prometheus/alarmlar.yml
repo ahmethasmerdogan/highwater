@@ -20,8 +20,28 @@ groups:
           summary: "Bot {{ $labels.bot_id }} karar döngüsünde istisna aldı"
           description: "Bot bar atlıyor olabilir. Stack trace için Sentry'ye bakın."
 
+      # Karar döngüsü dışındaki hata yolları. Koddaki 19 ERROR seviyeli
+      # çağrının tamamı buradan geçer; birine elle sayaç koymayı unutmak artık
+      # sessizliğe yol açmıyor.
+      - alert: HataLoglandi
+        expr: sum by (event) (increase(sarnic_log_errors_total[15m])) > 0
+        labels: {severity: uyari}
+        annotations:
+          summary: "{{ $labels.event }} — 15 dakikada {{ $value }} kez"
+          description: "Ayrıntı ve yığın izi için Sentry, ham satır için panel → Loglar."
+
+      - alert: BotCoktu
+        expr: sum by (event) (increase(sarnic_log_errors_total{event=~"worker_crashed|worker_restart_storm"}[10m])) > 0
+        labels: {severity: kritik}
+        annotations:
+          summary: "{{ $labels.event }} — bir bot durdu"
+
       - alert: BarAkisiDurdu
-        expr: increase(sarnic_bars_written_total[30m]) == 0
+        # `sum()` şart. Ölçü her süreçte tanımlıdır ama yalnızca marketdata
+        # yazar; kalan dokuz hedef sabit 0 yayınlar. Toplamadan yazılan hâli
+        # ("increase(...) == 0") o dokuz seri için sürekli alarm veriyordu —
+        # yani alarmın kendisi, uyarması gereken sessiz bozulmanın örneğiydi.
+        expr: sum(increase(sarnic_bars_written_total[30m])) == 0
         for: 10m
         labels: {severity: kritik}
         annotations:

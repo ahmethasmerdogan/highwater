@@ -15,6 +15,12 @@ services:
   postgres:
     image: timescale/timescaledb:2.17.2-pg16
     restart: unless-stopped
+    # Docker'ın varsayılan 64 MB'lık /dev/shm'i PostgreSQL'in paralel işçilerine
+    # yetmiyordu. Belirtisi sinsiydi: `VACUUM (ANALYZE) scores` sessizce
+    # "could not resize shared memory segment ... No space left on device" ile
+    # düşüyor, dolayısıyla en büyük tablo (787 MB, 354 bin satır) hiç
+    # çözümlenmiyordu. Planlayıcı satır sayısını 15.130 sanıyordu — 23 kat yanlış.
+    shm_size: 1gb
     environment:
       POSTGRES_USER: sarnic
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sarnic}

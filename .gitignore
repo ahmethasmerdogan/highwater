@@ -27,3 +27,6 @@ research/*.parquet
 
 # Derleme çıktıları
 *.tsbuildinfo
+
+# Docker derlemesinden kalan kök sahipli çıktı (bkz. README).
+.next.root-owned-*/

@@ -309,7 +309,7 @@ yaklaşmayacağı **ölçülebilir** hâle gelir. Neden şimdi yapılmadı:
 | Ne | Durum |
 |---|---|
 | `/metrics` ucu | **Var ve okunuyor** — API `:8000`, marketdata `:9101`, süpervizör `:9102`, bildirimci `:9103`, worker'lar `9110+bot_id` |
-| Prometheus / Grafana | **Kuruldu** — `make gozlem`, 11 hedef, 7 alarm kuralı. Pano: `docker/grafana/dashboards/sarnic-sistem.json` |
+| Prometheus / Grafana | **Kuruldu** — `make gozlem`, 11 hedef, 9 alarm kuralı, 14 panel. Pano: `docker/grafana/dashboards/sarnic-sistem.json` |
 | Sentry | **Kuruldu** — `SARNIC_SENTRY_DSN` boşsa kapalı. İstisnalar structlog zincirinden yığın iziyle gider |
 | Playwright E2E | `package.json`'da bağımlılık var, **tek test yok** (`apps/web/tests` dizini bile yok) |
 | Görsel regresyon | Yok |
