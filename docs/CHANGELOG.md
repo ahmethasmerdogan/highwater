@@ -16,6 +16,42 @@ cevap veren tek şey odur.
 
 ---
 
+## [Bakım] Puan geçmişine saklama politikası — 2026-08-20 (gece)
+
+**Yapıldı:** `scores` sınırsız büyüyen tek tabloydu — her bar × her sembol × her puanlama
+konfigürasyonu için bir satır, satır başına ~2 KB (`rationale`/`families` jsonb'leri). Ölçüldü:
+354.689 satır = **787 MB**, günde ~15 bin satır (~30 MB, ~1 GB/ay). Süpervizöre altı saatte bir
+koşan bir budama döngüsü eklendi; süre `SARNIC_SCORES_RETENTION_DAYS` ile ayarlanır, varsayılan
+90 gün, `0` kapatır.
+
+**Asıl mesele budama değil, neyi budamadığı.** `score_observations.score_id` yabancı anahtarı
+`ON DELETE CASCADE`. Yani "90 günden eski puanları sil" diye yazılmış düz bir sorgu, kalibrasyon
+gözlemlerini de sessizce götürürdü — sistemin birincil çıktısını, puanlamanın öngörü gücü olup
+olmadığının tek kanıtını. Bugün fark edilmezdi bile: 90 günü aşan 608 satırın **hiçbirinin**
+gözlemi yok. Otuz gün sonra 19 Haziran'daki gözlemler sınırı geçecek ve kayıp sessizce başlayacaktı.
+
+Budama bu yüzden gözlemi olan bir puana sınırı geçse de dokunmaz. Bedeli açık: gözlemli satırlar
+(şu an %15) hiç silinmez, büyüme sıfırlanmaz, ~%15'e iner. Ölçümü korumak diskten önce gelir.
+
+İlk koşu canlı sistemde çalıştı: **608 satır silindi**, gözlem sayısı 54.569'da değişmedi,
+kalibrasyonun 46.236 gözlemi yerinde.
+
+**Bilinçli olarak yapılmadı:**
+- `VACUUM FULL` çalıştırılmadı; tablo hâlâ 787 MB. Budama dosyayı küçültmez, boşalan yeri yeni
+  satırlar için kullanılabilir kılar. Diski geri almak tabloyu kilitler ve 787 MB için buna
+  değmez.
+- `score_observations`, `ohlcv` ve `bot_events`'e saklama konmadı. Gözlemler ve OHLCV kalıcı
+  olmalı (backtest dürüstlüğü); `bot_events` küçük.
+- Yabancı anahtar `CASCADE` olarak bırakıldı. `SET NULL` yapmak `score_id` birincil anahtar
+  olduğu için mümkün değil; şemayı değiştirmek bu işin kapsamı dışında.
+
+**Kabul kriteri:** ✅ 468 test geçti (5'i yeni), `ruff` temiz. Kritik test —
+`test_gozlemli_puan_sinirin_otesinde_de_korunur` — 200 günlük iki puandan gözlemsiz olanı silip
+gözlemli olanı ve gözlemini bırakıyor. Canlı koşu doğrulandı.
+
+**Açık kalan:** Alertmanager hâlâ yok; yedekler makine dışına kopyalanmıyor. WebSocket jetonu
+sorgu dizgesinde gittiği için proxy hatalarında journal'a düşüyor.
+
 ## [Bakım] Gözlem katmanının kendi kör noktaları — 2026-08-20 (gece)
 
 Kurduğumuz gözlem katmanı ilk gerçek sınavını verdi ve **dört kusuru kendisi gösterdi.**

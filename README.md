@@ -251,6 +251,31 @@ gönderilir. Testi: `tests/test_observability.py`.
 
 ---
 
+## Saklama
+
+Sınırsız büyüyen tek tablo `scores`'tu: her bar × her sembol × her puanlama
+konfigürasyonu için bir satır, satır başına ~2 KB (`rationale`/`families`
+jsonb'leri). Ölçüldü: 354 bin satır = 787 MB, günde ~15 bin satır (~30 MB).
+
+Süpervizör altı saatte bir budar (`SARNIC_SCORES_RETENTION_DAYS`, varsayılan
+**90 gün**, `0` = kapalı).
+
+> **Kalibrasyon gözlemleri asla silinmez.** `score_observations.score_id`
+> yabancı anahtarı `ON DELETE CASCADE`'dir; eski bir puanı silmek ona bağlı
+> gözlemi de sessizce götürürdü. Gözlemler sistemin birincil çıktısıdır —
+> puanlamanın öngörü gücü olup olmadığının tek kanıtı. Budama, gözlemi olan bir
+> puana sınırı geçse bile dokunmaz (`scoring/retention.py`). Bedeli: gözlemli
+> satırlar (şu an %15) hiç silinmez, yani büyüme sıfırlanmaz, ~%15'e iner.
+> Bilinçli bir takas — ölçümü korumak diskten önce gelir.
+
+Budama tablo dosyasını küçültmez; boşalan yer yeni satırlar için yeniden
+kullanılır. Diski geri almak `VACUUM FULL` ister ve tabloyu kilitler.
+
+Diğer tablolar: `spread_samples` 7 gün (`marketdata`), `ohlcv` kalıcı (backtest
+dürüstlüğü için), `score_observations` kalıcı.
+
+---
+
 ## Yedek
 
 Kalıcı durumun tamamı PostgreSQL'dedir; Redis'teki her şey yeniden üretilebilir.

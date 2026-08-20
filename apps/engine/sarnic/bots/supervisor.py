@@ -28,6 +28,7 @@ from sarnic.core.logging import get_logger
 from sarnic.core.observability import UNIVERSE_SIZE
 from sarnic.db.models import Bot, BotEvent, Position
 from sarnic.db.session import session_scope
+from sarnic.scoring.retention import prune_scores
 from sarnic.sizing.clusters import clusters_are_stale, compute_clusters
 from sarnic.universe.engine import UniverseEngine, UniverseInputUnavailable
 
@@ -50,6 +51,9 @@ UNIVERSE_RETRY_INTERVAL = 180
 # yalnızca seyrekleşir; boyut her değiştiğinde aralık başa döner.
 UNIVERSE_RETRY_MAX_INTERVAL = 3600
 RESTART_WINDOW = timedelta(minutes=10)
+# Budama aralığı. Günde bir yeterli olurdu; altı saat, süpervizör sık yeniden
+# başlatıldığında da işin bir kez çalışmasını garantiler.
+RETENTION_INTERVAL = 6 * 3600
 
 RUNNING_STATES = (BotState.PAPER_RUNNING, BotState.DEGRADED)
 
@@ -92,6 +96,7 @@ class BotSupervisor:
             asyncio.create_task(self._supervise_loop(), name="sup-bots"),
             asyncio.create_task(self._universe_loop(), name="sup-universe"),
             asyncio.create_task(self._clusters_loop(), name="sup-clusters"),
+            asyncio.create_task(self._retention_loop(), name="sup-retention"),
         ]
         await self._stop.wait()
         log.info("supervisor_stopping")
@@ -363,6 +368,18 @@ class BotSupervisor:
             except Exception:
                 log.exception("cluster_recompute_failed")
             await asyncio.sleep(3600)
+
+    async def _retention_loop(self) -> None:
+        """Puan geçmişini budar. Gözlemli puanlara dokunmaz (`scoring/retention.py`)."""
+        while not self._stop.is_set():
+            try:
+                async with session_scope() as session:
+                    await prune_scores(session, retention_days=settings.scores_retention_days)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                log.exception("scores_prune_failed")
+            await asyncio.sleep(RETENTION_INTERVAL)
 
     # ------------------------------------------------------------------ #
     async def shutdown(self) -> None:

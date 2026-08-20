@@ -74,6 +74,12 @@ class Settings(BaseSettings):
     # --- TUI / istemci ---
     api_base_url: str = "http://localhost:8000"
 
+    # --- saklama ---
+    # `scores` sınırsız büyüyen tek tabloydu (satır başına ~2 KB, günde ~15 bin
+    # satır). Kalibrasyon gözlemi olan puanlar bu süreden bağımsız olarak
+    # korunur — bkz. `scoring/retention.py`. 0 = budama kapalı.
+    scores_retention_days: int = 90
+
     # --- gözlemlenebilirlik ---
     # API'nin kendi /metrics ucu vardır (api_port). Arka plan servislerinin
     # HTTP sunucusu yoktur, bu yüzden her biri kendi portunda /metrics açar.
