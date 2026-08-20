@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=SARNIÇ terminali
+Comment=Canlı bot akışını ayrı bir pencerede açar (paper — canlı para yok)
+Exec=/home/ahmet/Projects/Sarnic_Proje/scripts/open-terminal.sh tui
+Terminal=false
+Categories=Development;Finance;
+X-GNOME-Autostart-enabled=true
+# Servisler systemd altında zaten çalışıyor; pencere yalnızca bir istemcidir.
+# Servislerin ayağa kalkması için birkaç saniye beklenir.
+X-GNOME-Autostart-Delay=8
+X-KDE-autostart-after=panel

@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  engine:
+    name: Motor — lint + testler
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/engine
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: uv kur
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: apps/engine/uv.lock
+
+      - name: Python 3.12
+        run: uv python install 3.12
+
+      - name: Bağımlılıklar
+        run: uv sync --all-extras
+
+      - name: Ruff — lint
+        run: uv run ruff check sarnic tests
+
+      - name: Ruff — biçim
+        run: uv run ruff format --check sarnic tests
+
+      - name: Pytest
+        run: uv run pytest tests -q --cov=sarnic --cov-report=term-missing
+
+  migrations:
+    name: Alembic — temiz DB'de migrasyon
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/engine
+
+    services:
+      postgres:
+        image: timescale/timescaledb:2.17.2-pg16
+        env:
+          POSTGRES_USER: sarnic
+          POSTGRES_PASSWORD: sarnic
+          POSTGRES_DB: sarnic
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U sarnic"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      SARNIC_DATABASE_URL: postgresql+asyncpg://sarnic:sarnic@localhost:5432/sarnic
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: apps/engine/uv.lock
+
+      - run: uv python install 3.12
+      - run: uv sync --all-extras
+
+      # Faz 0 kabul kriteri: temiz bir DB'de hatasız çalışmalı.
+      - name: alembic upgrade head
+        run: uv run alembic upgrade head
+
+      - name: Geri alma da çalışmalı
+        run: uv run alembic downgrade base
+
+  web:
+    name: Panel — tip kontrolü + derleme
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build

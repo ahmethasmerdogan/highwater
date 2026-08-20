@@ -1,0 +1,130 @@
+name: sarnic
+
+x-engine-env: &engine-env
+  SARNIC_ENV: ${SARNIC_ENV:-dev}
+  SARNIC_DATABASE_URL: postgresql+asyncpg://sarnic:${POSTGRES_PASSWORD:-sarnic}@postgres:5432/sarnic
+  SARNIC_REDIS_URL: redis://redis:6379/0
+  SARNIC_JWT_SECRET: ${SARNIC_JWT_SECRET:-dev-only-secret-change-me}
+  SARNIC_SECRET_ENCRYPTION_KEY: ${SARNIC_SECRET_ENCRYPTION_KEY:-}
+  SARNIC_BOOTSTRAP_ADMIN_EMAIL: ${SARNIC_BOOTSTRAP_ADMIN_EMAIL:-admin@sarnic.local}
+  SARNIC_BOOTSTRAP_ADMIN_PASSWORD: ${SARNIC_BOOTSTRAP_ADMIN_PASSWORD:-}
+  SARNIC_LOG_JSON: ${SARNIC_LOG_JSON:-false}
+  SARNIC_CORS_ORIGINS: '["http://localhost:3000"]'
+
+services:
+  postgres:
+    image: timescale/timescaledb:2.17.2-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sarnic
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sarnic}
+      POSTGRES_DB: sarnic
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sarnic -d sarnic"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    profiles: ["dev", "prod"]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    profiles: ["dev", "prod"]
+
+  # Migrasyonları uygular ve ilk yöneticiyi seed eder, sonra çıkar.
+  migrate:
+    build:
+      context: ./apps/engine
+      dockerfile: ../../docker/engine.Dockerfile
+    environment: *engine-env
+    command: ["sh", "-c", "alembic upgrade head && python -m sarnic.cli bootstrap"]
+    depends_on:
+      postgres: {condition: service_healthy}
+    profiles: ["dev", "prod"]
+
+  api:
+    build:
+      context: ./apps/engine
+      dockerfile: ../../docker/engine.Dockerfile
+    restart: unless-stopped
+    environment: *engine-env
+    command: ["uvicorn", "sarnic.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
+    profiles: ["dev", "prod"]
+
+  # Piyasa verisi tek çıkış noktası (bozulmaz kural 5). Tek örnek çalışır.
+  marketdata:
+    build:
+      context: ./apps/engine
+      dockerfile: ../../docker/engine.Dockerfile
+    restart: unless-stopped
+    environment: *engine-env
+    command: ["python", "-m", "sarnic.cli", "marketdata"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
+    profiles: ["prod", "engine"]
+
+  supervisor:
+    build:
+      context: ./apps/engine
+      dockerfile: ../../docker/engine.Dockerfile
+    restart: unless-stopped
+    environment: *engine-env
+    command: ["python", "-m", "sarnic.cli", "supervisor"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
+    profiles: ["prod", "engine"]
+
+  notifier:
+    build:
+      context: ./apps/engine
+      dockerfile: ../../docker/engine.Dockerfile
+    restart: unless-stopped
+    environment: *engine-env
+    command: ["python", "-m", "sarnic.cli", "notifier"]
+    depends_on:
+      redis: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
+    profiles: ["prod", "engine"]
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: ../../docker/web.Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      - api
+    profiles: ["dev", "prod"]
+
+volumes:
+  pgdata:
+  redisdata:

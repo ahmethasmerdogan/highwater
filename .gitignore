@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+.next/
+out/
+
+# Ortam ve sırlar
+.env
+.env.local
+*.pem
+
+# Araştırma verisi (büyük)
+research/data/
+research/*.parquet
+
+# Yerel araç zinciri
+.tooling/
+
+# Derleme çıktıları
+*.tsbuildinfo

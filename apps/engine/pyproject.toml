@@ -1,0 +1,87 @@
+[project]
+name = "sarnic"
+version = "0.1.0"
+description = "SARNIÇ — havuz tabanlı kesitsel puanlama ve kağıt üstü işlem sistemi"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # API
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic[email]>=2.9",
+    "pydantic-settings>=2.6",
+    "python-multipart>=0.0.12",
+    # DB
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30",
+    "alembic>=1.14",
+    "greenlet>=3.1",
+    # cache / event bus
+    "redis>=5.2",
+    # auth
+    "pyjwt>=2.10",
+    "pyotp>=2.9",
+    "argon2-cffi>=23.1",
+    "cryptography>=44.0",
+    # net
+    "httpx>=0.28",
+    "websockets>=13.1",
+    # analytics
+    "numpy>=1.26,<2.2",
+    "pandas>=2.2",
+    "scipy>=1.14",
+    "scikit-learn>=1.5",
+    "pandas-ta-classic>=0.2",
+    # tui
+    "textual>=0.86",
+    "rich>=13.9",
+    # ops
+    "structlog>=24.4",
+    "typer>=0.15",
+    "prometheus-client>=0.21",
+]
+
+[project.optional-dependencies]
+research = ["polars>=1.17", "pyarrow>=18.1", "matplotlib>=3.9"]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+    "hypothesis>=6.122",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "freezegun>=1.5",
+]
+
+[project.scripts]
+sarnic = "sarnic.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["sarnic"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["B008", "RUF001", "RUF002", "RUF003"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.coverage.run]
+source = ["sarnic"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+
+[tool.ruff.lint.per-file-ignores]
+# Otomatik üretilen migrasyonlar: uzun satırlar kaçınılmaz.
+"alembic/versions/*.py" = ["E501"]

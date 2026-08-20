@@ -1,0 +1,1039 @@
+"""Bot worker — MASTER-SPEC §10.
+
+Her bot ayrı bir **işlemde** çalışır. Bir botun çökmesi diğerlerini etkilemez.
+
+Karar döngüsü (bar kapanışında):
+  havuz → özellikler → puanlama → çıkış yönetimi → risk → boyutlandırma → emir
+
+Bu sıralama pazarlığa kapalıdır: risk kontrolü boyutlandırmadan **önce**,
+çıkış yönetimi girişten **önce** gelir. Sermaye önce korunur, sonra dağıtılır.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import math
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
+
+import redis.asyncio as aioredis
+from sqlalchemy import select
+
+from sarnic.bots.portfolio import (
+    OpenPosition,
+    PortfolioSnapshot,
+    load_snapshot,
+    record_equity,
+)
+from sarnic.config import settings
+from sarnic.core.clock import Clock, RealClock
+from sarnic.core.enums import (
+    TIMEFRAME_MINUTES,
+    BotState,
+    EventKind,
+    ExitReason,
+    OrderSide,
+    OrderType,
+    PositionStatus,
+)
+from sarnic.core.events import EventBus, get_event_bus
+from sarnic.core.logging import get_logger
+from sarnic.data.marketdata import data_is_stale, read_last_bars, read_tickers
+from sarnic.data.store import last_closed_bar, load_frame
+from sarnic.db.models import Bot, BotEvent, Order, Position, Score, Trade
+from sarnic.db.session import session_scope
+from sarnic.execution.base import OrderRequest, OrderResult
+from sarnic.execution.exits import (
+    ExitDecision,
+    MarketView,
+    PositionView,
+    evaluate_exit,
+    rotation_candidate,
+)
+from sarnic.execution.paper import PaperAdapter, PaperConfig, RedisBookSource
+from sarnic.features.indicators import realized_vol
+from sarnic.features.pipeline import load_bundles
+from sarnic.features.sr import stop_from_sr
+from sarnic.risk.engine import RiskEngine, RiskState
+from sarnic.scoring.engine import ScoreResult, ScoringEngine
+from sarnic.sizing.clusters import cluster_exposure, latest_clusters
+from sarnic.sizing.engine import SizingEngine, SizingInput
+from sarnic.strategy.definition import StrategyDefinition
+from sarnic.universe.engine import UniverseEngine
+
+log = get_logger(__name__)
+
+HEARTBEAT_INTERVAL = 10  # saniye (§10)
+MANAGE_INTERVAL = 15  # açık pozisyon gözetimi
+
+
+@dataclass(slots=True)
+class BarContext:
+    """Bir bar kapanışında karar için gereken her şey."""
+
+    bar_time: datetime
+    symbols: list[str]
+    scores: dict[str, ScoreResult]
+    stops: dict[str, float]
+    atr: dict[str, float]
+    prices: dict[str, float]
+    realized_vol: dict[str, float]
+    adv_1h: dict[str, float]
+    btc_below_ema200: bool = False
+    btc_vol_above_p90: bool = False
+
+
+class BotWorker:
+    def __init__(
+        self,
+        bot_id: int,
+        *,
+        bus: EventBus | None = None,
+        clock: Clock | None = None,
+        redis_url: str | None = None,
+    ) -> None:
+        self.bot_id = bot_id
+        self.bus = bus or get_event_bus()
+        self.clock = clock or RealClock()
+        self._redis_url = redis_url or settings.redis_url
+        self._redis: aioredis.Redis | None = None
+        self._stop = asyncio.Event()
+        self._adapter: PaperAdapter | None = None
+        self._definition: StrategyDefinition | None = None
+        self._last_bar: datetime | None = None
+        self._empty_universe_warned_for: datetime | None = None
+        #: Önceki barda giriş kapısının üstünde olan semboller — "eşik aşıldı"
+        #: olayı bir geçiştir ve geçişi görmek için önceki durum gerekir.
+        self._above_gate: set[str] = set()
+        self.universe = UniverseEngine()
+
+    # ------------------------------------------------------------------ #
+    async def redis(self) -> aioredis.Redis:
+        if self._redis is None:
+            self._redis = aioredis.from_url(self._redis_url, decode_responses=True)
+        return self._redis
+
+    async def _load_bot(self, session) -> Bot:
+        bot = (await session.execute(select(Bot).where(Bot.id == self.bot_id))).scalar_one()
+        return bot
+
+    def _definition_of(self, bot: Bot) -> StrategyDefinition:
+        if self._definition is None:
+            self._definition = StrategyDefinition.from_dict(
+                bot.strategy_version.definition
+            ).require_valid()
+        return self._definition
+
+    async def _emit(self, session, kind: EventKind | str, level: str = "INFO", **payload) -> None:
+        """Olay hem `bot_events` tablosuna hem Redis Streams'e gider."""
+        session.add(BotEvent(bot_id=self.bot_id, kind=str(kind), level=level, payload=payload))
+        await self.bus.emit(kind, level=level, bot_id=self.bot_id, **payload)
+
+    # ------------------------------------------------------------------ #
+    #  Yaşam döngüsü
+    # ------------------------------------------------------------------ #
+    async def run(self) -> None:
+        log.info("worker_starting", bot_id=self.bot_id)
+        tasks = [
+            asyncio.create_task(self._heartbeat_loop(), name=f"bot{self.bot_id}-heartbeat"),
+            asyncio.create_task(self._decision_loop(), name=f"bot{self.bot_id}-decide"),
+            asyncio.create_task(self._manage_loop(), name=f"bot{self.bot_id}-manage"),
+        ]
+        try:
+            await asyncio.gather(*tasks)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            log.exception("worker_crashed", bot_id=self.bot_id)
+            await self._fail(str(exc))
+            raise
+        finally:
+            for t in tasks:
+                t.cancel()
+            for t in tasks:
+                with contextlib.suppress(asyncio.CancelledError):
+                    await t
+
+    def stop(self) -> None:
+        self._stop.set()
+
+    async def _fail(self, message: str) -> None:
+        async with session_scope() as session:
+            bot = await self._load_bot(session)
+            bot.state = BotState.ERROR
+            bot.halt_reason = message[:64]
+            await self._emit(
+                session,
+                EventKind.BOT_STATE_CHANGED,
+                level="ERROR",
+                state=str(BotState.ERROR),
+                message=message,
+            )
+
+    async def _heartbeat_loop(self) -> None:
+        while not self._stop.is_set():
+            try:
+                async with session_scope() as session:
+                    bot = await self._load_bot(session)
+                    bot.last_heartbeat_at = self.clock.now()
+            except Exception:
+                log.exception("heartbeat_failed", bot_id=self.bot_id)
+            await asyncio.sleep(HEARTBEAT_INTERVAL)
+
+    # ------------------------------------------------------------------ #
+    #  Bar kapanışı döngüsü
+    # ------------------------------------------------------------------ #
+    async def _decision_loop(self) -> None:
+        while not self._stop.is_set():
+            try:
+                await self._maybe_run_bar()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                log.exception("decision_loop_error", bot_id=self.bot_id)
+            await asyncio.sleep(20)
+
+    async def _maybe_run_bar(self) -> None:
+        async with session_scope() as session:
+            bot = await self._load_bot(session)
+            if bot.state != BotState.PAPER_RUNNING:
+                return
+            definition = self._definition_of(bot)
+            timeframe = definition.timeframe
+
+        bar = last_closed_bar(self.clock.now(), timeframe)
+        if self._last_bar is not None and bar <= self._last_bar:
+            return
+
+        # Bar yalnızca **gerçekten işlendiyse** tüketilmiş sayılır. Aksi hâlde
+        # geçici bir aksaklık (henüz kurulmamış havuz, eksik veri) bir saatlik
+        # kararı sessizce atlatırdı: `_last_bar` ilerler, bir sonraki deneme
+        # ancak bir sonraki bar kapanışında olurdu.
+        if await self.run_bar(bar):
+            self._last_bar = bar
+
+    async def run_bar(self, bar_time: datetime) -> bool:
+        """Bir bar kapanışının tam karar zinciri.
+
+        Döner: bar işlendiyse `True`; atlandıysa `False` (çağıran yeniden dener).
+        """
+        started = self.clock.now()
+        async with session_scope() as session:
+            bot = await self._load_bot(session)
+            if bot.state != BotState.PAPER_RUNNING:
+                return False
+            definition = self._definition_of(bot)
+
+            symbols = await self.universe.current_symbols(session, at=bar_time)
+            if not symbols:
+                # Bar tüketilmediği için bu kontrol 20 sn'de bir tekrarlanıyor;
+                # her seferinde olay yazmak `bot_events`'i boğardı. Bar başına
+                # bir kez uyarmak yeterli.
+                if self._empty_universe_warned_for != bar_time:
+                    self._empty_universe_warned_for = bar_time
+                    await self._emit(
+                        session,
+                        EventKind.LOG,
+                        level="WARN",
+                        message=(
+                            f"{bar_time:%Y-%m-%d %H:%M} barı için havuz yok — puanlama "
+                            "atlandı. Havuz o bardan önce kurulmuş olmalı; "
+                            "sonraki barda yeniden denenecek."
+                        ),
+                    )
+                return False
+
+            ctx = await self._build_context(session, symbols, bar_time, definition)
+            await self._persist_scores(session, ctx, definition)
+
+            snapshot = await load_snapshot(session, bot, ctx.prices, now=bar_time)
+
+            # 1) Çıkışlar önce — sermaye önce korunur.
+            await self._manage_exits(session, bot, definition, snapshot, ctx, bar_closed=True)
+
+            # 2) Risk kapısı
+            verdict = await self._check_risk(session, bot, definition, snapshot)
+
+            # 3) Girişler
+            if verdict.allow_entry:
+                await self._consider_entries(session, bot, definition, snapshot, ctx)
+
+            await record_equity(session, bot, snapshot, bar_time)
+            bot.cash = Decimal(str(round(snapshot.cash, 8)))
+
+            elapsed_ms = (self.clock.now() - started).total_seconds() * 1000
+            await self._emit(
+                session,
+                EventKind.SCORES_UPDATED,
+                # Bot adı mesajın içinde: üç bot aynı barı puanlıyor ve panelde
+                # üç özdeş satır görünüyordu — hangisinin konuştuğu belirsizdi.
+                message=(
+                    f"{bot.name}: {definition.timeframe} barı kapandı, "
+                    f"{len(ctx.scores)} sembol puanlandı"
+                ),
+                bar_time=bar_time.isoformat(),
+                scored=len(ctx.scores),
+                duration_ms=round(elapsed_ms, 1),
+            )
+            return True
+
+    # ------------------------------------------------------------------ #
+    async def _build_context(
+        self, session, symbols: list[str], bar_time: datetime, definition: StrategyDefinition
+    ) -> BarContext:
+        # Karar çerçevesi botun kendi dilimidir. Geçilmediğinde hat her zaman
+        # 1h okuyordu: 15m bir bot 15 dakikada bir uyanıp **aynı** 1h barını
+        # yeniden puanlıyor, yeni bilgi olmadan daha sık işlem açıyordu.
+        bundles = await load_bundles(
+            session, symbols, at=bar_time, decision_tf=definition.timeframe
+        )
+        engine = ScoringEngine(
+            weights=definition.scoring.weights,
+            use_pattern=definition.scoring.modifiers.get("pattern", True),
+            use_candle=definition.scoring.modifiers.get("candle", True),
+            use_crowding=definition.scoring.modifiers.get("crowding", True),
+        )
+        results = engine.score_cross_section([b.features for b in bundles])
+        scores = {r.symbol: r for r in results}
+
+        prices: dict[str, float] = {}
+        stops: dict[str, float] = {}
+        atr: dict[str, float] = {}
+        rvol_map: dict[str, float] = {}
+        adv: dict[str, float] = {}
+
+        for b in bundles:
+            # Karar çerçevesi botun kendi dilimidir; burada `"1h"` sabiti
+            # kullanmak 15m/30m botlarda sözlüğü **sessizce boş bırakıyordu**:
+            # `indicators` anahtarları o botlarda ("15m","4h","1d") olduğu için
+            # `get("1h")` None dönüyor, döngü `continue` ediyor ve fiyat/stop/ATR
+            # hiç dolmuyordu. Sonuç: aday bulunmasına rağmen tek giriş bile
+            # açılmıyor ve hiçbir yere iz düşmüyordu.
+            base = b.indicators.get(definition.timeframe)
+            if base is None or not math.isfinite(base.close):
+                continue
+            prices[b.symbol] = base.close
+            atr[b.symbol] = base.atr if math.isfinite(base.atr) else 0.0
+            rvol_map[b.symbol] = base.realized_vol if math.isfinite(base.realized_vol) else 0.0
+            if b.sr is not None:
+                stop = stop_from_sr(b.sr, definition.exit.stop_atr_multiple, entry=base.close)
+                if stop is not None:
+                    stops[b.symbol] = stop
+
+        # Likidite tavanı için 1 saatlik ortalama quote hacmi.
+        tickers = await read_tickers(await self.redis())
+        for symbol in symbols:
+            t = tickers.get(symbol)
+            adv[symbol] = float(t["quote_volume"]) / 24 if t else 0.0
+
+        btc_below, btc_vol_high = await self._btc_regime(session, bar_time)
+
+        return BarContext(
+            bar_time=bar_time,
+            symbols=symbols,
+            scores=scores,
+            stops=stops,
+            atr=atr,
+            prices=prices,
+            realized_vol=rvol_map,
+            adv_1h=adv,
+            btc_below_ema200=btc_below,
+            btc_vol_above_p90=btc_vol_high,
+        )
+
+    async def _btc_regime(self, session, at: datetime) -> tuple[bool, bool]:
+        """§6.2 adım 5 — rejim çarpanının iki girdisi.
+
+        Bayat veriyle **sessizce** karar vermez: referans sembolün son barı iki
+        günden eskiyse uyarır. Bu kontrol yokken 1d verisi üç gün donmuşken rejim
+        hesabı yapılmaya devam etti ve kimse görmedi (`SYSTEM-REVIEW` §2).
+        """
+        symbol = settings.reference_symbol
+        df = await load_frame(session, symbol, "1d", end=at, limit=400)
+        if len(df) < 210:
+            log.warning("regime_reference_insufficient", symbol=symbol, bars=len(df))
+            return False, False
+
+        last_bar = df["open_time"].iloc[-1].to_pydatetime()
+        age_days = (at - last_bar).total_seconds() / 86400
+        if age_days > 2:
+            log.warning(
+                "regime_reference_stale",
+                symbol=symbol,
+                last_bar=last_bar.isoformat(),
+                age_days=round(age_days, 2),
+                message="Rejim çarpanı bayat veriyle hesaplanıyor.",
+            )
+
+        from sarnic.features.indicators import ema
+
+        close = df["close"].astype(float)
+        ema200 = ema(close, 200).iloc[-1]
+        below = bool(math.isfinite(ema200) and close.iloc[-1] < ema200)
+
+        vol = realized_vol(close, period=30, bars_per_year=365).dropna()
+        high = bool(len(vol) > 60 and vol.iloc[-1] > vol.quantile(0.90))
+        return below, high
+
+    async def _persist_scores(
+        self, session, ctx: BarContext, definition: StrategyDefinition
+    ) -> None:
+        """Her puan `scores` tablosuna gerekçesiyle yazılır (§5.4 zorunlu)."""
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+        rows = [r.as_row(definition.timeframe) for r in ctx.scores.values()]
+        if not rows:
+            return
+        from sarnic.data.store import chunk_size_for, chunks
+
+        for batch in chunks(rows, chunk_size_for(len(rows[0]))):
+            stmt = pg_insert(Score).values(batch)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["symbol", "bar_time", "timeframe", "config_hash"],
+                set_={
+                    "score": stmt.excluded.score,
+                    "families": stmt.excluded.families,
+                    "modifiers": stmt.excluded.modifiers,
+                    "rationale": stmt.excluded.rationale,
+                },
+            )
+            await session.execute(stmt)
+
+        # "Eşik aşıldı" bir **geçiştir**, bir durum değil. Kod eşiğin üstünde
+        # sembol *olup olmadığına* bakıyordu; kapıyı geçen bir sembol havuzda
+        # durduğu sürece her bar yeniden bildirim üretiyordu. Ölçüldü
+        # (2026-08-19): 24 saatte 588 bildirim, hiçbiri okunmamış — üstelik
+        # 15 dakikalık bot tek başına günde 96 bar üretiyor. Bu hacim panelin
+        # gelen kutusunu kullanılamaz hâle getiriyor ve gerçek olayları
+        # (pozisyon açıldı, devre kesici) gömüyor.
+        #
+        # Doğrusu: **yeni** geçenler. Önceki barda eşiğin altındayken bu barda
+        # üstüne çıkanlar bildirilir. Süreç yeniden başlarsa küme boşalır ve
+        # bir kerelik fazladan bildirim olur; sessizce yanlış davranmaktan iyi.
+        gate = definition.entry.min_score
+        above = {s.symbol for s in ctx.scores.values() if s.score >= gate}
+        newly = above - self._above_gate
+        self._above_gate = above
+        if newly:
+            crossed = [ctx.scores[sym] for sym in newly if sym in ctx.scores]
+            await self.bus.emit(
+                EventKind.SCORE_THRESHOLD_CROSSED,
+                bot_id=self.bot_id,
+                threshold=gate,
+                symbols=[
+                    {"symbol": s.symbol, "score": s.score}
+                    for s in sorted(crossed, key=lambda x: -x.score)[:10]
+                ],
+            )
+
+    # ------------------------------------------------------------------ #
+    #  Risk
+    # ------------------------------------------------------------------ #
+    async def _check_risk(
+        self, session, bot: Bot, definition: StrategyDefinition, snapshot: PortfolioSnapshot
+    ):
+        stale = await data_is_stale(await self.redis())
+        state = RiskState(
+            equity=snapshot.equity,
+            equity_start_of_day=snapshot.equity_start_of_day,
+            equity_start_of_week=snapshot.equity_start_of_week,
+            equity_peak=max(snapshot.equity_peak, snapshot.equity),
+            consecutive_losses=snapshot.consecutive_losses,
+            data_stale=stale,
+            entries_blocked_until=bot.entries_blocked_until,
+        )
+        verdict = RiskEngine(definition.risk_limits()).evaluate(state, self.clock.now())
+
+        for trip in verdict.trips:
+            # `level` ayrıca geçilmez: `trip.as_dict()` onu zaten taşıyor ve iki
+            # kez vermek `TypeError` üretiyordu. Sonuç: bir kesici tetiklendiği
+            # anda karar barı çöküyor, altındaki durum değişiklikleri (DEGRADED,
+            # entries_blocked_until, kill switch) hiç uygulanmıyordu.
+            await self._emit(session, EventKind.RISK_CIRCUIT_BREAKER, **trip.as_dict())
+            if trip.entries_blocked_until is not None:
+                bot.entries_blocked_until = trip.entries_blocked_until
+            if trip.requires_manual_restart:
+                bot.state = BotState.STOPPED
+                bot.halt_reason = str(trip.breaker)
+            elif trip.degrade and bot.state == BotState.PAPER_RUNNING:
+                bot.state = BotState.DEGRADED
+
+        if verdict.kill:
+            await self._close_all(session, bot, snapshot, ExitReason.KILL_SWITCH)
+        return verdict
+
+    # ------------------------------------------------------------------ #
+    #  Çıkışlar
+    # ------------------------------------------------------------------ #
+    async def _manage_exits(
+        self,
+        session,
+        bot: Bot,
+        definition: StrategyDefinition,
+        snapshot: PortfolioSnapshot,
+        ctx: BarContext,
+        *,
+        bar_closed: bool,
+    ) -> None:
+        for position in list(snapshot.positions):
+            price = ctx.prices.get(position.symbol)
+            if price is None:
+                continue
+            score = ctx.scores.get(position.symbol)
+            market = MarketView(
+                price=price,
+                atr=ctx.atr.get(position.symbol, 0.0),
+                score=score.score if score else None,
+                bar_closed=bar_closed,
+            )
+            decision = evaluate_exit(_view(position), market, definition.exit, self.clock.now())
+            await self._apply_exit_decision(session, bot, snapshot, position, decision, price)
+
+    async def _apply_exit_decision(
+        self,
+        session,
+        bot: Bot,
+        snapshot: PortfolioSnapshot,
+        position: OpenPosition,
+        decision: ExitDecision,
+        price: float,
+    ) -> None:
+        # MFE/MAE takibi — her gözetim turunda güncellenir.
+        r = (price - position.entry_price) / max(
+            position.entry_price - position.initial_stop, 1e-12
+        )
+        position.mfe = max(position.mfe, r)
+        position.mae = min(position.mae, r)
+
+        if decision.stop_moved and decision.new_stop is not None:
+            position.stop = decision.new_stop
+            position.breakeven_locked = True
+            await session.execute(
+                Position.__table__.update()
+                .where(Position.id == position.id)
+                .values(
+                    stop=Decimal(str(round(decision.new_stop, 10))),
+                    breakeven_locked=True,
+                    mfe=Decimal(str(round(position.mfe, 8))),
+                    mae=Decimal(str(round(position.mae, 8))),
+                )
+            )
+            await self._emit(
+                session,
+                EventKind.LOG,
+                level="INFO",
+                message=f"{position.symbol} {decision.message}",
+                symbol=position.symbol,
+            )
+            return
+
+        await session.execute(
+            Position.__table__.update()
+            .where(Position.id == position.id)
+            .values(
+                mfe=Decimal(str(round(position.mfe, 8))),
+                mae=Decimal(str(round(position.mae, 8))),
+            )
+        )
+
+        if decision.should_exit and decision.reason is not None:
+            await self._close_position(
+                session, bot, snapshot, position, decision.reason, decision.message
+            )
+
+    async def _close_position(
+        self,
+        session,
+        bot: Bot,
+        snapshot: PortfolioSnapshot,
+        position: OpenPosition,
+        reason: ExitReason,
+        message: str = "",
+    ) -> None:
+        adapter = await self._get_adapter(session, bot)
+        result = await adapter.submit(
+            OrderRequest(
+                symbol=position.symbol,
+                side=OrderSide.SELL,
+                type=OrderType.MARKET,
+                qty=position.qty,
+                bot_id=bot.id,
+                position_id=position.id,
+            )
+        )
+        await self._record_order(session, bot, result, position.id)
+
+        if not result.accepted:
+            await self._emit(
+                session,
+                EventKind.ORDER_REJECTED,
+                level="ERROR",
+                symbol=position.symbol,
+                reason=result.reject_reason,
+                message=f"{position.symbol} çıkış emri reddedildi: {result.reject_reason}",
+            )
+            return
+
+        exit_price = result.avg_price
+        now = self.clock.now()
+        dilim_pnl = (exit_price - position.entry_price) * result.filled_qty - result.fees
+        kalan = position.qty - result.filled_qty
+
+        # Emir defteri tükenmişse çıkış **kısmi** dolar. Pozisyonu yine de
+        # kapatmak sessiz bir muhasebe ayrışması yaratır: adaptörün elinde
+        # kalan miktar durur, botun kaydı yoktur, o miktar bir daha satılamaz
+        # ve nakit hiç geri gelmez. Doğrusu: kalanla açık kal, sonucu biriktir,
+        # bir sonraki turda tekrar dene. Çıkış koşulu hâlâ geçerlidir.
+        if kalan > 1e-9:
+            position.qty = kalan
+            position.realized_pnl += dilim_pnl
+            position.realized_fees += result.fees
+            await session.execute(
+                Position.__table__.update()
+                .where(Position.id == position.id)
+                .values(
+                    qty=Decimal(str(round(kalan, 10))),
+                    realized_pnl=Decimal(str(round(position.realized_pnl, 8))),
+                    realized_fees=Decimal(str(round(position.realized_fees, 8))),
+                )
+            )
+            snapshot.cash += exit_price * result.filled_qty - result.fees
+            bot.cash = Decimal(str(round(snapshot.cash, 8)))
+            await self._emit(
+                session,
+                EventKind.ORDER_REJECTED,
+                level="WARN",
+                symbol=position.symbol,
+                message=(
+                    f"{position.symbol} çıkışı kısmi doldu: {result.filled_qty:.4f} satıldı, "
+                    f"{kalan:.4f} kaldı. Emir defterinde likidite yetmedi; pozisyon açık "
+                    "kaldı ve bir sonraki turda yeniden denenecek."
+                ),
+            )
+            return
+
+        gross = (exit_price - position.entry_price) * result.filled_qty
+        fees = position.entry_fees + position.realized_fees + result.fees
+        pnl = position.realized_pnl + gross - result.fees
+        risk_per_unit = max(position.entry_price - position.initial_stop, 1e-12)
+        pnl_r = (exit_price - position.entry_price) / risk_per_unit
+
+        await session.execute(
+            Position.__table__.update()
+            .where(Position.id == position.id)
+            .values(status=PositionStatus.CLOSED)
+        )
+        session.add(
+            Trade(
+                position_id=position.id,
+                bot_id=bot.id,
+                symbol=position.symbol,
+                exit_price=Decimal(str(round(exit_price, 10))),
+                exit_time=now,
+                exit_reason=str(reason),
+                pnl=Decimal(str(round(pnl, 8))),
+                pnl_r=round(pnl_r, 6),
+                fees=Decimal(str(round(fees, 8))),
+                slippage_bps=round(result.slippage_bps, 4),
+                mfe=Decimal(str(round(position.mfe, 8))),
+                mae=Decimal(str(round(position.mae, 8))),
+                hold_hours=round((now - position.entry_time).total_seconds() / 3600, 4),
+                strategy_version_id=bot.strategy_version_id,
+            )
+        )
+
+        snapshot.cash += exit_price * result.filled_qty - result.fees
+        snapshot.positions = [p for p in snapshot.positions if p.id != position.id]
+        bot.cash = Decimal(str(round(snapshot.cash, 8)))
+
+        await self._emit(
+            session,
+            EventKind.POSITION_CLOSED,
+            level="INFO",
+            symbol=position.symbol,
+            reason=str(reason),
+            exit_price=exit_price,
+            pnl=round(pnl, 4),
+            pnl_r=round(pnl_r, 3),
+            message=(
+                f"{position.symbol} kapandı · {reason} · {pnl:+.2f} USDT ({pnl_r:+.2f}R)"
+                + (f" · {message}" if message else "")
+            ),
+        )
+
+    async def _close_all(
+        self, session, bot: Bot, snapshot: PortfolioSnapshot, reason: ExitReason
+    ) -> None:
+        for position in list(snapshot.positions):
+            await self._close_position(session, bot, snapshot, position, reason)
+
+    # ------------------------------------------------------------------ #
+    #  Girişler
+    # ------------------------------------------------------------------ #
+    async def _consider_entries(
+        self,
+        session,
+        bot: Bot,
+        definition: StrategyDefinition,
+        snapshot: PortfolioSnapshot,
+        ctx: BarContext,
+    ) -> None:
+        candidates = [
+            s
+            for s in sorted(ctx.scores.values(), key=lambda x: -x.score)
+            if s.score >= definition.entry.min_score and s.symbol not in snapshot.symbols
+        ]
+        if not candidates:
+            return
+
+        clusters = await latest_clusters(session, at=ctx.bar_time)
+        sizing = SizingEngine(definition.sizing_params())
+
+        for candidate in candidates:
+            if len(snapshot.positions) >= definition.entry.max_positions:
+                victim = rotation_candidate(
+                    snapshot.score_pairs(),
+                    candidate.symbol,
+                    candidate.score,
+                    definition.rotation,
+                    definition.entry.max_positions,
+                )
+                if victim is None:
+                    break
+                target = snapshot.find(victim)
+                if target is not None:
+                    await self._close_position(
+                        session,
+                        bot,
+                        snapshot,
+                        target,
+                        ExitReason.ROTATION,
+                        f"{candidate.symbol} {candidate.score:.1f} puanla devraldı",
+                    )
+
+            stop = ctx.stops.get(candidate.symbol)
+            entry = ctx.prices.get(candidate.symbol)
+            if stop is None or entry is None:
+                # Sessiz atlamak bir kusuru tam olarak gizlemişti: karar
+                # çerçevesi yanlış okunduğunda bu sözlükler boş kalıyor ve bot
+                # "aday var ama hiç giriş yok" durumuna düşüyordu — hiçbir iz
+                # bırakmadan. Artık sebebi yazıyor.
+                await self._emit(
+                    session,
+                    EventKind.LOG,
+                    level="WARN",
+                    symbol=candidate.symbol,
+                    message=(
+                        f"{candidate.symbol} giriş atlandı: "
+                        f"{'stop' if stop is None else 'fiyat'} hesaplanamadı "
+                        f"({definition.timeframe} çerçevesi)"
+                    ),
+                )
+                continue
+
+            decision = sizing.size(
+                SizingInput(
+                    symbol=candidate.symbol,
+                    score=candidate.score,
+                    entry=entry,
+                    stop=stop,
+                    equity=snapshot.equity,
+                    free_cash=snapshot.cash,
+                    current_exposure=snapshot.exposure,
+                    cluster_exposure=cluster_exposure(
+                        clusters, snapshot.exposures(), candidate.symbol
+                    ),
+                    realized_vol_20d=ctx.realized_vol.get(candidate.symbol, 0.0),
+                    adv_1h=ctx.adv_1h.get(candidate.symbol, 0.0),
+                    open_positions=len(snapshot.positions),
+                    btc_below_ema200=ctx.btc_below_ema200,
+                    btc_vol_above_p90=ctx.btc_vol_above_p90,
+                )
+            )
+            if not decision.accepted:
+                await self._emit(
+                    session,
+                    EventKind.LOG,
+                    level="INFO",
+                    symbol=candidate.symbol,
+                    message=f"{candidate.symbol} giriş reddedildi: {decision.reject_reason}",
+                )
+                continue
+
+            await self._open_position(
+                session, bot, snapshot, ctx, candidate, decision, definition.timeframe
+            )
+
+    async def _open_position(
+        self,
+        session,
+        bot: Bot,
+        snapshot: PortfolioSnapshot,
+        ctx: BarContext,
+        candidate: ScoreResult,
+        decision,
+        timeframe: str,
+    ) -> None:
+        adapter = await self._get_adapter(session, bot)
+        result = await adapter.submit(
+            OrderRequest(
+                symbol=candidate.symbol,
+                side=OrderSide.BUY,
+                type=OrderType.MARKET,
+                qty=decision.qty,
+                bot_id=bot.id,
+                meta={"realized_vol": ctx.realized_vol.get(candidate.symbol)},
+            )
+        )
+        await self._record_order(session, bot, result, None)
+
+        if not result.accepted:
+            await self._emit(
+                session,
+                EventKind.ORDER_REJECTED,
+                level="WARN",
+                symbol=candidate.symbol,
+                reason=result.reject_reason,
+                message=f"{candidate.symbol} giriş emri reddedildi: {result.reject_reason}",
+            )
+            return
+
+        score_id = (
+            await session.execute(
+                select(Score.id).where(
+                    Score.symbol == candidate.symbol,
+                    Score.bar_time == candidate.bar_time,
+                    Score.config_hash == candidate.config_hash,
+                    # `timeframe` şart: puan satırının kimliği
+                    # (sembol, bar, dilim, ayar) dörtlüsüdür — `scores` tablosunun
+                    # benzersiz indeksi de öyle. Dilim atlandığında aynı ayarla
+                    # çalışan 15m ve 30m botlar çakışıyordu: 16:00 hem 15m hem 30m
+                    # barı olduğu için sorgu iki satır döndürüyor ve
+                    # `MultipleResultsFound` ile worker çöküyordu.
+                    Score.timeframe == timeframe,
+                )
+            )
+        ).scalar_one_or_none()
+
+        entry_price = result.avg_price
+        position = Position(
+            bot_id=bot.id,
+            symbol=candidate.symbol,
+            side=OrderSide.BUY,
+            qty=Decimal(str(round(result.filled_qty, 10))),
+            entry_price=Decimal(str(round(entry_price, 10))),
+            entry_time=self.clock.now(),
+            stop=Decimal(str(round(decision.stop, 10))),
+            initial_stop=Decimal(str(round(decision.stop, 10))),
+            score_at_entry=round(candidate.score, 2),
+            rationale_id=score_id,
+            entry_fees=Decimal(str(round(result.fees, 8))),
+            status=PositionStatus.OPEN,
+        )
+        session.add(position)
+        await session.flush()
+
+        # Stop borsada gerçek bir emir olarak durur (paper'da simüle edilir).
+        await adapter.submit(
+            OrderRequest(
+                symbol=candidate.symbol,
+                side=OrderSide.SELL,
+                type=OrderType.STOP_LOSS_LIMIT,
+                qty=result.filled_qty,
+                stop_price=decision.stop,
+                bot_id=bot.id,
+                position_id=position.id,
+            )
+        )
+
+        snapshot.cash -= entry_price * result.filled_qty + result.fees
+        snapshot.positions.append(
+            OpenPosition(
+                id=position.id,
+                symbol=candidate.symbol,
+                qty=result.filled_qty,
+                entry_price=entry_price,
+                entry_time=position.entry_time,
+                stop=decision.stop,
+                initial_stop=decision.stop,
+                score_at_entry=candidate.score,
+                breakeven_locked=False,
+                entry_fees=result.fees,
+            )
+        )
+        bot.cash = Decimal(str(round(snapshot.cash, 8)))
+
+        risk_pct = decision.risk_amount / snapshot.equity if snapshot.equity else 0.0
+        rr = candidate.rationale.get("sr", {}).get("rr_geometry")
+        await self._emit(
+            session,
+            EventKind.POSITION_OPENED,
+            level="INFO",
+            symbol=candidate.symbol,
+            qty=round(result.filled_qty, 8),
+            entry=round(entry_price, 8),
+            stop=round(decision.stop, 8),
+            score=candidate.score,
+            rationale=candidate.rationale,
+            message=(
+                f"{candidate.symbol} qty {result.filled_qty:.4f} @ {entry_price:.6f} · "
+                f"stop {decision.stop:.6f} · risk %{risk_pct * 100:.1f}"
+                + (f" · R {rr:.2f}" if isinstance(rr, int | float) else "")
+            ),
+        )
+
+    async def _record_order(
+        self, session, bot: Bot, result: OrderResult, position_id: int | None
+    ) -> None:
+        session.add(
+            Order(
+                bot_id=bot.id,
+                position_id=position_id,
+                symbol=result.symbol,
+                type=result.type,
+                side=result.side,
+                qty=Decimal(str(round(result.requested_qty, 10))),
+                filled_qty=Decimal(str(round(result.filled_qty, 10))),
+                avg_fill_price=(
+                    Decimal(str(round(result.avg_price, 10))) if result.avg_price else None
+                ),
+                status=result.status,
+                reject_reason=result.reject_reason or None,
+                exchange_order_id=result.order_id,
+                fees=Decimal(str(round(result.fees, 8))),
+                slippage_bps=round(result.slippage_bps, 4),
+                created_at=result.submitted_at or self.clock.now(),
+                filled_at=result.filled_at,
+            )
+        )
+
+    # ------------------------------------------------------------------ #
+    #  Bar arası gözetim: stop'lar barı beklemez
+    # ------------------------------------------------------------------ #
+    async def _manage_loop(self) -> None:
+        while not self._stop.is_set():
+            try:
+                await self._manage_open_positions()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                log.exception("manage_loop_error", bot_id=self.bot_id)
+            await asyncio.sleep(MANAGE_INTERVAL)
+
+    async def _manage_open_positions(self) -> None:
+        async with session_scope() as session:
+            bot = await self._load_bot(session)
+            if bot.state not in (BotState.PAPER_RUNNING, BotState.DEGRADED):
+                return
+            definition = self._definition_of(bot)
+
+            redis = await self.redis()
+            last_bars = await read_last_bars(redis, definition.timeframe)
+            prices = {s: float(d["close"]) for s, d in last_bars.items()}
+            if not prices:
+                return
+
+            snapshot = await load_snapshot(session, bot, prices, now=self.clock.now())
+            if not snapshot.positions:
+                return
+
+            # Bar içi ATR yerine son kapanmış barın ATR'si kullanılır — bar
+            # kapanmadan o barın verisiyle stop taşımak look-ahead olurdu.
+            atr_map = await self._atr_for(session, snapshot.symbols, definition.timeframe)
+
+            for position in list(snapshot.positions):
+                price = prices.get(position.symbol)
+                if price is None:
+                    continue
+                decision = evaluate_exit(
+                    _view(position),
+                    MarketView(
+                        price=price,
+                        atr=atr_map.get(position.symbol, 0.0),
+                        score=None,
+                        bar_closed=False,
+                    ),
+                    definition.exit,
+                    self.clock.now(),
+                )
+                await self._apply_exit_decision(session, bot, snapshot, position, decision, price)
+
+            bot.cash = Decimal(str(round(snapshot.cash, 8)))
+
+    async def _atr_for(self, session, symbols: set[str], timeframe: str) -> dict[str, float]:
+        from sarnic.features.indicators import atr as atr_fn
+
+        out: dict[str, float] = {}
+        for symbol in symbols:
+            df = await load_frame(session, symbol, timeframe, limit=60)
+            if len(df) < 20:
+                continue
+            value = atr_fn(df).iloc[-1]
+            if value is not None and math.isfinite(float(value)):
+                out[symbol] = float(value)
+        return out
+
+    # ------------------------------------------------------------------ #
+    async def _get_adapter(self, session, bot: Bot) -> PaperAdapter:
+        if self._adapter is None:
+            redis = await self.redis()
+            self._adapter = PaperAdapter(
+                book_source=RedisBookSource(redis),
+                balance=float(bot.cash),
+                config=PaperConfig(),
+                clock=self.clock,
+            )
+            # Defteri DB'den kurtar: adaptör süreçle ölür, pozisyon ölmez.
+            rows = await session.execute(
+                select(Position.symbol, Position.qty).where(
+                    Position.bot_id == bot.id, Position.status == PositionStatus.OPEN
+                )
+            )
+            self._adapter.restore_positions({s: float(q) for s, q in rows})
+        self._adapter.set_balance(float(bot.cash))
+        return self._adapter
+
+    async def close(self) -> None:
+        if self._redis is not None:
+            await self._redis.aclose()
+            self._redis = None
+        await self.bus.close()
+
+
+def _view(position: OpenPosition) -> PositionView:
+    return PositionView(
+        symbol=position.symbol,
+        qty=position.qty,
+        entry_price=position.entry_price,
+        entry_time=position.entry_time,
+        stop=position.stop,
+        initial_stop=position.initial_stop,
+        breakeven_locked=position.breakeven_locked,
+    )
+
+
+def next_bar_close(now: datetime, timeframe: str) -> datetime:
+    minutes = TIMEFRAME_MINUTES[timeframe]
+    floored = last_closed_bar(now, timeframe) + timedelta(minutes=minutes)
+    return floored + timedelta(minutes=minutes)
+
+
+async def run_worker(bot_id: int) -> None:
+    """Süreç giriş noktası — `python -m sarnic.cli worker <id>`."""
+    from sarnic.core.logging import configure_logging
+
+    configure_logging()
+    worker = BotWorker(bot_id)
+    try:
+        await worker.run()
+    finally:
+        await worker.close()
+
+
+__all__ = ["BarContext", "BotWorker", "run_worker"]
+
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
