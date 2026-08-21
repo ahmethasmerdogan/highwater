@@ -16,6 +16,57 @@ cevap veren tek şey odur.
 
 ---
 
+## [Ölçüm] Kalibrasyon besleyicisi hiç zamanlanmamıştı — 2026-08-21
+
+**Yapıldı:** Sistemi denetlerken en pahalı sessiz bozulmayı buldum: `backfill_observations`
+— kalibrasyonun ham verisini üreten fonksiyon — **hiçbir döngüye, timer'a veya cron'a bağlı
+değildi.** Yalnızca `sarnic observations` elle çalıştırıldığında koşuyordu.
+
+Sonuç ölçüldü: puanlar 21 Ağustos 02:00'ye kadar yazılmışken en yeni gözlem **18 Ağustos
+13:00**'tü — 2 gün 9 saat gerilik ve büyüyordu. Kalibrasyon sayfası dolu görünüyor, yalnızca
+son üç günü göstermiyordu. Sistemin varlık nedeni olan ölçüm, kimse fark etmeden durmuştu.
+
+Süpervizöre saatlik `_observations_loop` eklendi (30 günlük geriye bakış, upsert olduğu için
+uzun ufuklar doldukça satır güncellenir). İlk koşu **70.673 gözlem yazdı.**
+
+**Ölçüm bunun sonucunda değişti — ve daha az iyimser.** Örneklem 46.236'dan **103.807**'ye
+çıktı (59 güne yayılıyor). 72 saatlik ufukta:
+
+| | eski (n=46.236) | yeni (n=103.807) |
+|---|---|---|
+| Spearman | +0,0226 | **+0,0095** |
+| Kapı ≥80 farkı | +%3,96 | **+%1,26** |
+| t | +3,29 | **+2,35** |
+| bar | 176 | 469 |
+
+Yani dün raporladığım "kapının üstü havuzu anlamlı biçimde geçiyor" bulgusu, iki kattan fazla
+veriyle **zayıfladı**. Hâlâ pozitif ve marjinal olarak anlamlı, ama daha küçük ve daha yakın
+sınırda. Küçük örneklemin daha güzel sayı vermesi beklenen bir şeydir; asıl ders, ölçümün
+kendisinin ölçülmeden bırakılmaması gerektiğidir.
+
+**İkinci düzeltme — ufuk sessizce uzuyordu.** `forward_returns` hedef barı `searchsorted` ile
+buluyor ama **eşleşmeyi kontrol etmiyordu**: hedef bar veri boşluğu yüzünden yoksa bir
+sonraki bar alınıyor, yani "24 saatlik getiri" sessizce 25, 30 ya da 50 saatlik oluyordu.
+Ölçüldü: 60 günde 236.318 bar geçişinin 6'sı boşluklu (%0,003), yani bedeli birkaç gözlem.
+Ufkun adı doğru olmalı; hedef bar tam eşleşmiyorsa artık `None` yazılıyor.
+
+**Üçüncüsü — kapsam.** `scoring/observations.py` **%0 kapsamdaydı**. Sistemin birincil
+çıktısının ham verisini üreten modül test edilmemişti. 13 test yazıldı: elle hesaplanmış
+getiriler, referans barın doğruluğu, dolmamış ufuk, boşluk davranışı, sıfır fiyat, upsert
+tekrarı, zaman dilimi karışmaması, döngünün kayıtlı olması.
+
+**Bilinçli olarak yapılmadı:**
+- `scoring/backfill.py` (%0) ve `backtest/runner.py` (%0) test edilmedi. İkisi de elle
+  çalıştırılan tek seferlik araçlar; canlı yolda değiller. `observations.py` canlı yoldaydı,
+  bu yüzden öncelik oydu.
+- Ağırlıklara ve eşiklere dokunulmadı — kalibrasyon zayıfladı diye ayar değiştirmek, aynı
+  veride arama yapmaktır.
+
+**Kabul kriteri:** ✅ 486 test geçti (13'ü yeni), `ruff` temiz. Canlıda doğrulandı: döngü
+çalıştı, gecikme 2 gün 9 saatten **2 dakikaya** indi, gözlem 54.569 → 115.791.
+
+**Açık kalan:** Alertmanager yok; yedekler makine dışına kopyalanmıyor.
+
 ## [Güvenlik] WebSocket jetonu artık URL'de gitmiyor — 2026-08-21
 
 **Yapıldı:** Canlı akış kimliği tek kullanımlık bilete geçirildi.

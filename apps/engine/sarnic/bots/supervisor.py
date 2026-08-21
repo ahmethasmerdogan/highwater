@@ -28,6 +28,7 @@ from sarnic.core.logging import get_logger
 from sarnic.core.observability import UNIVERSE_SIZE
 from sarnic.db.models import Bot, BotEvent, Position
 from sarnic.db.session import session_scope
+from sarnic.scoring.observations import backfill_observations
 from sarnic.scoring.retention import prune_scores
 from sarnic.sizing.clusters import clusters_are_stale, compute_clusters
 from sarnic.universe.engine import UniverseEngine, UniverseInputUnavailable
@@ -54,6 +55,12 @@ RESTART_WINDOW = timedelta(minutes=10)
 # Budama aralığı. Günde bir yeterli olurdu; altı saat, süpervizör sık yeniden
 # başlatıldığında da işin bir kez çalışmasını garantiler.
 RETENTION_INTERVAL = 6 * 3600
+# Kalibrasyon besleyicisinin aralığı. En kısa ufuk 4 saat, ama saatlik koşmak
+# yeni puanları ufku dolar dolmaz yakalar ve maliyeti düşüktür (upsert).
+OBSERVATIONS_INTERVAL = 3600
+# Besleyicinin geriye bakış penceresi. Ufku yeni dolan puanlar için 30 gün
+# fazlasıyla yeter; uzun ufuk (72s) dolduğunda satır güncellenir.
+OBSERVATIONS_LOOKBACK_DAYS = 30
 
 RUNNING_STATES = (BotState.PAPER_RUNNING, BotState.DEGRADED)
 
@@ -97,6 +104,7 @@ class BotSupervisor:
             asyncio.create_task(self._universe_loop(), name="sup-universe"),
             asyncio.create_task(self._clusters_loop(), name="sup-clusters"),
             asyncio.create_task(self._retention_loop(), name="sup-retention"),
+            asyncio.create_task(self._observations_loop(), name="sup-observations"),
         ]
         await self._stop.wait()
         log.info("supervisor_stopping")
@@ -380,6 +388,29 @@ class BotSupervisor:
             except Exception:
                 log.exception("scores_prune_failed")
             await asyncio.sleep(RETENTION_INTERVAL)
+
+    async def _observations_loop(self) -> None:
+        """Kalibrasyon besleyicisi.
+
+        Bu döngü olmadan `backfill_observations` yalnızca elle
+        (`sarnic observations`) çalışıyordu ve kimse çalıştırmayınca kalibrasyon
+        sessizce eskiyordu. Ölçüldü: puanlar 21 Ağustos'a kadar yazılmışken en
+        yeni gözlem 18 Ağustos'tu — **2 gün 9 saat** gerilik. Sayfa yine dolu
+        görünüyordu, yalnızca son üç günü göstermiyordu; sistemin varlık nedeni
+        olan ölçüm, fark edilmeden durmuştu.
+        """
+        while not self._stop.is_set():
+            try:
+                async with session_scope() as session:
+                    await backfill_observations(
+                        session,
+                        since=utcnow() - timedelta(days=OBSERVATIONS_LOOKBACK_DAYS),
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                log.exception("observations_backfill_failed")
+            await asyncio.sleep(OBSERVATIONS_INTERVAL)
 
     # ------------------------------------------------------------------ #
     async def shutdown(self) -> None:

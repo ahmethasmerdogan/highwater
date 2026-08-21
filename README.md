@@ -133,7 +133,7 @@ uv run python -m sarnic.cli tui                # terminal arayüzü
 
 uv run python -m sarnic.cli universe-refresh   # havuzu yenile + snapshot yaz
 uv run python -m sarnic.cli backfill --days 400
-uv run python -m sarnic.cli observations       # kalibrasyon besleyicisi
+uv run python -m sarnic.cli observations       # kalibrasyon besleyicisi (süpervizör saatlik koşar)
 uv run python -m sarnic.cli backtest 1 --start 2025-01-01 --end 2026-01-01
 ```
 

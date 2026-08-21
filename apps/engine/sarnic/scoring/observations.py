@@ -53,7 +53,13 @@ def forward_returns(
     for key, hours in horizons.items():
         target_time = pd.Timestamp(bar_time) + pd.Timedelta(hours=hours)
         j = times.searchsorted(target_time, side="left")
-        if j >= len(df):
+        # Hedef bar **tam olarak** o anda kapanmış olmalı. `searchsorted` eşleşme
+        # yoksa sonraki barın indeksini verir; o hâliyle veri boşluğu olan bir
+        # sembolde "24 saatlik getiri" sessizce 25, 30 ya da 50 saate uzardı ve
+        # kalibrasyon karşılaştırdığını sandığı şeyi karşılaştırmazdı. Ölçüldü:
+        # 60 günde 236.318 bar geçişinin 6'sı boşluklu (%0,003), yani bedeli
+        # birkaç gözlem. Ufkun adı doğru olmalı.
+        if j >= len(df) or times.iloc[j] != target_time:
             out[key] = None
             continue
         out[key] = float(df["close"].iloc[j]) / base - 1.0
