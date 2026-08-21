@@ -25,9 +25,11 @@ from sarnic.api.schemas import (
 )
 from sarnic.config import settings
 from sarnic.core.security import (
+    WS_TICKET_SECONDS,
     create_2fa_challenge_token,
     create_access_token,
     create_refresh_token,
+    create_ws_ticket,
     decode_token,
     generate_totp_secret,
     hash_token,
@@ -82,8 +84,6 @@ def _rate_limit(key: str) -> None:
 def _clear_attempts(key: str) -> None:
     """Başarılı girişten sonra sayaç sıfırlanır."""
     _ATTEMPTS.pop(key, None)
-
-
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -196,6 +196,18 @@ async def logout(
         row.revoked_at = datetime.now(UTC)
     await write_audit(session, request, user.id, "auth.logout")
     await session.commit()
+
+
+@router.post("/ws-ticket")
+async def ws_ticket(user: CurrentUser) -> dict:
+    """WebSocket için tek kullanımlık, 30 saniyelik bilet.
+
+    Neden ayrı bir uç: tarayıcı WebSocket el sıkışmasında `Authorization`
+    başlığı gönderemez, kimlik sorgu dizgesinden geçmek zorunda ve sorgu
+    dizgeleri loglara düşer. Bilet normal başlıkla alınır, sonra tek atımlık
+    olarak URL'de harcanır (`core/security.py::create_ws_ticket`).
+    """
+    return {"ticket": create_ws_ticket(user.id, str(user.role)), "expires_in": WS_TICKET_SECONDS}
 
 
 @router.get("/me", response_model=UserOut)

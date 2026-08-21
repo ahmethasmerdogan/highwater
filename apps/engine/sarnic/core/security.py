@@ -37,6 +37,11 @@ def verify_password(password: str, password_hash: str) -> bool:
 # --------------------------------------------------------------------------- #
 #  JWT
 # --------------------------------------------------------------------------- #
+
+#: WebSocket biletinin ömrü. Bağlantı kurmaya yeter, çalınmaya yetmez.
+WS_TICKET_SECONDS = 30
+
+
 def create_token(
     subject: str, token_type: str, expires_delta: timedelta, extra: dict[str, Any] | None = None
 ) -> str:
@@ -64,6 +69,25 @@ def create_access_token(user_id: int, role: str) -> str:
 
 def create_refresh_token(user_id: int) -> str:
     return create_token(str(user_id), "refresh", timedelta(days=settings.refresh_token_days))
+
+
+def create_ws_ticket(user_id: int, role: str) -> str:
+    """WebSocket için tek kullanımlık, 30 saniyelik bilet.
+
+    Tarayıcı WebSocket el sıkışmasında başlık gönderemez, bu yüzden kimlik
+    sorgu dizgesinden geçmek zorunda. Erişim jetonunu oraya koymak ölçüldü ve
+    sızdı: panel proxy'si hata verdiğinde satırın tamamı journal'a düşüyordu —
+    ```
+    Failed to proxy http://127.0.0.1:8000/ws?token=eyJhbGciOi...
+    ```
+    Otuz dakika geçerli, tam yetkili bir jeton düz metin olarak logda duruyordu.
+    Panel dışarı açılırsa aynı şey ters vekilin erişim kayıtlarına da yazılır.
+
+    Bilet bunu iki yönden daraltır: **30 saniye** yaşar ve **bir kez**
+    kullanılır (`jti` Redis'e yazılır). Loga düşse bile ele geçiren kişinin
+    elinde, muhtemelen çoktan harcanmış, yarım dakikalık bir anahtar olur.
+    """
+    return create_token(str(user_id), "ws", timedelta(seconds=WS_TICKET_SECONDS), {"role": role})
 
 
 def create_2fa_challenge_token(user_id: int) -> str:

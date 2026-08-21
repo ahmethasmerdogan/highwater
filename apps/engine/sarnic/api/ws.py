@@ -20,10 +20,11 @@ import jwt
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
+from sarnic.api.deps import get_redis
 from sarnic.core.enums import EventKind
 from sarnic.core.events import Event, EventBus, get_event_bus
 from sarnic.core.logging import get_logger
-from sarnic.core.security import decode_token
+from sarnic.core.security import WS_TICKET_SECONDS, decode_token
 
 log = get_logger(__name__)
 router = APIRouter()
@@ -126,17 +127,44 @@ class ConnectionHub:
 hub = ConnectionHub()
 
 
+async def _consume_ticket(jti: str) -> bool:
+    """Bileti harcar. `True` ilk kullanım demektir, `False` tekrar kullanım.
+
+    Redis erişilemezse tekrar kullanım kontrolü yapılamaz; bağlantı yine de
+    kabul edilir. Bilet zaten 30 saniyelik ve imzalıdır — gözlem katmanı
+    çöktüğü için canlı akışı kesmek, kazandığından fazlasını kaybettirir.
+    """
+    try:
+        redis = await get_redis()
+        return bool(await redis.set(f"sarnic:ws:jti:{jti}", "1", nx=True, ex=WS_TICKET_SECONDS))
+    except Exception as exc:
+        log.warning("ws_ticket_replay_check_failed", error=str(exc))
+        return True
+
+
 @router.websocket("/ws")
 async def websocket_endpoint(
     websocket: WebSocket,
-    token: str = Query(default=""),
+    ticket: str = Query(default=""),
     channels: str = Query(default=""),
 ) -> None:
-    """Jeton query string'den gelir — tarayıcı WebSocket'i header gönderemez."""
+    """Kimlik **tek kullanımlık biletle** gelir, erişim jetonuyla değil.
+
+    Tarayıcı WebSocket el sıkışmasında başlık gönderemez, dolayısıyla kimlik
+    sorgu dizgesinden geçmek zorunda — ve sorgu dizgeleri loglara düşer.
+    Ölçüldü: panel proxy'si hata verdiğinde `?token=eyJ...` satırın tamamıyla
+    journal'a yazılıyordu, yani 30 dakikalık tam yetkili bir jeton düz metin
+    olarak duruyordu. Bilet 30 saniye yaşar ve burada harcanır; `/auth/ws-ticket`
+    ucundan normal `Authorization` başlığıyla alınır.
+    """
     try:
-        claims = decode_token(token, expected_type="access")
+        claims = decode_token(ticket, expected_type="ws")
     except jwt.InvalidTokenError:
-        await websocket.close(code=4401, reason="Geçersiz veya süresi dolmuş jeton")
+        await websocket.close(code=4401, reason="Geçersiz veya süresi dolmuş bilet")
+        return
+
+    if not await _consume_ticket(str(claims.get("jti", ""))):
+        await websocket.close(code=4401, reason="Bilet zaten kullanıldı")
         return
 
     await websocket.accept()

@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { tokens, websocketUrl } from "@/lib/api";
+import { api, tokens, websocketUrl } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
 /**
@@ -69,11 +69,32 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     setLastMessageAt(Date.now());
   }, []);
 
-  const connect = useCallback(() => {
-    const token = tokens.access();
-    if (!token || closedRef.current) return;
+  /*
+   * Bağlantı, erişim jetonuyla değil **tek kullanımlık biletle** kurulur.
+   *
+   * Tarayıcı WebSocket el sıkışmasında başlık gönderemez, dolayısıyla kimlik
+   * sorgu dizgesinden geçmek zorunda — ve sorgu dizgeleri loglara düşer.
+   * Ölçüldü: panel proxy'si hata verdiğinde `?token=eyJ...` satırın tamamıyla
+   * journal'a yazılıyor, yani 30 dakikalık tam yetkili bir jeton düz metin
+   * olarak duruyordu. Bilet 30 saniye yaşar ve sunucuda bir kez harcanır.
+   */
+  const connect = useCallback(async () => {
+    if (!tokens.access() || closedRef.current) return;
 
-    const url = websocketUrl("/ws", { token });
+    let ticket: string;
+    try {
+      ticket = (await api.post<{ ticket: string }>("/auth/ws-ticket")).ticket;
+    } catch {
+      // Bilet alınamadı (ağ, oturum). Yeniden bağlanma zamanlayıcısı devrede.
+      if (closedRef.current) return;
+      setState("reconnecting");
+      timerRef.current = setTimeout(connect, backoffRef.current);
+      backoffRef.current = Math.min(backoffRef.current * 2, MAX_BACKOFF_MS);
+      return;
+    }
+    if (closedRef.current) return;
+
+    const url = websocketUrl("/ws", { ticket });
     const socket = new WebSocket(url);
     socketRef.current = socket;
 

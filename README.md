@@ -191,6 +191,13 @@ uv run python ../../research/phase0a.py report
 - Discord webhook URL'leri DB'de **şifreli** (Fernet), panelde maskeli.
 - Kill switch 2FA yeniden doğrulaması ister.
 - Panel varsayılan olarak yalnızca yerel ağa açıktır.
+- **WebSocket kimliği tek kullanımlık biletle geçer, erişim jetonuyla değil.**
+  Tarayıcı WS el sıkışmasında başlık gönderemez, kimlik sorgu dizgesinden geçmek
+  zorunda — ve sorgu dizgeleri loglara düşer. Ölçüldü: panel proxy'si hata
+  verdiğinde `?token=eyJ...` satırın tamamıyla journal'a yazılıyor, yani 30
+  dakikalık tam yetkili bir jeton düz metin olarak duruyordu. Bilet
+  `POST /auth/ws-ticket`'ten normal başlıkla alınır, **30 saniye** yaşar ve
+  sunucuda **bir kez** harcanır (`jti` Redis'e yazılır).
 
 ---
 

@@ -16,6 +16,45 @@ cevap veren tek şey odur.
 
 ---
 
+## [Güvenlik] WebSocket jetonu artık URL'de gitmiyor — 2026-08-21
+
+**Yapıldı:** Canlı akış kimliği tek kullanımlık bilete geçirildi.
+
+Sorun ölçülmüştü: panel proxy'si API'ye ulaşamadığında Next.js hata satırını tam URL'yle
+yazıyor ve satır şöyle görünüyordu —
+
+    Failed to proxy http://127.0.0.1:8000/ws?token=eyJhbGciOiJIUzI1NiI...
+
+Yani **30 dakika geçerli, tam yetkili bir erişim jetonu düz metin olarak journal'a
+düşüyordu.** Tarayıcı WebSocket el sıkışmasında `Authorization` başlığı gönderemez,
+dolayısıyla kimliğin sorgu dizgesinden geçmesi zorunlu; sorun jetonun kendisini oraya
+koymaktı. Panel Caddy ile dışarı açılırsa aynı şey ters vekilin erişim kayıtlarına da yazılır.
+
+`POST /auth/ws-ticket` eklendi: normal `Authorization` başlığıyla çağrılır, `typ: "ws"`
+tipinde **30 saniyelik** bir bilet döner. `/ws` artık yalnızca bileti kabul ediyor ve
+bileti **harcıyor** — `jti` Redis'e `SET NX` ile yazılır, ikinci kullanım reddedilir.
+Loga düşse bile ele geçiren kişinin elinde muhtemelen çoktan harcanmış, yarım dakikalık
+bir anahtar kalır. Panel ve TUI her yeniden bağlanmada yeni bilet alır.
+
+Redis erişilemezse tekrar kullanım kontrolü atlanır ve bağlantı kabul edilir: bilet zaten
+imzalı ve 30 saniyelik, gözlem katmanı çöktüğü için canlı akışı kesmek kazandığından
+fazlasını kaybettirir.
+
+**Bilinçli olarak yapılmadı:**
+- Eski `?token=` yolu **kaldırıldı**, geriye dönük kabul edilmiyor. Geçiş dönemi bırakmak
+  açığı açık bırakmak olurdu. Bedeli: açık duran bir tarayıcı sekmesi eski paketi
+  çalıştırdığı sürece canlı akışı "yeniden bağlanılıyor"da kalır; sayfayı yenilemek çözer.
+- Bilet Redis'te yalnızca `jti` olarak tutuluyor; kullanıcı/oturum eşleşmesi eklenmedi.
+  İmza zaten kullanıcıyı taşıyor.
+
+**Kabul kriteri:** ✅ 473 test geçti (5'i yeni), `ruff` ve `tsc` temiz. Canlıda uçtan uca
+doğrulandı: bilet ucu 200 ve kimliksiz 401; biletle bağlantı açıldı ve `history` çerçevesi
+geldi; **aynı bilet ikinci kez reddedildi**; erişim jetonuyla bağlanma denemesi reddedildi.
+`FakeRedis.set` artık `nx`'i gerçekten uyguluyor — eskiden hep `None` dönüyordu ve o hâliyle
+tek kullanımlık olma iddiası test edilemezdi.
+
+**Açık kalan:** Alertmanager yok; yedekler makine dışına kopyalanmıyor.
+
 ## [Bakım] Puan geçmişine saklama politikası — 2026-08-20 (gece)
 
 **Yapıldı:** `scores` sınırsız büyüyen tek tabloydu — her bar × her sembol × her puanlama

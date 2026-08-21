@@ -117,16 +117,23 @@ class ApiClient:
         return await self.post(f"/bots/{bot_id}/start")
 
     # ------------------------------------------------------------------ #
-    def ws_url(self) -> str:
+    async def ws_url(self) -> str:
+        """Bağlantı adresi — her seferinde **yeni** bir bilet alınır.
+
+        Erişim jetonu artık URL'ye konmaz: sorgu dizgeleri loglara düşer ve
+        oradaki jeton 30 dakika boyunca tam yetkiliydi. Bilet 30 saniyelik ve
+        tek kullanımlıktır, dolayısıyla her yeniden bağlanma yenisini ister.
+        """
+        bilet = (await self.post("/auth/ws-ticket"))["ticket"]
         base = self.base_url.replace("https://", "wss://").replace("http://", "ws://")
-        return f"{base.rstrip('/')}/ws?token={self.access_token}"
+        return f"{base.rstrip('/')}/ws?ticket={bilet}"
 
     async def stream(self, on_state: Callable[[str], None] | None = None) -> AsyncIterator[dict]:
         """Olay akışı. Kopunca yeniden bağlanır; bot etkilenmez (§16)."""
         backoff = 1.0
         while True:
             try:
-                async with websockets.connect(self.ws_url(), ping_interval=20) as ws:
+                async with websockets.connect(await self.ws_url(), ping_interval=20) as ws:
                     if on_state:
                         on_state("connected")
                     backoff = 1.0

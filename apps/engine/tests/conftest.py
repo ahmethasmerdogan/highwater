@@ -224,6 +224,7 @@ class FakeRedis:
 
     def __init__(self, tickers: dict | None = None) -> None:
         self._hashes: dict[str, dict[str, str]] = {}
+        self._keys: dict[str, str] = {}
         if tickers:
             import json
 
@@ -233,10 +234,18 @@ class FakeRedis:
         return self._hashes.get(key, {})
 
     async def get(self, key: str):
-        return None
+        return self._keys.get(key)
 
-    async def set(self, *args, **kwargs) -> None:
-        return None
+    async def set(self, key: str, value: str = "", *, nx: bool = False, ex: int | None = None):
+        """`nx` gerçekten uygulanır — WS biletinin tek kullanımlık olması buna dayanır.
+
+        Eskiden hep `None` dönüyordu; o hâliyle "bilet zaten kullanılmış" ile
+        "ilk kullanım" ayırt edilemezdi ve testler doğruyu ölçmezdi.
+        """
+        if nx and key in self._keys:
+            return None
+        self._keys[key] = value
+        return True
 
     async def aclose(self) -> None:
         return None

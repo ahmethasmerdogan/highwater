@@ -165,3 +165,77 @@ async def test_ticker_cache_propagates_cancellation():
 
     with pytest.raises(_asyncio.CancelledError):
         await read_tickers(IptalRedis())
+
+
+# --------------------------------------------------------------------------- #
+#  WebSocket bileti — jeton artık URL'ye konmuyor
+# --------------------------------------------------------------------------- #
+#
+# Tarayıcı WS el sıkışmasında başlık gönderemez, kimlik sorgu dizgesinden
+# geçmek zorunda ve sorgu dizgeleri loglara düşer. Ölçüldü: panel proxy'si hata
+# verdiğinde `?token=eyJ...` satırın tamamıyla journal'a yazılıyordu — 30
+# dakikalık, tam yetkili bir jeton düz metin olarak. Bilet 30 saniye yaşar ve
+# bir kez kullanılır.
+
+
+@pytest.mark.asyncio
+async def test_bilet_ucu_kimlik_ister(api_client):
+    yanit = await api_client.post("/auth/ws-ticket")
+    assert yanit.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_bilet_ucu_ws_tipinde_jeton_verir(api_client, auth):
+    from sarnic.core.security import WS_TICKET_SECONDS, decode_token
+
+    yanit = await api_client.post("/auth/ws-ticket", headers=auth)
+    assert yanit.status_code == 200
+    govde = yanit.json()
+    assert govde["expires_in"] == WS_TICKET_SECONDS
+
+    talepler = decode_token(govde["ticket"], expected_type="ws")
+    assert talepler["typ"] == "ws"
+    # Ömrü gerçekten kısa: 30 dakikalık erişim jetonuyla karıştırılamaz.
+    assert talepler["exp"] - talepler["iat"] == WS_TICKET_SECONDS
+
+
+@pytest.mark.asyncio
+async def test_erisim_jetonu_bilet_yerine_gecmez():
+    """Eski akış sessizce çalışmaya devam etmemeli."""
+    import jwt
+
+    from sarnic.core.security import create_access_token, decode_token
+
+    with pytest.raises(jwt.InvalidTokenError):
+        decode_token(create_access_token(1, "ADMIN"), expected_type="ws")
+
+
+@pytest.mark.asyncio
+async def test_bilet_yalnizca_bir_kez_harcanir(monkeypatch):
+    """Asıl güvence: loga düşen bir bilet ikinci kez işe yaramaz."""
+    import sarnic.api.ws as ws_modulu
+    from tests.conftest import FakeRedis
+
+    sahte = FakeRedis()
+
+    async def sahte_redis():
+        return sahte
+
+    monkeypatch.setattr(ws_modulu, "get_redis", sahte_redis)
+
+    assert await ws_modulu._consume_ticket("jti-1") is True
+    assert await ws_modulu._consume_ticket("jti-1") is False
+    # Farklı bilet etkilenmez.
+    assert await ws_modulu._consume_ticket("jti-2") is True
+
+
+@pytest.mark.asyncio
+async def test_redis_yoksa_baglanti_kesilmez(monkeypatch):
+    """Gözlem katmanı çökünce canlı akış kesilmez — bilet zaten imzalı ve 30 saniyelik."""
+    import sarnic.api.ws as ws_modulu
+
+    async def patlayan():
+        raise RuntimeError("redis yok")
+
+    monkeypatch.setattr(ws_modulu, "get_redis", patlayan)
+    assert await ws_modulu._consume_ticket("jti-3") is True
