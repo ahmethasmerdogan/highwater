@@ -381,6 +381,28 @@ kazandırır. Hiç işlem kapatmamış botlar sıralamaya **girmez**: ortalama R
 yoktur, yani kötü değil **ölçülmemiştir** ve ikisini karıştırmak yanlış botu
 durdurur.
 
+### Sürücü hataları — 2026-08-26 gecesi
+
+Backtest kuyruğunu yürüten yardımcı betikte üç hata yaptım. Hiçbiri veriyi
+bozmadı ama kuyruğu saatlerce boşa beklettiler; kaydı burada dursun.
+
+**1. Jeton tazelenmiyordu.** İlk sürücü tek bir erişim jetonuyla koşuyu
+bekliyordu; jeton 30 dakikada doluyor, koşu ondan uzun sürüyor. `401 Oturum
+süresi doldu` ile düştü. Çözüm: durum artık veritabanından okunuyor, uca
+yalnızca koşu başlatmak için gidiliyor ve her seferinde taze giriş yapılıyor.
+
+**2. İki sürücü aynı anda çalışıyordu.** Birini durdurduğumu sanmışım;
+durdurmamışım. İkisi de aynı kuyruğa koşu göndermeye çalıştı ve birbirlerine
+`409` verdirdiler.
+
+**3. Zaman aşımı tavanı çok kısaydı.** 80 dakikaya ayarlamıştım; 120 günlük bir
+koşu **üç maliyet senaryosunu ayrı ayrı simüle ettiği için** 90 dakikayı
+aşabiliyor. Sürücü pes etti, koşu devam etti — yani sürücü koşuyu "başarısız"
+sandı ama backtest sağ salim sürüyordu. Tavan 3 saate çıkarıldı.
+
+**Ders:** yardımcı betikler de ölçülmeden doğru sayılmıyor. Üçü de "çalışıyor
+görünüp sessizce beklemek" biçiminde bozuldu — en pahalı bozulma türü.
+
 ---
 
 ## Yol üstünde düzeltilenler
