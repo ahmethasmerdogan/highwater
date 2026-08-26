@@ -2,6 +2,16 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  /*
+   * Derleme çıktısının yeri değiştirilebilir.
+   *
+   * `sarnic-web.service` her açılışta `.next`'e derleyip oradan servis
+   * eder. Arayüz üzerinde çalışırken aynı dizine ikinci bir derleme
+   * yazmak, ayakta duran paneli yarı derlenmiş bir çıktıdan servis
+   * etmeye zorlar. Önizleme derlemesi `NEXT_DIST_DIR` ile ayrı bir
+   * dizine alınır ve çalışan panele dokunulmaz.
+   */
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   // Panel yalnızca FastAPI ile konuşur; Next.js'te iş mantığı ve DB yoktur.
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000",

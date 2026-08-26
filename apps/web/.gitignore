@@ -3,3 +3,6 @@ node_modules/
 out/
 .env*.local
 next-env.d.ts
+
+# Arayüz çalışırken alınan önizleme derlemesi (bkz. next.config.ts distDir)
+/.next-preview
