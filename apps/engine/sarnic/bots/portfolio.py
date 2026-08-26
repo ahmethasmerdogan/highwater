@@ -121,9 +121,7 @@ async def consecutive_losses(
     stmt = select(Trade.pnl).where(Trade.bot_id == bot_id)
     if strategy_version_id is not None:
         stmt = stmt.where(Trade.strategy_version_id == strategy_version_id)
-    rows = (
-        await session.execute(stmt.order_by(Trade.exit_time.desc()).limit(limit))
-    ).scalars()
+    rows = (await session.execute(stmt.order_by(Trade.exit_time.desc()).limit(limit))).scalars()
     streak = 0
     for pnl in rows:
         if float(pnl) < 0:

@@ -183,10 +183,7 @@ async def load_bundles(
 
     tfs = timeframes_for(decision_tf)
     per_tf = await asyncio.gather(
-        *(
-            load_frames(session, symbols, tf, end=at, limit=BARS_NEEDED.get(tf, 400))
-            for tf in tfs
-        )
+        *(load_frames(session, symbols, tf, end=at, limit=BARS_NEEDED.get(tf, 400)) for tf in tfs)
     )
     by_symbol: dict[str, dict[str, pd.DataFrame]] = {
         s: {tf: per_tf[i].get(s, pd.DataFrame()) for i, tf in enumerate(tfs)} for s in symbols

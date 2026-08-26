@@ -393,9 +393,7 @@ async def test_persist_report_writes_each_finding_once(api_session):
     await api_session.commit()
     assert second == 0, "aynı bulgu ikinci kez yazılmamalıydı"
 
-    total = (
-        await api_session.execute(select(func.count(DataQualityReport.id)))
-    ).scalar_one()
+    total = (await api_session.execute(select(func.count(DataQualityReport.id)))).scalar_one()
     assert total == 2
 
 
@@ -425,9 +423,7 @@ async def test_resolved_gap_can_be_reported_again(api_session):
     assert await persist_report(api_session, report) == 1
     await api_session.commit()
 
-    total = (
-        await api_session.execute(select(func.count(DataQualityReport.id)))
-    ).scalar_one()
+    total = (await api_session.execute(select(func.count(DataQualityReport.id)))).scalar_one()
     assert total == 2
 
 
@@ -445,9 +441,14 @@ def test_parses_mini_ticker_and_derives_change():
 
     payload = [
         {
-            "e": "24hrMiniTicker", "s": "BTCUSDT",
-            "c": "110.00", "o": "100.00", "h": "115.00", "l": "95.00",
-            "v": "1000", "q": "110000",
+            "e": "24hrMiniTicker",
+            "s": "BTCUSDT",
+            "c": "110.00",
+            "o": "100.00",
+            "h": "115.00",
+            "l": "95.00",
+            "v": "1000",
+            "q": "110000",
         }
     ]
     out = BinanceWebSocket.parse_ticker_array(payload)
@@ -465,8 +466,13 @@ def test_parses_full_ticker_payload_unchanged():
 
     payload = [
         {
-            "e": "24hrTicker", "s": "ETHUSDT",
-            "c": "50.00", "o": "40.00", "P": "-3.5", "h": "55.00", "l": "35.00",
+            "e": "24hrTicker",
+            "s": "ETHUSDT",
+            "c": "50.00",
+            "o": "40.00",
+            "P": "-3.5",
+            "h": "55.00",
+            "l": "35.00",
             "q": "9000",
         }
     ]
@@ -500,26 +506,48 @@ async def test_open_gap_findings_close_once_the_bars_exist(api_session, test_dat
     baslangic = utc(2026, 8, 15, 0)
     api_session.add(
         DataQualityReport(
-            kind="gap", symbol="ESKIUSDT", timeframe="1h", severity="ERROR",
-            resolved=False, fingerprint=baslangic.isoformat(),
-            detail={"start": baslangic.isoformat(), "end": utc(2026, 8, 15, 3).isoformat(),
-                    "missing_bars": 4},
+            kind="gap",
+            symbol="ESKIUSDT",
+            timeframe="1h",
+            severity="ERROR",
+            resolved=False,
+            fingerprint=baslangic.isoformat(),
+            detail={
+                "start": baslangic.isoformat(),
+                "end": utc(2026, 8, 15, 3).isoformat(),
+                "missing_bars": 4,
+            },
         )
     )
     # Aynı aralıkta hâlâ eksik olan ikinci bir bulgu — kapanmamalı.
     api_session.add(
         DataQualityReport(
-            kind="gap", symbol="EKSIKUSDT", timeframe="1h", severity="ERROR",
-            resolved=False, fingerprint=baslangic.isoformat(),
-            detail={"start": baslangic.isoformat(), "end": utc(2026, 8, 15, 3).isoformat(),
-                    "missing_bars": 4},
+            kind="gap",
+            symbol="EKSIKUSDT",
+            timeframe="1h",
+            severity="ERROR",
+            resolved=False,
+            fingerprint=baslangic.isoformat(),
+            detail={
+                "start": baslangic.isoformat(),
+                "end": utc(2026, 8, 15, 3).isoformat(),
+                "missing_bars": 4,
+            },
         )
     )
     for saat in range(4):  # boşluk yalnızca ESKIUSDT için dolduruldu
         api_session.add(
-            OHLCV(symbol="ESKIUSDT", timeframe="1h", open_time=utc(2026, 8, 15, saat),
-                  open=Decimal("1"), high=Decimal("1"), low=Decimal("1"), close=Decimal("1"),
-                  volume=Decimal("1"), quote_volume=Decimal("1"))
+            OHLCV(
+                symbol="ESKIUSDT",
+                timeframe="1h",
+                open_time=utc(2026, 8, 15, saat),
+                open=Decimal("1"),
+                high=Decimal("1"),
+                low=Decimal("1"),
+                close=Decimal("1"),
+                volume=Decimal("1"),
+                quote_volume=Decimal("1"),
+            )
         )
     await api_session.commit()
 
@@ -530,12 +558,16 @@ async def test_open_gap_findings_close_once_the_bars_exist(api_session, test_dat
     # tazelenmezse eski hâli okunur.
     api_session.expire_all()
     rows = (
-        await api_session.execute(
-            select(DataQualityReport).where(
-                DataQualityReport.symbol.in_(["ESKIUSDT", "EKSIKUSDT"])
+        (
+            await api_session.execute(
+                select(DataQualityReport).where(
+                    DataQualityReport.symbol.in_(["ESKIUSDT", "EKSIKUSDT"])
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     durum = {r.symbol: r.resolved for r in rows}
     assert durum["ESKIUSDT"] is True
     assert durum["EKSIKUSDT"] is False

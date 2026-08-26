@@ -98,9 +98,7 @@ def api(host: str = settings.api_host, port: int = settings.api_port, reload: bo
     # kendi olayları (hata, denetim, backtest) arasında kayboluyordu. İstek
     # düzeyinde iz gerektiğinde `SARNIC_ACCESS_LOG=1` ile açılır.
     access = os.environ.get("SARNIC_ACCESS_LOG") == "1"
-    uvicorn.run(
-        "sarnic.api.main:app", host=host, port=port, reload=reload, access_log=access
-    )
+    uvicorn.run("sarnic.api.main:app", host=host, port=port, reload=reload, access_log=access)
 
 
 @app.command()

@@ -254,7 +254,7 @@ def test_threshold_notification_is_a_sentence_not_json():
 
 
 def test_pool_notification_names_the_symbols_that_moved():
-    """"3 giren" yeterli değil — hangileri girdi?"""
+    """ "3 giren" yeterli değil — hangileri girdi?"""
     from sarnic.core.enums import EventKind
     from sarnic.core.events import Event
     from sarnic.notify.service import summarize

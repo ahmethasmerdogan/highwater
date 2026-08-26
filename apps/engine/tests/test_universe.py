@@ -477,8 +477,9 @@ def test_measurement_filter_drop_is_tolerated_for_one_round():
     cfg = UniverseConfig()
     onceki = {"AUSDT", "BUSDT"}
     kalan = [_aday("AUSDT", rank=1)]
-    huni = [FunnelStep(index=9, name="VolatilityFilter", kept=1, dropped=1,
-                       dropped_symbols=["BUSDT"])]
+    huni = [
+        FunnelStep(index=9, name="VolatilityFilter", kept=1, dropped=1, dropped_symbols=["BUSDT"])
+    ]
     sayac: dict[str, int] = {}
 
     ilk = apply_hysteresis(kalan, kalan, onceki, cfg, funnel=huni, soft_misses=sayac)
@@ -492,8 +493,7 @@ def test_hard_filter_drop_removes_immediately():
     """Delist edilmiş sembolde beklemek anlamsız ve tehlikelidir."""
     cfg = UniverseConfig()
     kalan = [_aday("AUSDT", rank=1)]
-    huni = [FunnelStep(index=11, name="DelistFilter", kept=1, dropped=1,
-                       dropped_symbols=["BUSDT"])]
+    huni = [FunnelStep(index=11, name="DelistFilter", kept=1, dropped=1, dropped_symbols=["BUSDT"])]
 
     sonuc = apply_hysteresis(kalan, kalan, {"AUSDT", "BUSDT"}, cfg, funnel=huni, soft_misses={})
     assert {c.symbol for c in sonuc} == {"AUSDT"}
@@ -505,8 +505,9 @@ def test_recovering_member_resets_its_grace_counter():
     onceki = {"AUSDT", "BUSDT"}
     dusuk = [_aday("AUSDT", rank=1)]
     tam = [_aday("AUSDT", rank=1), _aday("BUSDT", rank=2)]
-    huni = [FunnelStep(index=9, name="VolatilityFilter", kept=1, dropped=1,
-                       dropped_symbols=["BUSDT"])]
+    huni = [
+        FunnelStep(index=9, name="VolatilityFilter", kept=1, dropped=1, dropped_symbols=["BUSDT"])
+    ]
     sayac: dict[str, int] = {}
 
     apply_hysteresis(dusuk, dusuk, onceki, cfg, funnel=huni, soft_misses=sayac)

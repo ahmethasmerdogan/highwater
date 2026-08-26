@@ -254,9 +254,7 @@ class MarketDataService:
             rest_start = last + timedelta(minutes=TIMEFRAME_MINUTES[timeframe]) if last else None
             if rest_start is None or rest_start < datetime.now(UTC):
                 try:
-                    recent = await self.rest.klines(
-                        symbol, timeframe, start=rest_start, limit=1000
-                    )
+                    recent = await self.rest.klines(symbol, timeframe, start=rest_start, limit=1000)
                     async with session_scope() as session:
                         written += await upsert_klines(session, recent)
                 except IPBannedError:
@@ -324,13 +322,17 @@ class MarketDataService:
         closed = 0
         async with session_scope() as session:
             rows = (
-                await session.execute(
-                    select(DataQualityReport).where(
-                        DataQualityReport.kind == "gap",
-                        DataQualityReport.resolved.is_(False),
+                (
+                    await session.execute(
+                        select(DataQualityReport).where(
+                            DataQualityReport.kind == "gap",
+                            DataQualityReport.resolved.is_(False),
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             for row in rows:
                 start, end = row.detail.get("start"), row.detail.get("end")
                 if not start or not end:

@@ -25,9 +25,7 @@ TRADES_RED_FLAG = 20  # bu sayının altında hiçbir metrik güvenilir değil
 # 30m eklendiğinde sözlükte yoktu ve `.get(tf, 8760)` sessizce 1h değerini
 # döndürüyordu. Volatilite yıllıklandırması √2 kat yanlış hesaplanıyor, yani
 # 30m botun volatilite özellikleri ve backtest Sharpe'ı bozuk çıkıyordu.
-BARS_PER_YEAR = {
-    tf: round(365 * 24 * 60 / minutes) for tf, minutes in TIMEFRAME_MINUTES.items()
-}
+BARS_PER_YEAR = {tf: round(365 * 24 * 60 / minutes) for tf, minutes in TIMEFRAME_MINUTES.items()}
 
 
 @dataclass(slots=True)

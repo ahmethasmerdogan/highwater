@@ -385,10 +385,17 @@ async def test_worker_keeps_the_position_open_after_a_partial_exit(api_session, 
     bot, _ = await make_bot(api_session, "kısmi")
     defterdeki = sum(q for _, q in BOOK.bids)
     pozisyon = Position(
-        bot_id=bot.id, symbol="TESTUSDT", side="BUY",
-        qty=Decimal(str(defterdeki * 2)), entry_price=Decimal("100"),
-        entry_time=utc(2026, 8, 18, 0), stop=Decimal("90"), initial_stop=Decimal("90"),
-        score_at_entry=Decimal("85"), entry_fees=Decimal("1"), status="OPEN",
+        bot_id=bot.id,
+        symbol="TESTUSDT",
+        side="BUY",
+        qty=Decimal(str(defterdeki * 2)),
+        entry_price=Decimal("100"),
+        entry_time=utc(2026, 8, 18, 0),
+        stop=Decimal("90"),
+        initial_stop=Decimal("90"),
+        score_at_entry=Decimal("85"),
+        entry_fees=Decimal("1"),
+        status="OPEN",
     )
     api_session.add(pozisyon)
     await api_session.commit()
@@ -400,9 +407,16 @@ async def test_worker_keeps_the_position_open_after_a_partial_exit(api_session, 
     worker._adapter.restore_positions({"TESTUSDT": defterdeki * 2})
 
     acik = OpenPosition(
-        id=pozisyon.id, symbol="TESTUSDT", qty=defterdeki * 2, entry_price=100.0,
-        entry_time=utc(2026, 8, 18, 0), stop=90.0, initial_stop=90.0,
-        score_at_entry=85.0, breakeven_locked=False, entry_fees=1.0,
+        id=pozisyon.id,
+        symbol="TESTUSDT",
+        qty=defterdeki * 2,
+        entry_price=100.0,
+        entry_time=utc(2026, 8, 18, 0),
+        stop=90.0,
+        initial_stop=90.0,
+        score_at_entry=85.0,
+        breakeven_locked=False,
+        entry_fees=1.0,
     )
     snapshot = PortfolioSnapshot(bot_id=bot.id, cash=0.0, positions=[acik])
 
@@ -418,8 +432,10 @@ async def test_worker_keeps_the_position_open_after_a_partial_exit(api_session, 
     assert float(tazelenmis.realized_pnl) != 0.0, "satılan dilimin sonucu kaydedilmeli"
     # Kapanış işlemi yazılmamalı — pozisyon henüz kapanmadı.
     islemler = (
-        await api_session.execute(select(Trade).where(Trade.position_id == pozisyon.id))
-    ).scalars().all()
+        (await api_session.execute(select(Trade).where(Trade.position_id == pozisyon.id)))
+        .scalars()
+        .all()
+    )
     assert islemler == []
     # Adaptörün envanteri ile DB aynı miktarı gösterir; ayrışma yok.
     assert worker._adapter.position_qty("TESTUSDT") == pytest.approx(float(tazelenmis.qty))

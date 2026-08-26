@@ -99,8 +99,12 @@ async def backfill_scores(
             return
         # Aynı (sembol, bar, dilim, ayar) için ikinci satır yazılmaz; komut
         # tekrar çalıştırıldığında var olanı bozmadan eksikleri tamamlar.
-        statement = pg_insert(Score).values(rows).on_conflict_do_nothing(
-            index_elements=["symbol", "bar_time", "timeframe", "config_hash"]
+        statement = (
+            pg_insert(Score)
+            .values(rows)
+            .on_conflict_do_nothing(
+                index_elements=["symbol", "bar_time", "timeframe", "config_hash"]
+            )
         )
         await session.execute(statement)
         await session.commit()

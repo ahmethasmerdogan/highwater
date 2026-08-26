@@ -349,13 +349,15 @@ async def _entry_gate(session: AsyncSession) -> float:
     kapı alınır: sistemin işlem yapmaya başladığı sınır orasıdır.
     """
     rows = (
-        await session.execute(
-            select(StrategyVersion.definition)
-            .join(Bot, Bot.strategy_version_id == StrategyVersion.id)
-            .where(Bot.state.in_(RUNNING_STATES))
+        (
+            await session.execute(
+                select(StrategyVersion.definition)
+                .join(Bot, Bot.strategy_version_id == StrategyVersion.id)
+                .where(Bot.state.in_(RUNNING_STATES))
+            )
         )
-    ).scalars().all()
-    kapilar = [
-        float((d or {}).get("entry", {}).get("min_score", DEFAULT_MIN_SCORE)) for d in rows
-    ]
+        .scalars()
+        .all()
+    )
+    kapilar = [float((d or {}).get("entry", {}).get("min_score", DEFAULT_MIN_SCORE)) for d in rows]
     return min(kapilar) if kapilar else DEFAULT_MIN_SCORE

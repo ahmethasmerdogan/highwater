@@ -641,14 +641,18 @@ async def test_score_lookup_is_unique_per_timeframe(api_session):
 
     # Dilimsiz sorgu iki satır görür — eski kusurun ta kendisi.
     both = (
-        await api_session.execute(
-            select(Score.id).where(
-                Score.symbol == "BTCUSDT",
-                Score.bar_time == bar,
-                Score.config_hash == "ayni-hash",
+        (
+            await api_session.execute(
+                select(Score.id).where(
+                    Score.symbol == "BTCUSDT",
+                    Score.bar_time == bar,
+                    Score.config_hash == "ayni-hash",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(both) == 2
 
     # Dilimle sorgu tek satır döndürmeli.
@@ -702,18 +706,28 @@ async def test_loss_streak_stops_at_strategy_version_boundary(api_session):
 
     async def kapat(pnl: float, version: int | None, saat: int) -> None:
         pos = Position(
-            bot_id=bot.id, symbol="XUSDT", side="BUY", qty=Decimal("1"),
-            entry_price=Decimal("100"), entry_time=utc(2026, 8, 18, saat),
-            stop=Decimal("90"), initial_stop=Decimal("90"),
-            score_at_entry=Decimal("75"), status="CLOSED",
+            bot_id=bot.id,
+            symbol="XUSDT",
+            side="BUY",
+            qty=Decimal("1"),
+            entry_price=Decimal("100"),
+            entry_time=utc(2026, 8, 18, saat),
+            stop=Decimal("90"),
+            initial_stop=Decimal("90"),
+            score_at_entry=Decimal("75"),
+            status="CLOSED",
         )
         api_session.add(pos)
         await api_session.flush()
         api_session.add(
             Trade(
-                position_id=pos.id, bot_id=bot.id, symbol="XUSDT",
-                exit_price=Decimal("95"), exit_time=utc(2026, 8, 18, saat),
-                exit_reason="STOP", pnl=Decimal(str(pnl)),
+                position_id=pos.id,
+                bot_id=bot.id,
+                symbol="XUSDT",
+                exit_price=Decimal("95"),
+                exit_time=utc(2026, 8, 18, saat),
+                exit_reason="STOP",
+                pnl=Decimal(str(pnl)),
                 strategy_version_id=version,
             )
         )

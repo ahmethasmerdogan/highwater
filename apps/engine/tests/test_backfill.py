@@ -103,9 +103,7 @@ async def test_archive_only_never_touches_rest(monkeypatch):
     # çıkan bir DB çağrısıyla değil.
     monkeypatch.setattr("sarnic.data.marketdata.last_bar_time", _no_last_bar)
 
-    count = await service.backfill(
-        "TESTUSDT", "1d", days=40, audit=False, archive_only=True
-    )
+    count = await service.backfill("TESTUSDT", "1d", days=40, audit=False, archive_only=True)
 
     assert rest.calls == [], "arşiv-yalnız modda REST'e gidilmemeliydi"
     assert archive.downloads == [("TESTUSDT", "1d")]
@@ -130,12 +128,8 @@ async def test_archive_only_skips_audit(monkeypatch):
         return 0
 
     monkeypatch.setattr(service, "audit_symbol", fake_audit)
-    monkeypatch.setattr(
-        "sarnic.data.marketdata.upsert_klines", _count_upsert
-    )
-    monkeypatch.setattr(
-        "sarnic.data.marketdata.session_scope", _null_session_scope
-    )
+    monkeypatch.setattr("sarnic.data.marketdata.upsert_klines", _count_upsert)
+    monkeypatch.setattr("sarnic.data.marketdata.session_scope", _null_session_scope)
 
     await service.backfill("TESTUSDT", "1d", days=40, audit=False, archive_only=True)
     assert audited == []

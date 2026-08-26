@@ -239,7 +239,6 @@ class ScoringEngine:
         matrix = normalize_matrix({f.symbol: f.raw for f in usable}, higher)
         cfg_hash = self.config_hash()
 
-
         results: list[ScoreResult] = []
         for feats in usable:
             pct = matrix[feats.symbol]

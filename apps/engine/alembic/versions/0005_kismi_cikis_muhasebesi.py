@@ -25,6 +25,7 @@ Revises: 0004_islem_strateji_surumu
 from __future__ import annotations
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "0005_kismi_cikis_muhasebesi"
