@@ -22,7 +22,7 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type Bot, type SystemLoad, type Trade } from "@/lib/api";
-import { money, num, pctSigned, relative } from "@/lib/format";
+import { money, num, pct, pctSigned, relative } from "@/lib/format";
 import { Page, GuideSection } from "@/shell/page";
 import {
   Alert,
@@ -51,6 +51,10 @@ const BASLANGIC_TRY = 20_000;
 const HEDEF_TRY = 100_000;
 /** Meydan okuma başlarken USDTTRY (2026-08-26). Bilerek dondurulmuştur. */
 const KUR = 48.08;
+
+/** Sahibin koyduğu süre: 30 gün, 26 Ağustos 2026'dan itibaren. */
+const BASLANGIC = new Date("2026-08-26T00:00:00Z");
+const SURE_GUN = 30;
 
 const BASLANGIC_USDT = BASLANGIC_TRY / KUR;
 const HEDEF_USDT = HEDEF_TRY / KUR;
@@ -99,6 +103,21 @@ export default function ChallengePage() {
   const ilerleme =
     equity === null ? null : (equity - BASLANGIC_USDT) / (HEDEF_USDT - BASLANGIC_USDT);
   const tryKarsiligi = equity === null ? null : equity * KUR;
+
+  /* Süre ve hız. Tek başına "ne kadar kaldı" yetmez: hedefe yetişip
+     yetişmediğimizi söyleyen şey gereken günlük oran ile gerçekleşen oranın
+     karşılaştırması. İkisini yan yana koymayan bir sayaç, son gün sürpriz yapar. */
+  const gecen = Math.max(
+    0,
+    (Date.now() - BASLANGIC.getTime()) / 86_400_000,
+  );
+  const kalan = Math.max(0, SURE_GUN - gecen);
+  const gerekenGunluk = kalan > 0 && equity !== null && equity > 0
+    ? Math.pow(HEDEF_USDT / equity, 1 / kalan) - 1
+    : null;
+  const gerceklesenGunluk = gecen >= 0.5 && equity !== null
+    ? Math.pow(equity / BASLANGIC_USDT, 1 / gecen) - 1
+    : null;
 
   return (
     <Page
@@ -185,6 +204,61 @@ export default function ChallengePage() {
               <span className="sn-num">{num(HEDEF_TRY, 0)} ₺</span>
             </div>
           </Panel>
+
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <Metric
+              label="Kalan gün"
+              value={kalan}
+              format={(value) => num(value, 1)}
+              accent={kalan < 7 ? "var(--sn-warn)" : undefined}
+              sub={`${num(SURE_GUN, 0)} günlük süre · ${num(gecen, 1)} gün geçti`}
+            />
+            <Metric
+              label="Gereken günlük"
+              value={gerekenGunluk}
+              format={(value) => (value === null || value === undefined ? "—" : pct(value, 2))}
+              accent="var(--sn-brand-solid)"
+              sub="bugünkü özsermayeden hedefe, kalan günde"
+            />
+            <Metric
+              label="Gerçekleşen günlük"
+              value={gerceklesenGunluk}
+              format={(value) => (value === null || value === undefined ? "—" : pct(value, 2))}
+              accent={
+                gerekenGunluk !== null && gerceklesenGunluk !== null
+                  ? gerceklesenGunluk >= gerekenGunluk
+                    ? "var(--sn-up)"
+                    : "var(--sn-down)"
+                  : undefined
+              }
+              sub={gecen < 0.5 ? "ilk yarım gün dolmadan ölçülmez" : "başlangıçtan bugüne bileşik"}
+            />
+            <TextMetric
+              label="Yetişiyor mu"
+              info={
+                <InfoDot text="Gerçekleşen günlük oran, gereken günlük oranın altındaysa mevcut hızla hedefe yetişilmez. Erken günlerde bu oran çok oynaktır; birkaç işlem tabloyu tamamen çevirir." />
+              }
+              value={
+                gerekenGunluk === null || gerceklesenGunluk === null
+                  ? "—"
+                  : gerceklesenGunluk >= gerekenGunluk
+                    ? "Evet"
+                    : "Hayır"
+              }
+              tone={
+                gerekenGunluk === null || gerceklesenGunluk === null
+                  ? "var(--sn-ink-3)"
+                  : gerceklesenGunluk >= gerekenGunluk
+                    ? "var(--sn-up)"
+                    : "var(--sn-down)"
+              }
+              sub={
+                gecen < 1
+                  ? "ilk gün — henüz anlamlı değil"
+                  : "erken günlerde çok oynak"
+              }
+            />
+          </div>
 
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Metric
