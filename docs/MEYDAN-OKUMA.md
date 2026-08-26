@@ -530,6 +530,82 @@ kat hedefine giden yolun en pahalı sorusu ve kayıtta durması gerekiyor.
 
 ---
 
+## Deneme 3 — risk bütçesi açıldı · 2026-08-26
+
+Sahip haklı olarak "gram ilerlemiyor" dedi. Sekiz saatte sıfır işlem, sayı
+416'da duruyordu. Sebebi arandı ve bulundu.
+
+### Bot durmuyordu, gaza basmıyordu
+
+Boyutlandırma zinciri: `notional = risk / stop_mesafesi`, ardından
+`× vol_scalar × tier × regime`, ardından tavanlar.
+
+Ölçüldü — botlar stratejide yazan %2 riski **almıyorlar**:
+
+| Bot | Ort. pozisyon | Stop mesafesi | Gerçekte riske edilen | Hedef |
+|---|---|---|---|---|
+| 1 | 704 USDT (%14) | %2,54 | 13,91 USDT (**%0,278**) | %2 |
+| 2 | 994 USDT (%20) | %2,87 | 19,83 USDT (%0,397) | %2 |
+| 3 | 722 USDT (%14) | %3,86 | 23,72 USDT (%0,474) | %2 |
+
+Sebep tasarım: `vol_target = 0,60` yani strateji %60 yıllık portföy oynaklığı
+hedefliyor. Alt-coinlerin gerçekleşen oynaklığı %120–200 olduğu için oran
+tabana yapışıyor, üstüne kapıya yakın puanlarda `tier = 0,75` biniyor. Motorun
+kendi olay kaydı da bunu yazıyor: `risk %0.8`.
+
+Yani "+%8,73 getiri" rakamı, stratejinin öngördüğü riskin **yedide biriyle**
+elde edilmişti.
+
+### Aritmetik
+
+| Hedef | Gereken günlük | Pozisyon çarpanı | Bot 1'in düşüşü ölçeklenirse |
+|---|---|---|---|
+| 1 ay | %5,51 | 4,6× | ~−%9,3 → **−%8 devre kesicisini aşar** |
+| 2 ay | %2,72 | 2,3× | ~−%4,7 |
+| 3 ay | %1,80 | 1,5× | ~−%3,0 |
+| 5,5 ay | %1,20 | mevcut | −%2,0 (gözlenen) |
+
+Bir ayda beş kat bir ayar meselesi değil, risk bütçesi meselesi: 4,6 katta
+strateji kendi devre kesicisini tetikler ve girişleri kendi kapatır.
+
+**Sahibin kararı: 2,3 kat → ~2 ay.**
+
+### Kadranı yanlış önermiştim
+
+Seçeneği "`vol_target` 0,60 → 1,40" diye sunmuştum. Sonra `VOL_SCALAR_MIN,
+VOL_SCALAR_MAX = 0.5, 1.5` kelepçesini gördüm: oran zaten tabana yapışık
+olduğu için `vol_target`'ı yükseltmek coin'e göre 1,4–2,3 arası değişen bir
+çarpan verir, temiz 2,3 vermez. Üstelik oynaklık ayrımını da bozar.
+
+`risk_pct` doğrusal ve kelepçesiz. Seçilen **büyüklük** aynen uygulandı, kadran
+değişti: `risk_pct 0,020 → 0,046` (tam 2,3×). Stratejinin kendi doğrulayıcısı
+`(0, 0.05]` diyor; 0,046 tavanın %92'si. **Bundan sonrası için kadran yok.**
+
+### Uygulama
+
+| | |
+|---|---|
+| Sürüm | #67 (G2) = G1 + `risk_pct 0,046` |
+| Bot | #8 · MEYDAN OKUMA · 20k₺→100k₺ · 416 USDT · 1h |
+| Emekli | #7 → ARŞİV (hiç işlem yapmadı, sürümü değiştirilemiyor) |
+
+`BotUpdate` yalnızca ad ve sermaye değiştirmeye izin veriyor; strateji sürümü
+değiştirilemediği için yeni bot kuruldu ve eskisi arşive alındı — sayfa botu
+adından tanıdığı için aynı önekten iki tane olmamalı.
+
+### Beklenti (sonuçtan önce)
+
+Günlük bileşik oran %1,20'den ~%2,7'ye çıkar; azami düşüş −%2'den −%5
+civarına derinleşir ve −%8 günlük devre kesicisinin altında kalır. **Ana risk:**
+ölçüm penceresi (19–26 Ağustos) sepetin %21 yükseldiği bir dönemdi; yatay ya da
+düşen piyasada aynı çarpan kaybı da aynı oranda büyütür ve bu senaryo hiç test
+edilmedi.
+
+**Dokunulmayanlar:** kapı 80, slot sayısı 4, `breakeven_r × stop_atr = 2 ATR`,
+ağırlıklar. Yalnızca tek bir sayı değişti.
+
+---
+
 ## Yol üstünde düzeltilenler
 
 Meydan okuma boyunca sistemde bulunan ve onarılan kusurlar. Hiçbiri strateji
