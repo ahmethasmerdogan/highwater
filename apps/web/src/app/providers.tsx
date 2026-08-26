@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ThemeProvider, ToastProvider, useToast } from "@/ui";
+import { ThemeProvider } from "@/design/theme";
+import { ToastProvider, useToast } from "@/design/toast";
 import { registerToastSink } from "@/lib/toast";
 import { AuthProvider } from "@/lib/auth";
 import { WebSocketProvider } from "@/lib/ws";
 
-/** HashUI'ın `push`'unu modül köprüsüne bağlar (bkz. `lib/toast.ts`). */
+/** Bildirim sağlayıcısının `push`'unu modül köprüsüne bağlar (`lib/toast.ts`). */
 function ToastBridge() {
   const { push } = useToast();
   useEffect(() => {

@@ -1,7 +1,7 @@
-import type { ToastInput } from "@/ui";
+import type { ToastInput } from "@/design/toast";
 
 /**
- * Bildirim köprüsü — HashUI'ın `useToast` hook'unu React dışından çağrılabilir
+ * Bildirim köprüsü — `useToast` hook'unu React dışından çağrılabilir
  * hâle getirir.
  *
  * Neden gerekli: bildirimler mutation geri çağrılarından atılıyor

@@ -1,5 +1,8 @@
 @import "tailwindcss";
 @import "../ui/hashui.css";
+/* 2. nesil token katmanı — `--sn-*`. Geçiş boyunca eskisiyle yan yana
+   yaşar; son sayfa da taşınınca üstteki iki satır silinir. */
+@import "../design/tokens.css";
 
 /* =====================================================================
  * SARNIÇ — tasarım sistemi
