@@ -751,3 +751,122 @@ yorumda yazılı) ve dokunmadım; ama meydan okumanın iterasyon hızını bu
 belirliyor. Gerekirse `with_patterns: false` ile koşmak hipotez
 karşılaştırmasını çok hızlandırır — formasyonların puana katkısı zaten
 bilinçli olarak küçük.
+
+---
+
+## 30 günlük sayaç — 2026-08-26
+
+Sahibin verdiği süre bugün başladı: 26 Ağustos → 25 Eylül 2026. Panel artık
+kalan günü, hedefe yetişmek için **gereken günlük bileşik oranı** ve
+**gerçekleşen oranı** yan yana gösteriyor (`/meydan-okuma`). Tek başına
+"ne kadar kaldı" sayacı işe yaramaz; yetişip yetişmediğimizi söyleyen şey
+bu iki oranın karşılaştırmasıdır.
+
+### G5 → G6: slot sayısı 3'ten 2'ye
+
+**G5 neydi:** kapı 75.2 · 3 slot · pozisyon tavanı %32 · maruziyet tavanı %95.
+Bot #11 bu ayarla BTCUSDT açtı — 133,60 USDT, sermayenin %32,1'i. Yani
+`max_position_pct` tam olarak bağladı, boyut artık `min_fill_ratio` altına
+kırpılmıyor. Üç denemeden sonra ilk kez giriş zinciri baştan sona çalıştı.
+
+Ama 3 slotun yalnızca biri doldu. Sebebini varsaymak yerine ölçtüm.
+
+**Ölçüm 1 — aday yoğunluğu.** Bot #11'in ağırlık seti (`5a21a501e5…`) için son
+240 barda, kapıyı geçen sembol sayısı:
+
+| kapı | bar başına ort. aday | hiç adayı olmayan bar |
+|---|---|---|
+| 75.2 | 1,16 | %37,1 |
+| 74   | 1,62 | — |
+| 73   | 2,10 | %17,5 |
+| 72   | 2,69 | — |
+| 71   | 3,40 | %5,8 |
+
+3 slotu doldurmak için kapı ~71 olmalıydı.
+
+**Ölçüm 2 — kapı düşerse kenar ne oluyor.** 24 saatlik ileri getiri, her bar
+için havuz ortalaması çıkarılarak (piyasa-nötr; bu olmadan ölçülen şey
+seçicilik değil o günkü piyasa yönüdür):
+
+| kapı | n | ort. nötr getiri | t |
+|---|---|---|---|
+| 70   | 8049 | −%0,049 | −0,71 |
+| 71   | 6705 | −%0,005 | −0,06 |
+| 72   | 5474 | +%0,058 | 0,65 |
+| 73   | 4410 | +%0,131 | 1,29 |
+| 74   | 3522 | +%0,189 | 1,64 |
+| **75,2** | **2617** | **+%0,377** | **2,64** |
+| 76   | 2148 | +%0,449 | 2,78 |
+| 77   | 1644 | +%0,475 | 2,42 |
+
+Kenar tamamen 75'in üstünde toplanmış. 71'de sıfır. **Boş slotu doldurmak için
+kapıdan taviz verilmez** — bu, "slotlar dolmuyorsa kapıyı indir" refleksinin
+ölçümle reddedilmesidir.
+
+**Ölçüm 3 — kapıyı geçenler arasında sıra.** Geriye tek yol kalıyordu:
+az sayıda iyi sinyale daha çok sermaye. Ama kaç tanesine?
+
+| sıra | n | ort. nötr getiri | t |
+|---|---|---|---|
+| 1 | 1260 | +%0,506 | 2,33 |
+| 2 | 775  | +%0,647 | 2,43 |
+| 3 | 379  | +%0,089 | 0,25 |
+| 4 | 146  | −%0,895 | −2,41 |
+| 5 | 42   | −%1,181 | −1,40 |
+
+İlk iki isim kenarı taşıyor ve ikisi birbirinden ayrılmıyor (0,506 ile 0,647,
+örneklem hatası içinde). Üçüncü gürültü, dördüncü **istatistiksel olarak
+anlamlı biçimde zararlı**. Bir uyarı: 4. sıra yalnızca kapıyı 4+ sembolün
+geçtiği barlarda vardır, yani farklı bir piyasa durumudur — negatiflik saf
+sıra etkisi olmayabilir. Yine de yön açık.
+
+**Yapılan (sürüm #71, G6):** slot 3 → **2**, pozisyon tavanı %32 → **%48**.
+2 × %48 = %96 ≈ maruziyet tavanı %95: iki isim bulunduğunda sermaye tam
+çalışır. Kapı 75,2'de kaldı.
+
+Bu, belgedeki daha kaba ölçümle de tutarlı (2 slot +%18,5 · 3 slot +%11,9 ·
+4 slot +%9,5 · 6 slot +%6,3) ama artık sebebi biliniyor: az slot iyi olduğu
+için değil, **3. ve 4. isimler kenarı taşımadığı için**.
+
+### Kontrol grubunun ağırlık seti ters sinyal üretiyor
+
+Bot #1 ve #2'nin kullandığı trend-ağırlıklı set (`374c6e6253…`) aynı pencerede
+aynı yöntemle ölçüldüğünde **her kapıda negatif**, ve kapı yükseldikçe
+kötüleşiyor:
+
+| kapı | n | ort. nötr getiri | t |
+|---|---|---|---|
+| 70   | 1202 | −%0,479 | −2,07 |
+| 73   | 775  | −%0,541 | −1,65 |
+| 75,2 | 510  | −%1,265 | −2,98 |
+| 77   | 359  | −%2,051 | −3,79 |
+
+Monoton kötüleşme, rastgeleliğe benzemiyor: bu set yüksek puan verdiği isimde
+sistematik olarak yanılıyor. Örneklem varsayılan sete göre küçük (510'a karşı
+2617) ve tek bir pencere — ama t=−3,79 zayıf bir işaret değil.
+
+**Değiştirmedim.** Bu botlar sahibin kontrol grubu; onları "düzeltmek"
+karşılaştırmayı yok eder. Bulguyu buraya yazmak, gizlice iyileştirmekten daha
+değerli.
+
+### Ucun kendisindeki sessiz hata
+
+Bot #11'in sürümünü `PATCH /bots/11` ile değiştirmeye çalıştım. Uç **200
+döndü** ve hiçbir şey değişmedi: `BotUpdate` yalnızca `name` ve `capital`
+tanıyordu, Pydantic fazlalığı sessizce atıyordu. Bu, defterdeki dört sürücü
+hatasıyla aynı sınıf — *sessiz başarısızlığın başarı olarak okunması*.
+
+İki düzeltme:
+- `BotUpdate.model_config = {"extra": "forbid"}` — tanınmayan alan artık 422.
+- `strategy_version_id` gerçekten düzenlenebilir alan oldu (yalnızca duran bot,
+  yalnızca dondurulmuş sürüm). Yeni bot açmak da aynı sonucu verirdi ama
+  özsermaye eğrisini böler; 30 günlük bir deneyde ölçüm sürekliliği daha değerli.
+
+Üç test eklendi: sürüm değişir, taslak sürüm 409 ile reddedilir, tanınmayan
+alan 422 ile reddedilir. Toplam 491 test geçiyor.
+
+**Ayrıca:** `docker compose up -d api` yanlış hamleydi — API bu makinede
+Docker'da değil, `sarnic-api.service` olarak host'ta çalışıyor. Komut boşta bir
+konteyner yaratıp redis'i yeniden başlattı; marketdata bağlantılarını kaybedip
+saniyeler içinde kendi kendine toparladı (`ws_connected`). Konteyner kaldırıldı.
+Servisler systemd altında: `systemctl --user restart sarnic-api.service`.
