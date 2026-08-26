@@ -606,6 +606,106 @@ ağırlıklar. Yalnızca tek bir sayı değişti.
 
 ---
 
+## Deneme 4 — kapı ağırlık kümesine çevrildi · 2026-08-26 akşam
+
+Sahip haklıydı: bot hâlâ işlemiyordu. Risk kadranını açmak (deneme 3) hiçbir
+şey değiştirmedi çünkü **sorun risk değildi.**
+
+### Bot sinyal görmüyordu
+
+Son 24 saat, 1 saatlik dilim:
+
+| Ağırlık kümesi | Gözlem | Kapıyı geçen | En yüksek puan |
+|---|---|---|---|
+| Trend ağırlıklı (bot 3,4,5) | 1.966 | 6 | 83,7 |
+| **Varsayılan (bot 1, 2, 8)** | 1.982 | **0** | **79,8** |
+
+Varsayılan ağırlıklarla puan 24 saatte 80'e bir kez bile ulaşmamış.
+
+Sebep motorun kendi belgesinde yazılı ama **yanlış eksende**: *"Puan mutlak bir
+ölçek değil, o bardaki havuz içi yüzdelik sıraların ağırlıklı ortalamasıdır."*
+Belge bunu **zaman dilimi** için söylüyor (15m için 77,3). Aynı şey **ağırlık
+kümesi** için de geçerli ve kimse çevirmemiş.
+
+Beş aileye dengeli dağılmış ağırlık ortalamayı ortaya çeker ve dağılımı
+sıkıştırır; 45'i tek aileye yığmak uçları uzatır. Aynı "80" iki kümede farklı
+seçicilik demek.
+
+Belgedeki çapa (1h'te barların %0,709'u) ölçüldü:
+
+| Ağırlık kümesi | Eşdeğer kapı |
+|---|---|
+| Trend ağırlıklı | **79,74** ≈ 80 ✓ |
+| **Varsayılan** | **75,20** |
+
+Yani belgedeki 80, trend ağırlıklı ölçekte kalibre edilmiş.
+
+### Kapıyı indirmek kenarı öldürmüyor — ortaya çıkarıyor
+
+Çıkarımla geçilmedi, gözlem verisinde doğrudan ölçüldü (piyasa-nötr, 72h):
+
+| Ağırlık kümesi | Kapı | n | Getiri | t |
+|---|---|---|---|---|
+| Trend ağırlıklı | 80 | 135 | +%0,180 | **0,15** |
+| **Varsayılan** | **75,2** | **2.194** | **+%0,763** | **3,27** |
+
+Kademeler de kapının üstündeki dağılıma yeniden çapalandı (75,2 / 76,76 /
+78,18). Kapıyı çevirip kademeleri 80'de bırakmak, 18 Ağustos'ta trailing
+merdivenini öldüren hatanın aynısı olurdu.
+
+### Deneme 3'ün risk artışı geri alındı
+
+`risk_pct 0,046` ile ilk sinyal geldiğinde giriş **reddedildi**:
+
+```
+BTCUSDT giriş reddedildi: kısıtlar boyutu hedefin %17'ine düşürdü
+(en az %25 gerekiyor) — slot boş bırakıldı
+```
+
+Motor haklıydı, konfigürasyon tutarsızdı. **Spot hesapta kaldıraç yok:**
+%4,6 risk, %2,6'lık stopla özsermayenin **%133'ü** büyüklüğünde pozisyon
+demek. `max_position_pct` %30'a kırpıyor, kırpılmış boyut hedefin %23'ü
+kalıyor ve `min_fill_ratio` reddediyor.
+
+Yani seçilen "2,3 kat" `risk_pct`'ten **gelemez**; tavan bağlıyor.
+
+**Gerçek kaynak maruziyet.** Botlar ~%20 maruziyette çalışıyordu, tavan %80 —
+çünkü slotlar boştu, çünkü sinyal yoktu. Kapı düzelince günde 10,7 sinyal var.
+Slotlar dolunca %20 → %80, yani **4 kat**; istenen 2,3 katın fazlası ve işlem
+başına risk hiç artmadan, dolayısıyla düşüş de orantısız büyümeden.
+
+`risk_pct` 0,02'ye geri alındı.
+
+### Sonuç: ilk işlem açıldı
+
+```
+BTCUSDT  qty 0,0016 @ 78.181,24 · stop 75.646,15 · risk %0,9 · R 6,77
+puan 75,91 · pozisyon 125,10 USDT = özsermayenin %30,1'i
+```
+
+Pozisyon tam `max_position_pct` tavanında — boyut artık kırpılıp reddedilmiyor,
+sonuna kadar kullanılıyor. Maruziyet %0 → %30,1. Nakit 290,77.
+
+### Arşivdeki ölü botlar
+
+| Bot | Ayar | Neden işlemedi |
+|---|---|---|
+| #7 | risk %2, kapı 80 | sinyal yok |
+| #8 | risk %4,6, kapı 80 | sinyal yok |
+| #9 | risk %4,6, kapı 75,2 | sinyal var, boyut tavana takıldı |
+| **#10** | **risk %2, kapı 75,2** | **çalışıyor** |
+
+Üç deneme, üç farklı duvar. Her biri kayıtta duruyor çünkü hangi duvarın nerede
+olduğunu bilmek, doğru ayarı bilmek kadar değerli.
+
+### Sahibin botlarına dair bulgu (değiştirilmedi)
+
+Bot 1 ve bot 2 de aynı sakatlıkta: varsayılan ağırlık + kapı 80. Son 7 günde
+6'şar işlem yapabilmişler. Aynı çeviri onlara da uygulanırsa canlanırlar — ama
+onlar kontrol grubu, dokunulmadı.
+
+---
+
 ## Yol üstünde düzeltilenler
 
 Meydan okuma boyunca sistemde bulunan ve onarılan kusurlar. Hiçbiri strateji
