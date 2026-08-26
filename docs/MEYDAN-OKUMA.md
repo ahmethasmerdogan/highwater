@@ -870,3 +870,49 @@ Docker'da değil, `sarnic-api.service` olarak host'ta çalışıyor. Komut boşt
 konteyner yaratıp redis'i yeniden başlattı; marketdata bağlantılarını kaybedip
 saniyeler içinde kendi kendine toparladı (`ws_connected`). Konteyner kaldırıldı.
 Servisler systemd altında: `systemctl --user restart sarnic-api.service`.
+
+### İlk bar raporu — 2026-08-26 18:00 UTC
+
+Bar 17:00 kapandı ve puanlandı. **Yeni pozisyon açılmadı, ve bu doğru davranış.**
+
+| sembol | puan | kapı 75,2 |
+|---|---|---|
+| BTCUSDT | 77,64 | geçti — zaten elde |
+| MSTRBUSDT | 74,38 | geçemedi |
+| ONTUSDT | 74,25 | geçemedi |
+| FFUSDT | 73,10 | geçemedi |
+
+Kapıyı geçen tek isim zaten taşınan pozisyon. İkinci slot boş kaldı çünkü aday
+yoktu — bot zorlamadı. Ölçülen dağılımla tutarlı (bar başına 1,16 aday, barların
+%37'sinde hiç yok). Tek bar hiçbir şeyi doğrulamaz ya da çürütmez.
+
+Özsermaye 17:00'de 416,16 USDT (16:00'da 415,39). Maruziyet %32,2.
+
+**Not — G6 taşınan pozisyonu değiştirmez.** Elde tutulan BTCUSDT girişte %32 ile
+boyutlandı; `max_position_pct` yalnızca giriş anında uygulanır, açık pozisyon
+sonradan büyütülmez. G6'nın %48'i yalnızca yeni girişlerde geçerli olacak.
+
+### Olay veriyolu redis kesintisinden dönmüyordu
+
+Barı beklerken çıktı: 18:00 barında `scores.updated` ve
+`score.threshold_crossed` yayınlanamadı, ve o bar için **hiç bildirim
+yazılmadı**. Sebebi `EventBus.connect()` istemciyi bir kez kurup sonsuza dek
+saklaması. Redis yeniden başlayınca `xadd` patlıyor, hata yutuluyor, ve aynı
+ölü istemci bir daha hiç yenilenmiyor — süreç kalıcı olarak sessizleşiyor.
+
+Bunun kötü tarafı görünmezliği: puanlar veritabanına yazılmaya devam ediyor,
+botlar pozisyon yönetiyor, panel açılıyor. Sistem dışarıdan tamamen sağlıklı
+görünürken bildirim üretmiyor. Veri okuma yolu (`read_last_bars` → `hgetall`)
+redis-py'ın yeniden bağlanmasıyla kendini toparlamıştı; yayın yolu toparlamadı
+ve fark bu yüzden gözden kaçtı.
+
+Düzeltme: yayın başarısız olursa istemci atılır ve bir kez daha denenir. İkinci
+deneme de başarısızsa sessizce vazgeçilir — olay veriyolu kritik yolda değildir,
+redis tamamen kapalıyken bot işlem yapmaya devam edebilmelidir; yayın hatası
+istisna fırlatsaydı karar döngüsü çöker ve pozisyonlar yönetimsiz kalırdı.
+İki test eklendi (yeniden bağlanma, ve tamamen kapalıyken sessiz vazgeçme).
+Toplam 493 test.
+
+**Bunu ben kırdım.** `docker compose up -d api` redis'i yeniden başlattı. Ama
+hata hazırdı ve er geç redis'in yeniden başladığı ilk anda kendini gösterecekti;
+sebebi ben olduğum için bulunması iyi oldu.

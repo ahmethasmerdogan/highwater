@@ -97,16 +97,31 @@ class EventBus:
         # pozisyonlar, emirler, devre kesiciler, bot durumları buradan geçer.
         EVENTS.labels(str(event.kind), event.level).inc()
         try:
-            r = await self.connect()
-            await r.xadd(
-                STREAM_KEY,
-                {"data": event.to_json()},
-                maxlen=MAX_STREAM_LEN,
-                approximate=True,
-            )
-        except Exception as exc:
-            EVENT_PUBLISH_FAILURES.inc()
-            log.warning("event_publish_failed", kind=str(event.kind), error=str(exc))
+            await self._xadd(event)
+        except Exception:
+            # Redis yeniden başladığında önbelleğe alınmış istemci kalıcı olarak
+            # ölür: her yayın aynı bozuk bağlantıyı dener, hata yutulur ve
+            # süreç bir daha hiç olay yayınlamaz. Bir kez bu yaşandı — puanlar
+            # veritabanına yazılmaya devam etti ama hiçbir bildirim üretilmedi,
+            # yani sistem dışarıdan sağlıklı görünürken sessizdi.
+            #
+            # İstemciyi atıp bir kez daha denemek bunu çözer; bağlantı havuzu
+            # yeni bir soket kurar.
+            await self.close()
+            try:
+                await self._xadd(event)
+            except Exception as exc:
+                EVENT_PUBLISH_FAILURES.inc()
+                log.warning("event_publish_failed", kind=str(event.kind), error=str(exc))
+
+    async def _xadd(self, event: Event) -> None:
+        r = await self.connect()
+        await r.xadd(
+            STREAM_KEY,
+            {"data": event.to_json()},
+            maxlen=MAX_STREAM_LEN,
+            approximate=True,
+        )
 
     async def emit(self, kind: EventKind | str, **payload: Any) -> None:
         level = payload.pop("level", "INFO")

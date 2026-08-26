@@ -255,3 +255,76 @@ def test_threshold_event_fires_only_on_the_crossing():
     # A düşüyor: düşüş bildirilmez, ama geri dönerse yeniden bildirilir.
     assert gecenler({"BUSDT", "CUSDT"}) == set()
     assert gecenler({"AUSDT", "BUSDT", "CUSDT"}) == {"AUSDT"}
+
+
+# --------------------------------------------------------------------------- #
+#  Redis yeniden başladığında veriyolu kendini toparlamalı
+# --------------------------------------------------------------------------- #
+async def test_publish_reconnects_after_dead_client():
+    """Ölü istemci atılıp yeniden kurulmalı.
+
+    Yaşanmış hata: redis yeniden başlayınca önbellekteki istemci kalıcı olarak
+    bozuldu; her yayın aynı sokete yazmayı denedi, hata yutuldu ve süreç bir
+    daha hiç olay yayınlamadı. Puanlar veritabanına yazılmaya devam ettiği için
+    sistem dışarıdan sağlıklı görünüyordu.
+    """
+    from sarnic.core.events import Event, EventBus
+
+    class DeadThenAlive:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def xadd(self, *args, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                raise ConnectionError("Connection lost.")
+
+        async def aclose(self) -> None:
+            pass
+
+    bus = EventBus()
+    client = DeadThenAlive()
+    bus._redis = client
+    kuruldu = []
+
+    async def connect():
+        if bus._redis is None:
+            kuruldu.append(True)
+            bus._redis = client
+        return bus._redis
+
+    bus.connect = connect  # type: ignore[method-assign]
+
+    await bus.publish(Event(kind="test.olay", payload={}))
+
+    assert client.calls == 2, "ikinci deneme yapılmadı"
+    assert kuruldu, "ölü istemci atılıp yeniden kurulmadı"
+
+
+async def test_publish_gives_up_quietly_when_redis_is_down():
+    """İkinci deneme de başarısızsa yayın sessizce vazgeçmeli.
+
+    Olay veriyolu kritik yolda değildir: redis tamamen kapalıyken bot işlem
+    yapmaya devam edebilmelidir. Yayın hatası istisna fırlatırsa karar döngüsü
+    çöker ve pozisyonlar yönetilmeden kalır.
+    """
+    from sarnic.core.events import Event, EventBus
+
+    class AlwaysDead:
+        async def xadd(self, *args, **kwargs):
+            raise ConnectionError("Connection refused.")
+
+        async def aclose(self) -> None:
+            pass
+
+    bus = EventBus()
+    bus._redis = AlwaysDead()
+
+    async def connect():
+        if bus._redis is None:
+            bus._redis = AlwaysDead()
+        return bus._redis
+
+    bus.connect = connect  # type: ignore[method-assign]
+
+    await bus.publish(Event(kind="test.olay", payload={}))
