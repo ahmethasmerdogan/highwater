@@ -29,6 +29,7 @@ from sarnic.strategy.definition import StrategyDefinition, StrategyValidationErr
 log = get_logger(__name__)
 router = APIRouter(tags=["strategies"])
 
+
 def _version_out(v: StrategyVersion) -> StrategyVersionOut:
     return StrategyVersionOut.model_validate(v)
 
@@ -52,7 +53,11 @@ async def list_strategies(session: SessionDep, user: CurrentUser) -> list[Strate
 async def create_strategy(
     payload: StrategyCreate, request: Request, session: SessionDep, user: RequireTrader
 ) -> StrategyOut:
-    definition = _validate(payload.definition)
+    definition = (
+        _validate(payload.definition)
+        if payload.definition is not None
+        else StrategyDefinition(name=payload.name)
+    )
     strategy = Strategy(name=payload.name, owner_id=user.id)
     session.add(strategy)
     await session.flush()

@@ -274,8 +274,17 @@ class StrategyVersionOut(BaseModel):
 
 
 class StrategyCreate(BaseModel):
+    """Yeni strateji.
+
+    `definition` **isteğe bağlıdır**: verilmezse motorun varsayılan tanımı
+    kullanılır. Zorunlu olduğu sürece panelin "Yeni strateji" formu 422
+    alıyordu — form yalnızca ad gönderiyor ve ekranda "varsayılan ayarlarla
+    oluşturulur" yazıyordu. İş mantığını panele taşıyıp varsayılanı oradan
+    göndermek yanlış olurdu: varsayılan motorun bilgisidir.
+    """
+
     name: str = Field(min_length=1, max_length=128)
-    definition: dict[str, Any]
+    definition: dict[str, Any] | None = None
 
 
 class StrategyVersionCreate(BaseModel):
