@@ -403,6 +403,34 @@ sandı ama backtest sağ salim sürüyordu. Tavan 3 saate çıkarıldı.
 **Ders:** yardımcı betikler de ölçülmeden doğru sayılmıyor. Üçü de "çalışıyor
 görünüp sessizce beklemek" biçiminde bozuldu — en pahalı bozulma türü.
 
+### Backtest penceresi küçültüldü — ve bunun sebebi bir bulgu
+
+120 günlük koşu **4 saat 25 dakikada bitmedi** ve durduruldu. Bitmemiş bir
+koşunun değeri sıfırdır. Hızlandırma denemesi sırasında iki şey öğrenildi:
+
+**1. Formasyon motoru tek başına darboğaz değil.** 10 günlük koşu formasyonlar
+kapalıyken 285 saniye sürdü; sabit maliyet (100 sembol × 5 zaman dilimi veri
+yükleme + gösterge ön hesabı) büyük pay alıyor. Formasyonlar süreyi kabaca üçe
+katlıyor ama tek suçlu değiller.
+
+**2. Formasyonlar kapalıyken karşılaştırma geçersiz.** Aynı 10 günde formasyonlar
+kapalı koşu **2 işlem** üretti; canlıda aynı sürede botlar 27–37 işlem yapıyor.
+Yani formasyonların puana katkısı *büyüklük olarak* küçük olsa da, puanlar 80
+eşiğinin hemen altında kümelendiği için **kapıyı geçmeyi fiilen onlar
+belirliyor.** "Katkı küçük, kapatıp hızlanalım" akıl yürütmesi bu yüzden yanlış.
+
+**Sonuç: pencere 9 güne indirildi, formasyonlar açık bırakıldı.**
+
+Bu aynı zamanda **daha dürüst** bir pencere. Havuz fotoğrafları 2026-08-15
+02:08'de başlıyor; 120 günlük koşuların %90'ı yeniden kurulmuş evren kullanıyor
+ve hayatta kalma yanlılığı taşıyor. 9 günlük pencere (16–25 Ağustos) tamamen
+gerçek snapshot'ların içinde kalıyor.
+
+Bedeli açık: örneklem küçük. Kazanan seçme kuralının 3. maddesi (en az 30 işlem)
+bu pencerede muhtemelen sağlanamayacak — o zaman kural gereği backtest karar
+vermez ve **canlı A/B** (bot 1 = G0, bot 7 = G1) belirleyici olur. Kuralı
+sonuçları görmeden yazmanın işe yaradığı yer tam burası.
+
 ---
 
 ## Yol üstünde düzeltilenler
