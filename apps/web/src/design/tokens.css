@@ -1,0 +1,285 @@
+/* =====================================================================
+ * SARNIÇ — tasarım token'ları (2. nesil)
+ *
+ * Bu katman `ui/hashui.css` + `globals.css` ikilisinin yerini alır. İkisi
+ * geçiş boyunca yan yana yaşar: yeni token'lar `--sn-` önekli, eskiler
+ * öneksiz. Bir sayfa yeni sisteme taşındığında hiçbir eski token'a
+ * dokunmaz; son sayfa da taşınınca eski katman tek seferde silinir.
+ *
+ * ---- Devralınan disiplin (değişmedi, değişmeyecek) -------------------
+ *   yeşil  = YALNIZCA yukarı yön        kırmızı = YALNIZCA aşağı yön
+ *   amber  = marka / seçili / birincil  turuncu = YALNIZCA uyarı
+ *   mavi   = YALNIZCA nötr bilgi
+ *   seri renkleri (1–5) renk körlüğü için ölçüldü — sıraları anlamlıdır
+ *
+ * Yeşil bir "kaydet" düğmesi bu üründe okuma hatasıdır: göz onu kazanç
+ * sanar. Birincil eylem bu yüzden amber.
+ *
+ * ---- Yeni olan ------------------------------------------------------
+ * Yüzey rampası, tipografi ölçeği, yoğunluk ızgarası, kenarlık dili ve
+ * hareket token'ları sıfırdan kuruldu. Eski katmanda yüzey üç kademeydi
+ * ve yükseklik yalnızca çizgiyle anlatılıyordu; yeni rampa dört kademe +
+ * yalnızca **yüzen** yüzeylere ayrılmış tek bir gölge kullanır. Bir veri
+ * ızgarasında gölge gürültüdür; açılır pencerede ise derinlik bilgisidir.
+ * ===================================================================== */
+
+:root {
+  /* ---- Yüzey rampası ---------------------------------------------- */
+  --sn-bg: #f5f7f9;          /* sayfa zemini */
+  --sn-panel: #ffffff;       /* birincil içerik yüzeyi */
+  --sn-raised: #fbfcfd;      /* panel içi araç çubuğu / başlık */
+  --sn-sunken: #eef1f5;      /* girinti: input kuyusu, tablo başlığı */
+  --sn-overlay: #ffffff;     /* yüzen: menü, açılır pencere, çekmece */
+
+  /* ---- Çizgiler ---------------------------------------------------- */
+  --sn-hairline: #e7eaef;    /* satır ayracı — en sessiz çizgi */
+  --sn-border: #dde1e8;      /* bileşen kenarlığı */
+  --sn-border-strong: #c3cad4; /* vurgu, sürükleme tutamağı */
+
+  /* ---- Mürekkep ---------------------------------------------------- */
+  --sn-ink: #171b21;         /* birincil metin */
+  --sn-ink-2: #545d6a;       /* ikincil */
+  --sn-ink-3: #838d9b;       /* etiket, başlık üstü */
+  --sn-ink-4: #a7b0bc;       /* devre dışı, yer tutucu */
+
+  /* ---- Marka ------------------------------------------------------- */
+  /* Amber dolgu açık zeminde METİN olarak okunmaz (4.5:1'i geçmez).
+     Bu yüzden dolgu ve metin iki ayrı token — tek renk ailesi. */
+  --sn-brand-solid: #f0b90b; /* dolgu */
+  --sn-on-brand: #1a1d23;    /* amber dolgunun ÜSTÜNDEKİ metin */
+  --sn-brand: #9a6f00;       /* amber ailesinin okunur metin tonu */
+  --sn-brand-2: #7d5a00;     /* aynı ailenin daha koyu tonu */
+  --sn-brand-bg: rgba(240, 185, 11, 0.14);
+  --sn-brand-line: rgba(240, 185, 11, 0.42);
+
+  /* ---- Yön ve durum ------------------------------------------------ */
+  --sn-up: #17a56b;
+  --sn-up-bg: rgba(23, 165, 107, 0.12);
+  --sn-down: #d6304a;
+  --sn-down-bg: rgba(214, 48, 74, 0.12);
+  --sn-warn: #b25e09;
+  --sn-warn-bg: rgba(178, 94, 9, 0.12);
+  --sn-info: #1f6fd0;
+  --sn-info-bg: rgba(31, 111, 208, 0.12);
+  --sn-idle: #d4d9e0;        /* nötr nokta: durum yok */
+
+  /* ---- Grafik serisi ----------------------------------------------- */
+  /* Sıra keyfi değil: trend → momentum → akış → volatilite → s/r.
+     Renk körlüğü ayrımı KOMŞU çiftler üzerinden ölçüldü; sırayı
+     değiştirmek doğrulamayı geçersiz kılar. Yeşil ve kırmızı bilinçli
+     olarak yok — o ikisi yön için rezerve. */
+  --sn-series-1: #1d4ed8;
+  --sn-series-2: #ea580c;
+  --sn-series-3: #0d9488;
+  --sn-series-4: #a855f7;
+  --sn-series-5: #db2777;
+
+  /* ---- Yükseklik ---------------------------------------------------- */
+  /* Tek gölge, yalnızca yüzen yüzeylere. Kartlar gölge kullanmaz. */
+  --sn-shadow-pop:
+    0 0 0 1px rgba(23, 27, 33, 0.06),
+    0 8px 24px -6px rgba(23, 27, 33, 0.14),
+    0 2px 6px -2px rgba(23, 27, 33, 0.08);
+  --sn-shadow-drag: 0 12px 32px -8px rgba(23, 27, 33, 0.24);
+}
+
+.dark {
+  --sn-bg: #0a0c0f;
+  --sn-panel: #12151a;
+  --sn-raised: #171b21;
+  --sn-sunken: #0e1116;
+  --sn-overlay: #171b21;
+
+  --sn-hairline: #1e232b;
+  --sn-border: #262d36;
+  --sn-border-strong: #3a434f;
+
+  --sn-ink: #e9ecf1;
+  --sn-ink-2: #98a1ae;
+  --sn-ink-3: #6c7684;
+  --sn-ink-4: #4d5663;
+
+  /* Koyu zeminde amber zaten okunur; dolgu ve metin aynı renk olabilir. */
+  --sn-brand-solid: #f0b90b;
+  --sn-on-brand: #14171a;
+  --sn-brand: #f0b90b;
+  --sn-brand-2: #fcd535;
+  --sn-brand-bg: rgba(240, 185, 11, 0.13);
+  --sn-brand-line: rgba(240, 185, 11, 0.36);
+
+  --sn-up: #0ecb81;
+  --sn-up-bg: rgba(14, 203, 129, 0.14);
+  --sn-down: #f6465d;
+  --sn-down-bg: rgba(246, 70, 93, 0.14);
+  --sn-warn: #f0a020;
+  --sn-warn-bg: rgba(240, 160, 32, 0.14);
+  --sn-info: #4ea8de;
+  --sn-info-bg: rgba(78, 168, 222, 0.14);
+  --sn-idle: #2b323b;
+
+  /* Koyu tema serisi ayrı doğrulandı, açık temanın çevirisi değil.
+     Yalnızca mavi bir kademe açılıyor. */
+  --sn-series-1: #3b82f6;
+  --sn-series-2: #ea580c;
+  --sn-series-3: #0d9488;
+  --sn-series-4: #a855f7;
+  --sn-series-5: #db2777;
+
+  --sn-shadow-pop:
+    0 0 0 1px rgba(0, 0, 0, 0.5),
+    0 8px 24px -6px rgba(0, 0, 0, 0.6),
+    0 2px 6px -2px rgba(0, 0, 0, 0.4);
+  --sn-shadow-drag: 0 12px 32px -8px rgba(0, 0, 0, 0.7);
+}
+
+/* =====================================================================
+ * Ölçüler — temadan bağımsız
+ * ===================================================================== */
+:root {
+  /* Yarıçap: veri yüzeyleri keskin, etkileşim yüzeyleri yumuşak. */
+  --sn-r-xs: 4px;
+  --sn-r-sm: 6px;
+  --sn-r-md: 8px;
+  --sn-r-lg: 12px;
+  --sn-r-xl: 16px;
+
+  /* Yoğunluk — üç kademe. Izgara 4px tabanlıdır. */
+  --sn-row-compact: 28px;
+  --sn-row: 34px;
+  --sn-row-relaxed: 42px;
+
+  /* Tipografi ölçeği. Roller adlandırıldı; ham px sayfalarda geçmez. */
+  --sn-t-micro: 10.5px;   /* rozet içi, eksen etiketi */
+  --sn-t-label: 11px;     /* sütun başlığı, alan etiketi (uppercase) */
+  --sn-t-caption: 12px;   /* yardımcı metin, meta */
+  --sn-t-body: 13px;      /* gövde — panelin varsayılanı */
+  --sn-t-body-lg: 14px;
+  --sn-t-title: 16px;     /* kart başlığı */
+  --sn-t-title-lg: 20px;  /* sayfa başlığı */
+  --sn-t-display: 28px;   /* metrik sayısı */
+  --sn-t-display-lg: 34px;
+
+  /* Hareket. Süreler kısa: bu bir ölçüm aleti, bir vitrin değil. */
+  --sn-dur-1: 90ms;    /* durum değişimi (hover, basılı) */
+  --sn-dur-2: 160ms;   /* giriş/çıkış */
+  --sn-dur-3: 260ms;   /* çekmece, panel */
+  --sn-ease: cubic-bezier(0.2, 0, 0, 1);
+  --sn-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* =====================================================================
+ * Taban — bozulmaz kural 6'nın uygulama yeri
+ *
+ * "Her sayı monospace ve tabular-nums. Hizalanmayan rakam kabul edilmez."
+ * ===================================================================== */
+@layer base {
+  .sn-num {
+    font-family: var(--font-stack-mono);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+    font-variant-ligatures: none;
+    letter-spacing: -0.012em;
+    font-weight: 450;
+  }
+
+  /* Sayının tamsayısı koyu, ondalığı ve birimi açık: göz ondalığı ayırt
+     etmek için fazladan iş yapmasın. */
+  .sn-num-int { color: var(--sn-ink); }
+  .sn-num-frac { color: var(--sn-ink-2); }
+  .sn-num-unit {
+    color: var(--sn-ink-3);
+    font-size: 0.74em;
+    font-weight: 500;
+    margin-left: 0.34em;
+  }
+
+  .sn-label {
+    font-size: var(--sn-t-label);
+    font-weight: 550;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--sn-ink-3);
+  }
+}
+
+/* =====================================================================
+ * Odak — tek reçete, her yerde aynı
+ * ===================================================================== */
+@layer base {
+  .sn-focus:focus-visible,
+  .sn-root :focus-visible {
+    outline: 2px solid var(--sn-brand-solid);
+    outline-offset: 1px;
+    border-radius: var(--sn-r-xs);
+  }
+}
+
+/* =====================================================================
+ * Hareket: değişen sayı
+ *
+ * Sayı sayarken hedefe yaklaşır (bkz. `design/motion.ts`); buradaki iki
+ * animasyon yalnızca DEĞİŞİMİ işaretler, değeri taşımaz.
+ * ===================================================================== */
+@keyframes sn-tint-up {
+  from { background-color: var(--sn-up-bg); }
+  to { background-color: transparent; }
+}
+@keyframes sn-tint-down {
+  from { background-color: var(--sn-down-bg); }
+  to { background-color: transparent; }
+}
+.sn-tint-up { animation: sn-tint-up 620ms var(--sn-ease-out); }
+.sn-tint-down { animation: sn-tint-down 620ms var(--sn-ease-out); }
+
+@keyframes sn-fade-up {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+.sn-fade-up { animation: sn-fade-up var(--sn-dur-2) var(--sn-ease-out) both; }
+
+@keyframes sn-slide-in {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: none; }
+}
+.sn-slide-in { animation: sn-slide-in var(--sn-dur-3) var(--sn-ease-out) both; }
+
+/* Yükleme iskeleti — boş kutu yerine ölçüsü belli bir gölge. */
+@keyframes sn-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+.sn-skeleton {
+  background: var(--sn-sunken);
+  border-radius: var(--sn-r-xs);
+  animation: sn-pulse 1.4s var(--sn-ease) infinite;
+}
+
+/* Hareketi azalt: animasyon kapanır, sayı anında hedefe oturur.
+   `design/motion.ts` aynı tercihi JS tarafında da okur. */
+@media (prefers-reduced-motion: reduce) {
+  .sn-tint-up,
+  .sn-tint-down,
+  .sn-fade-up,
+  .sn-slide-in,
+  .sn-skeleton {
+    animation: none !important;
+  }
+}
+
+/* =====================================================================
+ * İnce kaydırma çubuğu — veri ızgarasında yer kaplamasın
+ * ===================================================================== */
+.sn-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--sn-border-strong) transparent;
+}
+.sn-scroll::-webkit-scrollbar { width: 9px; height: 9px; }
+.sn-scroll::-webkit-scrollbar-track { background: transparent; }
+.sn-scroll::-webkit-scrollbar-thumb {
+  background: var(--sn-border-strong);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.sn-scroll::-webkit-scrollbar-thumb:hover { background-color: var(--sn-ink-4); background-clip: content-box; }
+.sn-scroll::-webkit-scrollbar-corner { background: transparent; }
