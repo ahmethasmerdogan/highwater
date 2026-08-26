@@ -144,6 +144,24 @@ async def update_bot(
         if bot.state == BotState.DRAFT:
             bot.cash = Decimal(str(payload.capital))
             bot.equity_peak = Decimal(str(payload.capital))
+    if payload.strategy_version_id is not None:
+        # Strateji sürümünü değiştirmek, botun işlem geçmişini ve açık
+        # pozisyonlarını koruyarak kural setini değiştirir. Yeni bot açmak da
+        # aynı sonucu verirdi ama özsermaye eğrisini böler; uzun bir deneyde
+        # ölçüm sürekliliği bundan daha değerlidir.
+        #
+        # Yalnızca dondurulmuş sürüm bağlanır: taslak sürüm altımızdan
+        # değişebilir ve o botun hangi kurallarla işlem yaptığı geriye dönük
+        # olarak belirsizleşir.
+        version = await session.get(StrategyVersion, payload.strategy_version_id)
+        if version is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Strateji sürümü bulunamadı.")
+        if not version.frozen:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "Yalnızca dondurulmuş sürüm bağlanabilir. Önce sürümü dondurun.",
+            )
+        bot.strategy_version_id = version.id
     await write_audit(session, request, user.id, "bot.update", target=str(bot.id))
     await session.commit()
     return await _to_out(session, bot, await _prices(redis))

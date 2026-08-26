@@ -182,8 +182,18 @@ class BotCreate(BaseModel):
 
 
 class BotUpdate(BaseModel):
+    """Duran bir botun düzenlenebilir alanları.
+
+    `extra="forbid"`: tanınmayan bir alan sessizce yutulmaz, 422 döner.
+    Yutulduğunda çağıran taraf 200 görür ve değişikliğin uygulandığını sanır —
+    bu sınıf hatanın en sinsi biçimidir.
+    """
+
+    model_config = {"extra": "forbid"}
+
     name: str | None = None
     capital: float | None = Field(default=None, gt=0)
+    strategy_version_id: int | None = None
 
 
 class BotEventOut(BaseModel):

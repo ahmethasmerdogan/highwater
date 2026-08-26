@@ -859,3 +859,56 @@ async def test_calibration_reports_the_traded_region_separately(api_client, auth
     assert report["gate_edge"] > 0.02, "kapı üstü havuzu açıkça geçiyor"
     assert report["gate_edge_t"] > 2.0
     assert "işlem yaptığı bölge" in report["verdict"]
+
+
+# --------------------------------------------------------------------------- #
+#  Bot düzenleme — strateji sürümü değiştirme
+# --------------------------------------------------------------------------- #
+async def test_bot_patch_swaps_frozen_strategy_version(api_client, auth, api_session):
+    """Duran bir botun kural seti, geçmişi bölünmeden değiştirilebilmeli."""
+    bot, _ = await make_bot(api_session, "sürüm-degis")
+    hedef, _ = await make_bot(api_session, "hedef-surum")
+    bot.state = BotState.STOPPED
+    await api_session.commit()
+
+    response = await api_client.patch(
+        f"/bots/{bot.id}",
+        json={"strategy_version_id": hedef.strategy_version_id},
+        headers=auth,
+    )
+
+    assert response.status_code == 200
+    await api_session.refresh(bot)
+    assert bot.strategy_version_id == hedef.strategy_version_id
+
+
+async def test_bot_patch_rejects_draft_strategy_version(api_client, auth, api_session):
+    """Taslak sürüm altımızdan değişebilir; bağlanırsa bot hangi kurallarla
+    işlem yaptığı geriye dönük belirsizleşir."""
+    bot, _ = await make_bot(api_session, "taslak-red")
+    taslak_bot, _ = await make_bot(api_session, "taslak-surum")
+    taslak = await api_session.get(StrategyVersion, taslak_bot.strategy_version_id)
+    taslak.frozen = False
+    bot.state = BotState.STOPPED
+    await api_session.commit()
+
+    response = await api_client.patch(
+        f"/bots/{bot.id}", json={"strategy_version_id": taslak.id}, headers=auth
+    )
+
+    assert response.status_code == 409
+
+
+async def test_bot_patch_rejects_unknown_field(api_client, auth, api_session):
+    """Tanınmayan alan sessizce yutulmamalı.
+
+    Yutulduğunda çağıran 200 görür ve değişikliğin uygulandığını sanır — bu
+    ucun kendisinde bir kez yaşandı ve fark edilmesi saatler aldı.
+    """
+    bot, _ = await make_bot(api_session, "bilinmeyen-alan")
+    bot.state = BotState.STOPPED
+    await api_session.commit()
+
+    response = await api_client.patch(f"/bots/{bot.id}", json={"timeframe": "4h"}, headers=auth)
+
+    assert response.status_code == 422
