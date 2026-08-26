@@ -431,6 +431,103 @@ bu pencerede muhtemelen sağlanamayacak — o zaman kural gereği backtest karar
 vermez ve **canlı A/B** (bot 1 = G0, bot 7 = G1) belirleyici olur. Kuralı
 sonuçları görmeden yazmanın işe yaradığı yer tam burası.
 
+### Deneme 2 sonucu — G1, 9 gün, gerçek evren
+
+Koşu #15 · 16–25 Ağustos · `approximate_universe = false` (gerçek
+point-in-time havuz) · formasyonlar açık · 416 USDT.
+
+| Senaryo | Getiri | İşlem | Kazanma | Azami düşüş | Beklenti |
+|---|---|---|---|---|---|
+| base | **+%10,222** | 7 | %57,1 | −%2,10 | +1,618R |
+| 1.5x | +%9,831 | 7 | %57,1 | −%2,21 | +1,562R |
+| 2x | +%9,441 | 7 | %57,1 | −%2,32 | +1,509R |
+
+**Kazanan seçme kuralı uygulandı:**
+
+1. Rastgele portföyü geçmeli → **✓** (rastgele −%0,829, strateji +%10,222)
+2. 2x maliyette pozitif kalmalı → **✓** (+%9,441)
+3. En az 30 işlem → **✗ yalnızca 7 işlem**
+
+**Kural gereği G1 nitelenmiyor.** Sistem de aynı şeyi kendi ağzıyla söylüyor:
+
+```
+Yalnızca 7 işlem. Bu örneklemde hiçbir metrik güvenilir değildir.
+Sharpe 15.33 > 3.0. Bu bir kutlama sebebi değil, hata şüphesidir.
+```
+
+Sharpe 15,33'ü kimse ciddiye almamalı: 9 gün ve 7 işlemle yıllıklandırılmış
+Sharpe anlamsızdır. Motor bunu doğru işaretliyor.
+
+### Asıl ayıltıcı sayı — kıyaslar
+
+| | 9 günlük getiri |
+|---|---|
+| BTC al-tut | **+%22,826** |
+| Eşit ağırlıklı likit-100 al-tut | **+%20,897** |
+| **Strateji (G1)** | **+%10,222** |
+| Devir-eşleştirilmiş rastgele portföy | −%0,829 |
+
+Bu pencerede piyasa ~%21 yükselmiş; strateji onun **yarısını** almış.
+
+İki okuma birbirini kesmiyor ve ikisi de doğru:
+
+* **Seçim değer katıyor.** Aynı devir hızıyla rastgele seçmek −%0,83 veriyor,
+  puanlamayla seçmek +%10,22. Aradaki 11 puan sıralamanın işidir.
+* **Ama sepeti öylece tutmak daha iyiydi.** Yükselen bir piyasada seçici olmak,
+  parayı kenarda bekletmek demek; 4 slot ve %80 maruziyet tavanıyla sürekli
+  tam yatırımda olunmuyor.
+
+Kıyas sepeti tam olarak bunu görünür kılmak için var ve görevini yaptı. Dokuz
+gün hiçbir şey kanıtlamaz — ama "beş kat" hedefine giden yolda, seçiciliğin
+maliyeti olan bu boşluk ölçülmeden geçilmemeli.
+
+### Kontrol koşusu — G0, aynı pencere, aynı evren
+
+Koşu #16 · aynı 9 gün · aynı gerçek havuz · aynı formasyon ayarı.
+
+| | **G1** geniş stop | **G0** kontrol |
+|---|---|---|
+| Getiri (base) | **+%10,222** | +%4,045 |
+| Getiri (1.5x) | **+%9,831** | +%3,458 |
+| Getiri (2x) | **+%9,441** | +%2,875 |
+| İşlem | 7 | 10 |
+| Kazanma | %57,1 | %50,0 |
+| Azami düşüş | **−%2,10** | −%2,61 |
+| İşlem başına beklenti | **+1,618R** | +0,413R |
+| Komisyon | 1,99 | 3,19 |
+
+G1 her boyutta önde: 2,5 kat getiri, daha az işlem, daha yüksek kazanma oranı,
+daha sığ düşüş, dört kat beklenti, daha az komisyon.
+
+**Beklentiye göre:** deneme 2'de sonuçtan önce şunu yazmıştım — *"işlem sayısı
+düşer, işlem başına getiri artar. Toplam getirinin artması kesin değil; geniş
+stop kaybedeni de büyütür."* İlk ikisi tuttu (10 → 7 işlem, 0,41 → 1,62R).
+Üçüncüsünde yanıldım: toplam getiri de arttı. Yani geniş stop, kaybedenleri
+büyütmekten daha çok kazananları yaşattı.
+
+**Ama karar hâlâ verilmedi.** 7 ve 10 işlem; ikisi de kural 3'ün altında ve
+sistem ikisini de işaretliyor:
+
+```
+G1: Yalnızca 7 işlem.  Sharpe 15.33 > 3.0 — hata şüphesidir.
+G0: Yalnızca 10 işlem. Sharpe  8.95 > 3.0 — hata şüphesidir.
+```
+
+Bu karşılaştırmanın değeri **yönünde**, büyüklüğünde değil. Ve yön, gözlem
+seviyesindeki bağımsız ölçümle aynı yeri gösteriyor: kenar 72 saatte olgunlaşıyor
+(n=709 bar, t=2,74), stoplar medyan 4,7 saatte tetikleniyordu. Bağımsız iki
+kanıt aynı yönü gösterdiğinde, her biri tek başına olduğundan fazlasını söyler
+— ama ikisi birlikte de "kanıtlandı" demek değildir.
+
+**Karar:** backtest karar veremedi (kural 3). Bot #7 G1 ile çalışmaya devam
+ediyor; belirleyici olan **canlı A/B** — bot 1 (G0) ile bot 7 (G1) aynı havuzu
+aynı barlarda görüyor. 30 gün / 30 işlem dolduğunda kural yeniden uygulanacak.
+
+**Her iki hipotez de kıyas sepetinin altında.** Aynı pencerede eşit ağırlıklı
+al-tut +%20,897, BTC al-tut +%22,826. Seçicilik rastgeleye karşı değer katıyor
+(rastgele −%0,829) ama yükselen piyasada sepeti tutmaya karşı katmıyor. Bu, beş
+kat hedefine giden yolun en pahalı sorusu ve kayıtta durması gerekiyor.
+
 ---
 
 ## Yol üstünde düzeltilenler
