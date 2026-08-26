@@ -6,14 +6,16 @@ yoktur (CLAUDE.md stack kuralı).
 
 from __future__ import annotations
 
+import os
 import time
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from starlette.responses import Response
 
 from sarnic.api.deps import RedisDep, SessionDep, close_redis, get_redis
@@ -26,7 +28,7 @@ from sarnic.core.enums import BotState
 from sarnic.core.logging import configure_logging, get_logger
 from sarnic.core.observability import init_sentry
 from sarnic.data.marketdata import data_is_stale
-from sarnic.db.models import Bot, UniverseSnapshot
+from sarnic.db.models import Backtest, Bot, UniverseSnapshot
 from sarnic.db.session import dispose_engine, get_sessionmaker
 
 log = get_logger(__name__)
@@ -35,11 +37,46 @@ REQUESTS = Counter("sarnic_http_requests_total", "HTTP istekleri", ["method", "p
 LATENCY = Histogram("sarnic_http_request_seconds", "HTTP gecikmesi", ["method", "path"])
 
 
+async def _release_orphaned_backtests() -> None:
+    """Açılışta yetim kalmış backtest koşularını serbest bırakır.
+
+    Koşular API'nin **çocuk süreci** olarak yürütülür. API yeniden başlarsa
+    (dağıtım, çökme, `systemctl restart`) çocuk da ölür ama satır `RUNNING`
+    kalır. Uç aynı anda tek koşuya izin verdiği için bu satır kuyruğu
+    **kalıcı olarak** tıkar: yeni koşu isteyen herkes "Zaten çalışan bir
+    backtest var" alır ve durumu elle düzeltmeden kimse backtest çalıştıramaz.
+
+    Ölçüldü: bir API yeniden başlatması kuyruğu 85 dakika boyunca kilitledi ve
+    kimse fark etmedi — panel koşuyu "çalışıyor" diye gösterdi.
+
+    Yeniden başlatan sürecin çocuğu hayatta olamaz, o yüzden açılışta gördüğümüz
+    her `RUNNING` satırı tanım gereği yetimdir.
+    """
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        result = await session.execute(
+            update(Backtest)
+            .where(Backtest.status == "RUNNING")
+            .values(
+                status="FAILED",
+                finished_at=datetime.now(UTC),
+                error=(
+                    "API yeniden başlatıldı; koşu süreci onunla birlikte sonlandı. "
+                    "Sonuç üretilmedi — koşuyu yeniden başlatın."
+                ),
+            )
+        )
+        await session.commit()
+        if result.rowcount:
+            log.warning("orphaned_backtests_released", count=result.rowcount)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging()
     init_sentry("api")
     log.info("api_starting", env=settings.env)
+    await _release_orphaned_backtests()
     await hub.start()
     yield
     await hub.stop()
@@ -144,6 +181,46 @@ def create_app() -> FastAPI:
                 "Canlı veri kesildi — yeni emir gönderilmiyor."
                 if stale
                 else "Piyasa verisi akıyor."
+            ),
+        }
+
+    @app.get("/system/load", tags=["system"])
+    async def system_load() -> dict:
+        """Makinenin yük durumu — hangi botun durdurulacağına karar verirken.
+
+        Backtest koşuları ve bot işçileri aynı çekirdekleri paylaşır. Yük
+        çekirdek sayısını aştığında karar barları gecikmeye başlar; panel bunu
+        göstermeden kullanıcı ancak işlemler geç açıldığında fark eder.
+
+        `psutil` yok, `/proc` da her yerde yok: ikisi de olmayabileceği için
+        okuma savunmalı yapılır ve eksik alanlar `None` döner. Eksik veriyi
+        sıfır göstermek "yük yok" diye okunurdu.
+        """
+        cores = os.cpu_count() or 1
+        try:
+            one, five, fifteen = os.getloadavg()
+        except (OSError, AttributeError):
+            return {
+                "cores": cores,
+                "load_1": None,
+                "load_5": None,
+                "load_15": None,
+                "pressure": None,
+                "message": "Yük bilgisi bu platformda okunamıyor.",
+            }
+
+        pressure = one / cores
+        return {
+            "cores": cores,
+            "load_1": round(one, 2),
+            "load_5": round(five, 2),
+            "load_15": round(fifteen, 2),
+            # 1.0 = her çekirdek dolu. Üstü, işlerin sıraya girmeye başladığı yer.
+            "pressure": round(pressure, 2),
+            "message": (
+                "Çekirdekler dolu — karar barları gecikebilir."
+                if pressure >= 1.0
+                else "Yük normal."
             ),
         }
 
