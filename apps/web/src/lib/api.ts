@@ -171,6 +171,18 @@ export interface User {
   last_login_at: string | null;
 }
 
+/** `/system/load` — makinenin yük durumu. */
+export interface SystemLoad {
+  cores: number;
+  /** Eksik veri `null` döner; sıfır göstermek "yük yok" diye okunurdu. */
+  load_1: number | null;
+  load_5: number | null;
+  load_15: number | null;
+  /** `load_1 / cores`. 1.0 = her çekirdek dolu. */
+  pressure: number | null;
+  message: string;
+}
+
 export interface SystemStatus {
   universe_size: number;
   universe_taken_at: string | null;
