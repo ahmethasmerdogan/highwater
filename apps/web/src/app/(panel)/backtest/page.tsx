@@ -11,9 +11,8 @@
  * bir kod yoktur. Değişen tek şey emirlerin nereye gittiğidir.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, StatusPill, cx } from "@/ui";
 import {
   api,
   type Backtest,
@@ -23,60 +22,80 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { toast } from "@/lib/toast";
-import { Page, Section, StatGrid, Async, Empty, ErrorBox } from "@/components/common/page";
-import { Stat, AmountText, Signed } from "@/components/common/amount";
-import { Explain, InfoDot, Term } from "@/components/common/explain";
-import { DataTable, SimpleTable, type Column } from "@/components/data/data-table";
-import { CurveChart, type CurveSeries } from "@/components/viz/charts";
-import { ExitReasonPill } from "@/components/common/pills";
 import { dateOnly, dateTime, money, num, pct, pctSigned, relative, rMultiple } from "@/lib/format";
+import { Page, GuideSection } from "@/shell/page";
+import {
+  Alert,
+  Async,
+  Button,
+  Chip,
+  Delta,
+  Empty,
+  ErrorBox,
+  ExitReasonPill,
+  Explain,
+  FormField,
+  InfoDot,
+  Metric,
+  NumText,
+  Panel,
+  Select,
+  Tag,
+  Term,
+  TextInput,
+  Toggle,
+  type Tone,
+} from "@/design";
+import { CurveChart, type CurveSeries } from "@/design/chart";
+import { DataGrid } from "@/grid/data-grid";
+import { SimpleTable, type SimpleColumn } from "@/grid/simple-table";
+import type { GridColumn } from "@/grid/types";
 
 /** Ölçüt adlarının Türkçe karşılığı ve açıklaması. */
-const METRIC_INFO: Record<string, { label: string; hint: string; format: "pct" | "num" | "money" }> =
-  {
-    total_return: {
-      label: "Toplam getiri",
-      hint: "Dönem sonundaki değerin başlangıca oranı.",
-      format: "pct",
-    },
-    cagr: {
-      label: "Yıllık bileşik getiri",
-      hint: "Getirinin yıllığa çevrilmiş hâli. Farklı uzunluktaki dönemleri karşılaştırmak için.",
-      format: "pct",
-    },
-    sharpe: {
-      label: "Sharpe",
-      hint: "Risk birimi başına getiri. 3'ün üstü neredeyse her zaman bir modelleme hatasını gösterir, başarıyı değil.",
-      format: "num",
-    },
-    sortino: {
-      label: "Sortino",
-      hint: "Sharpe'ın yalnızca aşağı yönlü oynaklığa bakan hâli.",
-      format: "num",
-    },
-    max_drawdown: {
-      label: "Azami düşüş",
-      hint: "Zirveden en dip noktaya kadarki kayıp. Sistemin en dürüst tek sayısıdır.",
-      format: "pct",
-    },
-    win_rate: {
-      label: "Kazanma oranı",
-      hint: "Kârla kapanan işlemlerin oranı. Tek başına yanıltıcıdır.",
-      format: "pct",
-    },
-    profit_factor: {
-      label: "Kâr faktörü",
-      hint: "Toplam kazancın toplam kayba oranı.",
-      format: "num",
-    },
-    trades: { label: "İşlem sayısı", hint: "Dönem boyunca kapanan işlem sayısı.", format: "num" },
-    expectancy_r: {
-      label: "İşlem başına beklenti",
-      hint: "Ortalama sonuç, risk birimi cinsinden.",
-      format: "num",
-    },
-    total_fees: { label: "Toplam komisyon", hint: "Ödenen komisyonlar.", format: "money" },
-  };
+const METRIC_INFO: Record<string, { label: string; hint: string; format: "pct" | "num" | "money" }> = {
+  total_return: {
+    label: "Toplam getiri",
+    hint: "Dönem sonundaki değerin başlangıca oranı.",
+    format: "pct",
+  },
+  cagr: {
+    label: "Yıllık bileşik getiri",
+    hint: "Getirinin yıllığa çevrilmiş hâli. Farklı uzunluktaki dönemleri karşılaştırmak için.",
+    format: "pct",
+  },
+  sharpe: {
+    label: "Sharpe",
+    hint: "Risk birimi başına getiri. 3'ün üstü neredeyse her zaman bir modelleme hatasını gösterir, başarıyı değil.",
+    format: "num",
+  },
+  sortino: {
+    label: "Sortino",
+    hint: "Sharpe'ın yalnızca aşağı yönlü oynaklığa bakan hâli.",
+    format: "num",
+  },
+  max_drawdown: {
+    label: "Azami düşüş",
+    hint: "Zirveden en dip noktaya kadarki kayıp. Sistemin en dürüst tek sayısıdır.",
+    format: "pct",
+  },
+  win_rate: {
+    label: "Kazanma oranı",
+    hint: "Kârla kapanan işlemlerin oranı. Tek başına yanıltıcıdır.",
+    format: "pct",
+  },
+  profit_factor: {
+    label: "Kâr faktörü",
+    hint: "Toplam kazancın toplam kayba oranı.",
+    format: "num",
+  },
+  trades: { label: "İşlem sayısı", hint: "Dönem boyunca kapanan işlem sayısı.", format: "num" },
+  expectancy_r: {
+    label: "İşlem başına beklenti",
+    hint: "Ortalama sonuç, risk birimi cinsinden.",
+    format: "num",
+  },
+  total_fees: { label: "Toplam komisyon", hint: "Ödenen komisyonlar.", format: "money" },
+};
 
 export default function BacktestPage() {
   const { can } = useAuth();
@@ -91,18 +110,46 @@ export default function BacktestPage() {
   return (
     <Page
       title="Backtest"
-      description="Stratejiyi geçmiş veride çalıştır ve sonucu kıyaslarla karşılaştır."
-      intro={{
-        storageKey: "backtest",
-        what: "Seçtiğiniz strateji sürümü geçmiş barlar üzerinde bar bar yürütülür. Puanlama, boyutlandırma ve risk kodu canlıdakiyle **aynıdır** — değişen tek şey emirlerin gerçek borsa yerine simülasyona gitmesidir.",
-        how: "**Bir backtest sonucu bir vaat değildir.** Geçmişte iyi çalışmış olmak gelecekte çalışacağını göstermez ve iyi görünen sonuçların çoğu, farkında olmadan yapılmış arama sonucudur.\n\nBu yüzden her rapor **üç kıyasla** gelir. En önemlisi rastgele portföydür: aynı sıklıkta ama rastgele seçilen coinlerle kurulan portföy. Puanlama onu geçemiyorsa, kazancın kaynağı sıralama değil, sadece sık işlem yapmanın mekanik etkisidir.\n\n**Kırmızı bayraklar** sonuç fazla iyi göründüğünde basılır — çok yüksek Sharpe, çok az işlem, sıfıra yakın düşüş. Bunlar neredeyse her zaman hata işaretidir.",
-        action: "Kilitli dönemi ayar denemelerinde kullanmayın; yalnızca son doğrulama için açın. Kaç deneme yaptığınızı kaydedin — kaç kez denendiği bilinmeden sonucun anlamı ölçülemez.",
-        terms: ["backtest", "kiyas", "rastgele_portfoy", "out_of_sample", "yaklasik_evren", "kirmizi_bayrak", "drawdown"],
-      }}
+      summary="Stratejiyi geçmiş veride çalıştır ve sonucu kıyaslarla karşılaştır."
+      guide={
+        <>
+          <GuideSection title="Ne gösteriyor">
+            <p>
+              Seçtiğiniz strateji sürümü geçmiş barlar üzerinde bar bar yürütülür. Puanlama,
+              boyutlandırma ve risk kodu canlıdakiyle <strong>aynıdır</strong> — değişen tek şey
+              emirlerin gerçek borsa yerine simülasyona gitmesidir.
+            </p>
+          </GuideSection>
+          <GuideSection title="Nasıl okunur">
+            <p>
+              <strong>Bir backtest sonucu bir vaat değildir.</strong> Geçmişte iyi çalışmış olmak
+              gelecekte çalışacağını göstermez ve iyi görünen sonuçların çoğu, farkında olmadan
+              yapılmış arama sonucudur.
+            </p>
+            <p>
+              Bu yüzden her rapor <strong>üç kıyasla</strong> gelir. En önemlisi rastgele
+              portföydür: aynı sıklıkta ama rastgele seçilen coinlerle kurulan portföy. Puanlama
+              onu geçemiyorsa, kazancın kaynağı sıralama değil, sadece sık işlem yapmanın mekanik
+              etkisidir.
+            </p>
+            <p>
+              <strong>Kırmızı bayraklar</strong> sonuç fazla iyi göründüğünde basılır — çok yüksek
+              Sharpe, çok az işlem, sıfıra yakın düşüş. Bunlar neredeyse her zaman hata
+              işaretidir.
+            </p>
+          </GuideSection>
+          <GuideSection title="Ne yapabilirim">
+            <p>
+              Kilitli dönemi ayar denemelerinde kullanmayın; yalnızca son doğrulama için açın. Kaç
+              deneme yaptığınızı kaydedin — kaç kez denendiği bilinmeden sonucun anlamı ölçülemez.
+            </p>
+          </GuideSection>
+        </>
+      }
     >
       {can("TRADER") && <NewBacktest onCreated={setSelectedId} />}
 
-      <Section
+      <Panel
         title="Koşular"
         description="Geçmişteki backtest çalıştırmaları. Bir satıra tıklayınca raporu açılır."
         padded={false}
@@ -111,24 +158,21 @@ export default function BacktestPage() {
           query={list}
           empty={{
             title: "Henüz backtest yok",
-            description:
-              "Yukarıdaki formdan bir koşu başlatın. Sonuçlar hazır olduğunda burada listelenir.",
+            hint: "Yukarıdaki formdan bir koşu başlatın. Sonuçlar hazır olduğunda burada listelenir.",
           }}
         >
           {(rows) => <BacktestList rows={rows} onSelect={setSelectedId} />}
         </Async>
-      </Section>
+      </Panel>
 
-      {selectedId !== null && (
-        <BacktestReport id={selectedId} onClose={() => setSelectedId(null)} />
-      )}
+      {selectedId !== null && <BacktestReport id={selectedId} onClose={() => setSelectedId(null)} />}
 
-      <Section title="Neden bu kadar çok uyarı var">
-        <div className="grid gap-5 md:grid-cols-2">
-          <Explain id="rastgele_portfoy" showTitle />
-          <Explain id="kirmizi_bayrak" showTitle />
+      <Panel title="Neden bu kadar çok uyarı var">
+        <div className="grid gap-4 md:grid-cols-2">
+          <Explain id="rastgele_portfoy" />
+          <Explain id="kirmizi_bayrak" />
         </div>
-      </Section>
+      </Panel>
     </Page>
   );
 }
@@ -141,9 +185,9 @@ function NewBacktest({ onCreated }: { onCreated: (id: number) => void }) {
   const qc = useQueryClient();
   const [versionId, setVersionId] = useState<number | null>(null);
   const [start, setStart] = useState(() => {
-    const d = new Date();
-    d.setFullYear(d.getFullYear() - 1);
-    return d.toISOString().slice(0, 10);
+    const date = new Date();
+    date.setFullYear(date.getFullYear() - 1);
+    return date.toISOString().slice(0, 10);
   });
   const [end, setEnd] = useState(() => new Date().toISOString().slice(0, 10));
   const [equity, setEquity] = useState("5000");
@@ -156,10 +200,10 @@ function NewBacktest({ onCreated }: { onCreated: (id: number) => void }) {
     queryFn: () => api.get<Strategy[]>("/strategies"),
   });
 
-  const versions = (strategies.data ?? []).flatMap((s) =>
-    s.versions.map((v) => ({
-      id: v.id,
-      label: `${s.name} · sürüm ${v.version}${v.frozen ? " (donuk)" : ""}`,
+  const versions = (strategies.data ?? []).flatMap((strategy) =>
+    strategy.versions.map((version) => ({
+      id: version.id,
+      label: `${strategy.name} · sürüm ${version.version}${version.frozen ? " (donuk)" : ""}`,
     })),
   );
 
@@ -167,163 +211,116 @@ function NewBacktest({ onCreated }: { onCreated: (id: number) => void }) {
     mutationFn: () =>
       api.post<Backtest>("/backtests", {
         strategy_version_id: versionId,
-        // Tarih kutusu saat dilimsiz bir damga verir; motor bunu UTC kabul eder.
+        /* Tarih kutusu saat dilimsiz bir damga verir; motor bunu UTC kabul eder. */
         start: `${start}T00:00:00`,
         end: `${end}T23:59:59`,
         initial_equity: Number(equity),
         symbols: symbols
           .split(/[\s,]+/)
-          .map((s) => s.trim().toUpperCase())
+          .map((entry) => entry.trim().toUpperCase())
           .filter(Boolean),
         use_holdout: useHoldout,
         with_patterns: withPatterns,
       }),
-    onSuccess: (bt) => {
+    onSuccess: (backtest) => {
       toast.success("Backtest başlatıldı", "Sonuç hazır olduğunda listede görünecek.");
       void qc.invalidateQueries({ queryKey: ["backtests"] });
-      onCreated(bt.id);
+      onCreated(backtest.id);
     },
-    onError: (e: Error) => toast.error("Backtest başlatılamadı", e.message),
+    onError: (error: Error) => toast.error("Backtest başlatılamadı", error.message),
   });
 
   const valid = versionId !== null && start < end && Number(equity) > 0;
 
   return (
-    <Section
+    <Panel
       title="Yeni koşu"
       description="Hangi strateji sürümü, hangi dönem, hangi sermaye. Coin listesi boş bırakılırsa o dönemin havuzu kullanılır."
     >
       <form
-        onSubmit={(e) => {
-          e.preventDefault();
+        onSubmit={(event) => {
+          event.preventDefault();
           if (valid) run.mutate();
         }}
-        className="space-y-4"
+        className="flex flex-col gap-4"
       >
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-          <label className="block">
-            <span className="flex items-center gap-1 text-[12px] font-medium text-ink-2">
-              Strateji sürümü
-              <InfoDot id="strateji_surum" align="start" />
-            </span>
-            <select
+          <FormField label="Strateji sürümü" term="strateji_surum">
+            <Select
               value={versionId ?? ""}
-              onChange={(e) => setVersionId(Number(e.target.value) || null)}
-              className="mt-1 h-9 w-full rounded-lg border border-line bg-inset px-2.5 text-[13px] text-ink focus:border-brand focus:outline-none"
+              onChange={(event) => setVersionId(Number(event.target.value) || null)}
             >
               <option value="">Seçin…</option>
-              {versions.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.label}
+              {versions.map((version) => (
+                <option key={version.id} value={version.id}>
+                  {version.label}
                 </option>
               ))}
-            </select>
-          </label>
+            </Select>
+          </FormField>
 
-          <label className="block">
-            <span className="text-[12px] font-medium text-ink-2">Başlangıç</span>
-            <input
-              type="date"
-              value={start}
-              onChange={(e) => setStart(e.target.value)}
-              className="mt-1 h-9 w-full rounded-lg border border-line bg-inset px-2.5 text-[13px] text-ink focus:border-brand focus:outline-none"
-            />
-          </label>
+          <FormField label="Başlangıç">
+            <TextInput type="date" value={start} onChange={(event) => setStart(event.target.value)} />
+          </FormField>
 
-          <label className="block">
-            <span className="text-[12px] font-medium text-ink-2">Bitiş</span>
-            <input
-              type="date"
-              value={end}
-              onChange={(e) => setEnd(e.target.value)}
-              className="mt-1 h-9 w-full rounded-lg border border-line bg-inset px-2.5 text-[13px] text-ink focus:border-brand focus:outline-none"
-            />
-          </label>
+          <FormField label="Bitiş">
+            <TextInput type="date" value={end} onChange={(event) => setEnd(event.target.value)} />
+          </FormField>
 
-          <label className="block">
-            <span className="text-[12px] font-medium text-ink-2">Başlangıç sermayesi (USD)</span>
-            <input
+          <FormField label="Başlangıç sermayesi (USD)">
+            <TextInput
               value={equity}
-              onChange={(e) => setEquity(e.target.value)}
+              onChange={(event) => setEquity(event.target.value)}
               inputMode="decimal"
-              className="num mt-1 h-9 w-full rounded-lg border border-line bg-inset px-2.5 text-[13px] text-ink focus:border-brand focus:outline-none"
+              numeric
             />
-          </label>
+          </FormField>
         </div>
 
-        <label className="block">
-          <span className="text-[12px] font-medium text-ink-2">
-            Coin listesi (isteğe bağlı)
-          </span>
-          <input
+        <FormField
+          label="Coin listesi (isteğe bağlı)"
+          hint="Elle coin seçmek sonucu iyimser yapar: bugün bildiğiniz kazananları seçmek, cevabı bilerek sınava girmektir. Boş bırakmak daha dürüsttür."
+        >
+          <TextInput
             value={symbols}
-            onChange={(e) => setSymbols(e.target.value)}
+            onChange={(event) => setSymbols(event.target.value)}
             placeholder="BTCUSDT, ETHUSDT — boş bırakılırsa o dönemin havuzu kullanılır"
-            className="mt-1 h-9 w-full rounded-lg border border-line bg-inset px-2.5 font-mono text-[12.5px] text-ink uppercase placeholder:font-sans placeholder:text-ink-3 focus:border-brand focus:outline-none"
+            className="sn-num uppercase"
           />
-          <span className="mt-1 block text-[11.5px] text-ink-3">
-            Elle coin seçmek sonucu iyimser yapar: bugün bildiğiniz kazananları seçmek, cevabı
-            bilerek sınava girmektir. Boş bırakmak daha dürüsttür.
-          </span>
-        </label>
+        </FormField>
 
-        <div className="flex flex-wrap gap-4">
+        <div className="grid gap-x-6 md:grid-cols-2">
           <Toggle
             checked={useHoldout}
             onChange={setUseHoldout}
-            label="Kilitli dönemi kullan"
-            term="out_of_sample"
+            label={
+              <span className="flex items-center gap-1.5">
+                Kilitli dönemi kullan
+                <InfoDot id="out_of_sample" />
+              </span>
+            }
             hint="Ayar denemelerine kapalı tutulan veri aralığını açar. Yalnızca son doğrulama için kullanın."
           />
           <Toggle
             checked={withPatterns}
             onChange={setWithPatterns}
-            label="Formasyon motoru açık"
-            term="formasyon"
+            label={
+              <span className="flex items-center gap-1.5">
+                Formasyon motoru açık
+                <InfoDot id="formasyon" />
+              </span>
+            }
             hint="Formasyon ve mum sinyallerinin puana katkısını dahil eder. Kapatınca puan yalnızca beş aileden oluşur."
           />
         </div>
 
         <div className="flex justify-end">
-          <Button
-            type="submit"
-            size="sm"
-            variant="amber"
-            shape="rect"
-            disabled={!valid || run.isPending}
-          >
+          <Button type="submit" size="sm" variant="primary" disabled={!valid || run.isPending}>
             {run.isPending ? "Başlatılıyor…" : "Backtest çalıştır"}
           </Button>
         </div>
       </form>
-    </Section>
-  );
-}
-
-function Toggle({
-  checked,
-  onChange,
-  label,
-  term,
-  hint,
-}: {
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  label: string;
-  term?: string;
-  hint?: string;
-}) {
-  return (
-    <label className="flex cursor-pointer items-center gap-2 text-[12.5px] text-ink">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="accent-[var(--brand)]"
-      />
-      {label}
-      {(term || hint) && <InfoDot id={term} text={hint} align="start" />}
-    </label>
+    </Panel>
   );
 }
 
@@ -331,108 +328,108 @@ function Toggle({
 /*  Koşu listesi                                                       */
 /* ------------------------------------------------------------------ */
 
-function BacktestList({
-  rows,
-  onSelect,
-}: {
-  rows: Backtest[];
-  onSelect: (id: number) => void;
-}) {
-  const columns: Column<Backtest>[] = [
-    {
-      key: "created_at",
-      header: "Başlatıldı",
-      width: "150px",
-      sort: (r) => new Date(r.created_at).getTime(),
-      cell: (r) => <span className="num text-[12px]">{dateTime(r.created_at)}</span>,
-    },
-    {
-      key: "status",
-      header: "Durum",
-      width: "140px",
-      sort: (r) => r.status,
-      cell: (r) => <BacktestStatus status={r.status} />,
-    },
-    {
-      key: "period",
-      header: "Dönem",
-      cell: (r) => {
-        const p = r.params as { start?: string; end?: string };
-        return (
-          <span className="text-[12.5px] text-ink-2">
-            {dateOnly(p.start)} — {dateOnly(p.end)}
-          </span>
-        );
+const STATUS_INFO: Record<string, { label: string; tone: Tone }> = {
+  DONE: { label: "Tamamlandı", tone: "up" },
+  FINISHED: { label: "Tamamlandı", tone: "up" },
+  SUCCESS: { label: "Tamamlandı", tone: "up" },
+  FAILED: { label: "Başarısız", tone: "down" },
+  RUNNING: { label: "Çalışıyor", tone: "warn" },
+  PENDING: { label: "Sırada", tone: "neutral" },
+  QUEUED: { label: "Sırada", tone: "neutral" },
+};
+
+function BacktestList({ rows, onSelect }: { rows: Backtest[]; onSelect: (id: number) => void }) {
+  const columns = useMemo<GridColumn<Backtest>[]>(
+    () => [
+      {
+        id: "created_at",
+        header: "Başlatıldı",
+        width: 158,
+        pin: true,
+        value: (row) => new Date(row.created_at).getTime(),
+        cell: (row) => <NumText text={dateTime(row.created_at)} size="sm" />,
       },
-    },
-    {
-      key: "version",
-      header: "Sürüm",
-      num: true,
-      sort: (r) => r.strategy_version_id,
-      cell: (r) => `#${r.strategy_version_id}`,
-    },
-    {
-      key: "approximate",
-      header: "Evren",
-      width: "170px",
-      term: "yaklasik_evren",
-      cell: (r) =>
-        r.approximate_universe ? (
-          <StatusPill size="sm" tone="orange">
-            yaklaşık evren
-          </StatusPill>
-        ) : (
-          <span className="text-[12px] text-ink-3">gerçek fotoğraf</span>
-        ),
-    },
-    {
-      key: "duration",
-      header: "Süre",
-      width: "110px",
-      cell: (r) =>
-        r.finished_at && r.started_at ? (
-          <span className="text-[12px] text-ink-2">
-            {num(
-              (new Date(r.finished_at).getTime() - new Date(r.started_at).getTime()) / 1000,
-              0,
-            )}{" "}
-            sn
-          </span>
-        ) : (
-          <span className="text-[12px] text-ink-3">{relative(r.started_at)}</span>
-        ),
-    },
-  ];
+      {
+        id: "status",
+        header: "Durum",
+        width: 142,
+        value: (row) => row.status,
+        cell: (row) => {
+          const info = STATUS_INFO[row.status] ?? { label: row.status, tone: "neutral" as Tone };
+          return <Tag tone={info.tone}>{info.label}</Tag>;
+        },
+      },
+      {
+        id: "period",
+        header: "Dönem",
+        width: 230,
+        cell: (row) => {
+          const params = row.params as { start?: string; end?: string };
+          return (
+            <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>
+              {dateOnly(params.start)} — {dateOnly(params.end)}
+            </span>
+          );
+        },
+      },
+      {
+        id: "version",
+        header: "Sürüm",
+        width: 92,
+        num: true,
+        value: (row) => row.strategy_version_id,
+        cell: (row) => <NumText text={`#${row.strategy_version_id}`} size="sm" />,
+      },
+      {
+        id: "approximate",
+        header: "Evren",
+        width: 176,
+        hint: "Dönemin havuz fotoğrafı yoksa havuz yeniden kurulur; sonuç iyimser sapabilir.",
+        value: (row) => (row.approximate_universe ? 1 : 0),
+        cell: (row) =>
+          row.approximate_universe ? (
+            <Tag tone="warn">yaklaşık evren</Tag>
+          ) : (
+            <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}>
+              gerçek fotoğraf
+            </span>
+          ),
+      },
+      {
+        id: "duration",
+        header: "Süre",
+        width: 118,
+        cell: (row) =>
+          row.finished_at && row.started_at ? (
+            <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>
+              {num(
+                (new Date(row.finished_at).getTime() - new Date(row.started_at).getTime()) / 1000,
+                0,
+              )}{" "}
+              sn
+            </span>
+          ) : (
+            <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}>
+              {relative(row.started_at)}
+            </span>
+          ),
+      },
+    ],
+    [],
+  );
 
   return (
-    <DataTable
+    <DataGrid
       rows={rows}
       columns={columns}
-      rowKey={(r) => r.id}
-      onRowClick={(r) => onSelect(r.id)}
+      rowKey={(row) => String(row.id)}
+      onRowClick={(row) => onSelect(row.id)}
       storageKey="backtestler"
-      defaultSort={{ key: "created_at", dir: "desc" }}
-      dense
+      defaultSort={[{ id: "created_at", desc: true }]}
+      density="compact"
+      searchable={false}
+      maxHeight={420}
     />
-  );
-}
-
-function BacktestStatus({ status }: { status: string }) {
-  const map: Record<string, { label: string; tone: "green" | "red" | "amber" | "gray" }> = {
-    DONE: { label: "Tamamlandı", tone: "green" },
-    FINISHED: { label: "Tamamlandı", tone: "green" },
-    SUCCESS: { label: "Tamamlandı", tone: "green" },
-    FAILED: { label: "Başarısız", tone: "red" },
-    RUNNING: { label: "Çalışıyor", tone: "amber" },
-    PENDING: { label: "Sırada", tone: "gray" },
-    QUEUED: { label: "Sırada", tone: "gray" },
-  };
-  const info = map[status] ?? { label: status, tone: "gray" as const };
-  return (
-    <StatusPill size="sm" tone={info.tone}>
-      {info.label}
-    </StatusPill>
   );
 }
 
@@ -444,293 +441,341 @@ function BacktestReport({ id, onClose }: { id: number; onClose: () => void }) {
   const query = useQuery({
     queryKey: ["backtest", id],
     queryFn: () => api.get<BacktestDetail>(`/backtests/${id}`),
-    // Koşu bitene kadar tazelenmeye devam eder.
-    refetchInterval: (q) =>
-      ["RUNNING", "PENDING", "QUEUED"].includes(q.state.data?.status ?? "") ? 3_000 : false,
+    /* Koşu bitene kadar tazelenmeye devam eder. */
+    refetchInterval: (result) =>
+      ["RUNNING", "PENDING", "QUEUED"].includes(result.state.data?.status ?? "") ? 3_000 : false,
   });
 
-  const bt = query.data;
+  const backtest = query.data;
   const [scenario, setScenario] = useState(0);
 
   return (
-    <Section
+    <Panel
       title={`Rapor · koşu #${id}`}
       description="Sonuç, kıyaslar ve uyarılar."
       actions={
-        <Button size="sm" variant="ghost" shape="rect" onClick={onClose}>
+        <Button size="sm" variant="quiet" onClick={onClose}>
           Kapat
         </Button>
       }
     >
-      {!bt ? (
-        <p className="text-[13px] text-ink-3">Yükleniyor…</p>
-      ) : bt.status === "FAILED" ? (
+      {!backtest ? (
+        <p style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink-3)" }}>Yükleniyor…</p>
+      ) : backtest.status === "FAILED" ? (
         <ErrorBox
           title="Backtest başarısız oldu"
           hint="Koşu tamamlanamadı. Aşağıdaki mesaj motordan geliyor."
-          message={bt.error ?? "Sebep bildirilmedi."}
+          message={backtest.error ?? "Sebep bildirilmedi."}
         />
-      ) : ["RUNNING", "PENDING", "QUEUED"].includes(bt.status) ? (
-        <p className="text-[13px] text-ink-2">
+      ) : ["RUNNING", "PENDING", "QUEUED"].includes(backtest.status) ? (
+        <p style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink-2)" }}>
           Koşu sürüyor… Sonuç hazır olduğunda bu bölüm kendiliğinden dolacak.
         </p>
-      ) : bt.results.length === 0 ? (
+      ) : backtest.results.length === 0 ? (
         <Empty
           title="Sonuç üretilmedi"
-          description="Koşu tamamlandı ama rapor boş. Dönemde hiç işlem açılmamış olabilir."
+          hint="Koşu tamamlandı ama rapor boş. Dönemde hiç işlem açılmamış olabilir."
         />
       ) : (
-        <ReportBody bt={bt} scenario={scenario} onScenario={setScenario} />
+        <ReportBody backtest={backtest} scenario={scenario} onScenario={setScenario} />
       )}
-    </Section>
+    </Panel>
   );
 }
 
 function ReportBody({
-  bt,
+  backtest,
   scenario,
   onScenario,
 }: {
-  bt: BacktestDetail;
+  backtest: BacktestDetail;
   scenario: number;
-  onScenario: (i: number) => void;
+  onScenario: (index: number) => void;
 }) {
-  const result: BacktestResult = bt.results[Math.min(scenario, bt.results.length - 1)];
+  const result: BacktestResult = backtest.results[Math.min(scenario, backtest.results.length - 1)];
 
   const curves: CurveSeries[] = [
     {
       label: "Strateji",
-      color: "var(--series-1)",
-      points: result.equity_curve.map(([at, v]) => ({ at, value: v })),
+      color: "var(--sn-series-1)",
+      points: result.equity_curve.map(([at, value]) => ({ at, value })),
     },
-    ...result.benchmarks.map((b, i) => ({
-      label: b.name,
-      color: `var(--series-${((i + 1) % 5) + 1})`,
+    ...result.benchmarks.map((benchmark, index) => ({
+      label: benchmark.name,
+      color: `var(--sn-series-${((index + 1) % 5) + 1})`,
       dashed: true,
-      points: b.equity_curve.map(([at, v]) => ({ at, value: v })),
+      points: benchmark.equity_curve.map(([at, value]) => ({ at, value })),
     })),
   ];
 
   return (
-    <div className="space-y-4">
-      {/* Evren damgası */}
-      {bt.approximate_universe && (
-        <div className="flex items-start gap-2.5 rounded-lg border border-warn/30 bg-warn-soft px-4 py-3 text-[13px]">
-          <span aria-hidden className="mt-1.5 size-1.5 shrink-0 rounded-full bg-warn" />
-          <span className="text-ink">
-            <strong className="font-medium">Yaklaşık evren.</strong>{" "}
-            <span className="text-ink-2">
-              Bu dönemin bir kısmı için havuz fotoğrafı yok, havuz yeniden kurulmak zorunda
-              kaldı. Sonuç iyimser sapmış olabilir — <Term id="yaklasik_evren" />.
-            </span>
-          </span>
-        </div>
+    <div className="flex flex-col gap-4">
+      {backtest.approximate_universe && (
+        <Alert tone="warn" title="Yaklaşık evren">
+          Bu dönemin bir kısmı için havuz fotoğrafı yok, havuz yeniden kurulmak zorunda kaldı.
+          Sonuç iyimser sapmış olabilir — <Term id="yaklasik_evren" />.
+        </Alert>
       )}
 
-      {/* Kırmızı bayraklar */}
       {result.flags.length > 0 && (
-        <div className="rounded-lg border border-down/30 bg-down-soft px-4 py-3">
-          <div className="flex items-center gap-1.5 text-[13px] font-medium text-ink">
-            Kırmızı bayrak
-            <InfoDot id="kirmizi_bayrak" align="start" />
-          </div>
-          <ul className="mt-1.5 space-y-1">
-            {result.flags.map((f, i) => (
-              <li key={i} className="text-[12.5px] leading-relaxed text-ink-2">
-                · {f.message}{" "}
-                <span className="num text-ink-3">({num(f.value, 2)})</span>
+        <Alert
+          tone="down"
+          title={
+            <span className="flex items-center gap-1.5">
+              Kırmızı bayrak
+              <InfoDot id="kirmizi_bayrak" />
+            </span>
+          }
+        >
+          <ul className="mt-1 flex flex-col gap-1">
+            {result.flags.map((flag, index) => (
+              <li key={index} style={{ lineHeight: 1.5 }}>
+                · {flag.message} <span className="sn-num">({num(flag.value, 2)})</span>
               </li>
             ))}
           </ul>
-        </div>
+        </Alert>
       )}
 
-      {/* Maliyet senaryosu */}
-      {bt.results.length > 1 && (
+      {backtest.results.length > 1 && (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="flex items-center gap-1 text-[12px] text-ink-2">
+          <span
+            className="flex items-center gap-1"
+            style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}
+          >
             Maliyet senaryosu
-            <InfoDot
-              text="Aynı koşu farklı komisyon ve kayma varsayımlarıyla değerlendirilir. İyimser senaryoda kârlı, kötümserde zararlı bir strateji kırılgandır."
-              align="start"
-            />
+            <InfoDot text="Aynı koşu farklı komisyon ve kayma varsayımlarıyla değerlendirilir. İyimser senaryoda kârlı, kötümserde zararlı bir strateji kırılgandır." />
           </span>
-          {bt.results.map((r, i) => (
-            <button
-              key={r.cost_scenario}
-              type="button"
-              onClick={() => onScenario(i)}
-              className={cx(
-                "rounded-lg border px-2.5 py-1 text-[12px] transition-colors",
-                i === scenario
-                  ? "border-brand bg-brand-soft font-medium text-brand"
-                  : "border-line text-ink-2 hover:border-line-strong hover:text-ink",
-              )}
+          {backtest.results.map((entry, index) => (
+            <Chip
+              key={entry.cost_scenario}
+              active={index === scenario}
+              onClick={() => onScenario(index)}
             >
-              {r.cost_scenario}
-            </button>
+              {entry.cost_scenario}
+            </Chip>
           ))}
         </div>
       )}
 
-      {/* Ölçütler */}
-      <StatGrid cols={4}>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {Object.entries(METRIC_INFO)
           .filter(([key]) => result.metrics[key] !== undefined)
           .slice(0, 8)
           .map(([key, info]) => {
             const raw = result.metrics[key];
             const value = typeof raw === "number" ? raw : null;
-            const text =
-              value === null
-                ? "—"
-                : info.format === "pct"
-                  ? pctSigned(value)
-                  : info.format === "money"
-                    ? money(value)
-                    : num(value, 2);
             return (
-              <Stat
+              <Metric
                 key={key}
                 label={info.label}
-                hint={info.hint}
-                value={
-                  info.format === "pct" ? (
-                    <Signed value={value} text={text} size="lg" />
-                  ) : (
-                    <AmountText text={text} size="lg" />
-                  )
+                value={value}
+                animateOnMount={false}
+                format={(input) =>
+                  input === null || input === undefined
+                    ? "—"
+                    : info.format === "pct"
+                      ? pctSigned(input)
+                      : info.format === "money"
+                        ? money(input)
+                        : num(input, 2)
                 }
+                accent={
+                  info.format === "pct" && value !== null
+                    ? value >= 0
+                      ? "var(--sn-up)"
+                      : "var(--sn-down)"
+                    : undefined
+                }
+                sub={info.hint}
               />
             );
           })}
-      </StatGrid>
+      </div>
 
-      {/* Eğriler */}
       <div>
-        <div className="mb-2 flex items-center gap-1 text-[13px] font-medium text-ink">
+        <div
+          className="mb-2 flex items-center gap-1 font-medium"
+          style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}
+        >
           Strateji ve kıyaslar
-          <InfoDot id="kiyas" align="start" />
+          <InfoDot id="kiyas" />
         </div>
-        <CurveChart series={curves} normalize height={280} valueFormat={(v) => num(v, 1)} />
-        <p className="mt-2 text-[11.5px] leading-relaxed text-ink-3">
+        <CurveChart series={curves} normalize height={280} valueFormat={(value) => num(value, 1)} />
+        <p
+          className="mt-2"
+          style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)", lineHeight: 1.55 }}
+        >
           Hepsi 100 tabanına endekslendi. Strateji eğrisi kıyasların altında kalıyorsa, seçim
           yapmak değer katmamış demektir.
         </p>
       </div>
 
-      {/* Kıyas tablosu */}
-      {result.benchmarks.length > 0 && (
-        <div>
-          <div className="mb-2 text-[13px] font-medium text-ink">Kıyas karşılaştırması</div>
-          <SimpleTable
-            dense
-            head={
-              <>
-                <th>Kıyas</th>
-                <th className="col-num">Toplam getiri</th>
-                <th className="col-num">Azami düşüş</th>
-                <th className="col-num">Sharpe</th>
-              </>
-            }
-          >
-            <tr>
-              <td className="font-medium text-ink">Strateji</td>
-              <td className="col-num">
-                <Signed
-                  value={asNumber(result.metrics.total_return)}
-                  text={pctSigned(asNumber(result.metrics.total_return))}
-                  size="sm"
-                />
-              </td>
-              <td className="col-num">{pct(asNumber(result.metrics.max_drawdown))}</td>
-              <td className="col-num">{num(asNumber(result.metrics.sharpe), 2)}</td>
-            </tr>
-            {result.benchmarks.map((b) => (
-              <tr key={b.name}>
-                <td className="text-ink-2">{b.name}</td>
-                <td className="col-num">
-                  <Signed
-                    value={b.metrics?.total_return ?? null}
-                    text={pctSigned(b.metrics?.total_return ?? null)}
-                    size="sm"
-                  />
-                </td>
-                <td className="col-num">{pct(b.metrics?.max_drawdown ?? null)}</td>
-                <td className="col-num">{num(b.metrics?.sharpe ?? null, 2)}</td>
-              </tr>
-            ))}
-          </SimpleTable>
-        </div>
-      )}
+      {result.benchmarks.length > 0 && <BenchmarkTable result={result} />}
 
-      {/* İşlem defteri */}
       {result.trades.length > 0 && <TradeLedger trades={result.trades} />}
     </div>
   );
 }
 
-function TradeLedger({ trades }: { trades: Record<string, unknown>[] }) {
-  const columns: Column<Record<string, unknown>>[] = [
+/* ------------------------------------------------------------------ */
+
+interface BenchmarkRow {
+  name: string;
+  strategy: boolean;
+  total_return: number | null;
+  max_drawdown: number | null;
+  sharpe: number | null;
+}
+
+function BenchmarkTable({ result }: { result: BacktestResult }) {
+  const rows: BenchmarkRow[] = [
     {
-      key: "exit_time",
-      header: "Kapanış",
-      width: "150px",
-      sort: (r) => String(r.exit_time ?? ""),
-      cell: (r) => <span className="num text-[12px]">{dateTime(String(r.exit_time ?? ""))}</span>,
+      name: "Strateji",
+      strategy: true,
+      total_return: asNumber(result.metrics.total_return),
+      max_drawdown: asNumber(result.metrics.max_drawdown),
+      sharpe: asNumber(result.metrics.sharpe),
     },
+    ...result.benchmarks.map((benchmark) => ({
+      name: benchmark.name,
+      strategy: false,
+      total_return: benchmark.metrics?.total_return ?? null,
+      max_drawdown: benchmark.metrics?.max_drawdown ?? null,
+      sharpe: benchmark.metrics?.sharpe ?? null,
+    })),
+  ];
+
+  const columns: SimpleColumn<BenchmarkRow>[] = [
     {
-      key: "symbol",
-      header: "Sembol",
-      width: "120px",
-      sort: (r) => String(r.symbol ?? ""),
-      cell: (r) => <span className="font-mono text-[12.5px]">{String(r.symbol ?? "—")}</span>,
-    },
-    {
-      key: "exit_reason",
-      header: "Sebep",
-      width: "180px",
-      term: "cikis_sebebi",
-      cell: (r) => <ExitReasonPill reason={String(r.exit_reason ?? "")} />,
-    },
-    {
-      key: "pnl",
-      header: "K/Z",
-      num: true,
-      sort: (r) => asNumber(r.pnl),
-      cell: (r) => <Signed value={asNumber(r.pnl)} text={money(asNumber(r.pnl))} size="sm" />,
-    },
-    {
-      key: "pnl_r",
-      header: "Sonuç",
-      num: true,
-      term: "r_katsayisi",
-      sort: (r) => asNumber(r.pnl_r),
-      cell: (r) => (
-        <Signed value={asNumber(r.pnl_r)} text={rMultiple(asNumber(r.pnl_r))} size="sm" />
+      header: "Kıyas",
+      cell: (row) => (
+        <span
+          style={{
+            fontSize: "var(--sn-t-body)",
+            color: row.strategy ? "var(--sn-ink)" : "var(--sn-ink-2)",
+            fontWeight: row.strategy ? 550 : 400,
+          }}
+        >
+          {row.name}
+        </span>
       ),
     },
+    {
+      header: "Toplam getiri",
+      num: true,
+      cell: (row) => <Delta value={row.total_return} format={(value) => pctSigned(value)} size="sm" />,
+    },
+    {
+      header: "Azami düşüş",
+      num: true,
+      cell: (row) => <NumText text={pct(row.max_drawdown)} size="sm" />,
+    },
+    { header: "Sharpe", num: true, cell: (row) => <NumText text={num(row.sharpe, 2)} size="sm" /> },
   ];
 
   return (
     <div>
-      <div className="mb-2 text-[13px] font-medium text-ink">İşlem defteri</div>
-      <div className="overflow-hidden rounded-lg border border-line">
-        <DataTable
+      <div
+        className="mb-2 font-medium"
+        style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}
+      >
+        Kıyas karşılaştırması
+      </div>
+      <div
+        className="sn-scroll overflow-x-auto rounded-[var(--sn-r-sm)]"
+        style={{ border: "1px solid var(--sn-hairline)" }}
+      >
+        <SimpleTable rows={rows} columns={columns} rowKey={(row) => row.name} dense />
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+function TradeLedger({ trades }: { trades: Record<string, unknown>[] }) {
+  const columns = useMemo<GridColumn<Record<string, unknown>>[]>(
+    () => [
+      {
+        id: "exit_time",
+        header: "Kapanış",
+        width: 158,
+        pin: true,
+        value: (row) => String(row.exit_time ?? ""),
+        cell: (row) => <NumText text={dateTime(String(row.exit_time ?? ""))} size="sm" />,
+      },
+      {
+        id: "symbol",
+        header: "Sembol",
+        width: 126,
+        value: (row) => String(row.symbol ?? ""),
+        search: (row) => `${row.symbol ?? ""} ${row.exit_reason ?? ""}`,
+        cell: (row) => (
+          <span className="sn-num" style={{ fontSize: "var(--sn-t-caption)" }}>
+            {String(row.symbol ?? "—")}
+          </span>
+        ),
+      },
+      {
+        id: "exit_reason",
+        header: "Sebep",
+        width: 190,
+        hint: "Pozisyonu ne kapattı: stop, hedef, iz süren stop ya da puan düşüşü.",
+        value: (row) => String(row.exit_reason ?? ""),
+        cell: (row) => <ExitReasonPill reason={String(row.exit_reason ?? "")} />,
+      },
+      {
+        id: "pnl",
+        header: "K/Z",
+        width: 122,
+        num: true,
+        value: (row) => asNumber(row.pnl),
+        cell: (row) => (
+          <Delta value={asNumber(row.pnl)} format={(value) => money(value)} size="sm" />
+        ),
+      },
+      {
+        id: "pnl_r",
+        header: "Sonuç",
+        width: 116,
+        num: true,
+        hint: "İşlemin sonucu, o işlemde göze alınan riske bölünmüş hâli.",
+        value: (row) => asNumber(row.pnl_r),
+        cell: (row) => (
+          <Delta value={asNumber(row.pnl_r)} format={(value) => rMultiple(value)} size="sm" />
+        ),
+      },
+    ],
+    [],
+  );
+
+  return (
+    <div>
+      <div
+        className="mb-2 font-medium"
+        style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}
+      >
+        İşlem defteri
+      </div>
+      <div
+        className="overflow-hidden rounded-[var(--sn-r-sm)]"
+        style={{ border: "1px solid var(--sn-hairline)" }}
+      >
+        <DataGrid
           rows={trades}
           columns={columns}
-          rowKey={(r) => String(r.id ?? `${r.symbol}-${r.exit_time}`)}
-          searchText={(r) => `${r.symbol ?? ""} ${r.exit_reason ?? ""}`}
+          rowKey={(row) => String(row.id ?? `${row.symbol}-${row.exit_time}`)}
           searchPlaceholder="Sembol ara…"
-          defaultSort={{ key: "exit_time", dir: "desc" }}
-          pageSize={25}
-          dense
+          defaultSort={[{ id: "exit_time", desc: true }]}
+          density="compact"
+          maxHeight={420}
         />
       </div>
     </div>
   );
 }
 
-function asNumber(v: unknown): number | null {
-  return typeof v === "number" && Number.isFinite(v) ? v : null;
+function asNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }

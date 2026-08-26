@@ -14,257 +14,226 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { cx } from "@/ui";
 import { api, type Calibration } from "@/lib/api";
-import { Page, Section, StatGrid, Async } from "@/components/common/page";
-import { Stat, AmountText } from "@/components/common/amount";
-import { Explain, InfoDot, RichText, Term } from "@/components/common/explain";
-import { DecileChart, CurveChart, Legend } from "@/components/viz/charts";
-import { SimpleTable } from "@/components/data/data-table";
+import { num, pct, pctSigned, signed } from "@/lib/format";
+import { Page, GuideSection } from "@/shell/page";
 import {
-  FAMILY_COLORS,
-  FAMILY_LABELS,
-  FAMILY_TERMS,
-  num,
-  pct,
-  pctSigned,
-  signed,
-} from "@/lib/format";
+  Async,
+  Explain,
+  InfoDot,
+  Metric,
+  NumText,
+  Panel,
+  RichText,
+  Segmented,
+  Term,
+  TextMetric,
+} from "@/design";
+import { ChartLegend, CurveChart, DecileChart } from "@/design/chart";
+import { FAMILY_BY_ID } from "@/design/series";
+import { SimpleTable, type SimpleColumn } from "@/grid/simple-table";
+import { cx } from "@/design/cx";
 
 const HORIZONS = [
-  { id: "4h", label: "4 saat" },
-  { id: "24h", label: "24 saat" },
-  { id: "72h", label: "72 saat" },
+  { value: "4h", label: "4 saat" },
+  { value: "24h", label: "24 saat" },
+  { value: "72h", label: "72 saat" },
 ];
 
 const WINDOWS = [
-  { days: 90, label: "90 gün" },
-  { days: 180, label: "180 gün" },
-  { days: 365, label: "1 yıl" },
-  { days: 730, label: "2 yıl" },
+  { value: "90", label: "90 gün" },
+  { value: "180", label: "180 gün" },
+  { value: "365", label: "1 yıl" },
+  { value: "730", label: "2 yıl" },
 ];
 
 export default function CalibrationPage() {
   const [horizon, setHorizon] = useState("24h");
-  const [days, setDays] = useState(180);
+  const [days, setDays] = useState("180");
 
   const query = useQuery({
     queryKey: ["calibration", horizon, days],
-    queryFn: () => api.get<Calibration>("/calibration", { horizon, days }),
+    queryFn: () => api.get<Calibration>("/calibration", { horizon, days: Number(days) }),
     refetchInterval: 300_000,
   });
 
   return (
     <Page
       title="Kalibrasyon"
-      description="Puanlama gerçekten işe yarıyor mu? Bu sayfa cevabı ölçer ve cevap olumsuz olabilir."
-      intro={{
-        storageKey: "kalibrasyon",
-        what: "Sistem her puanı hesapladığında kaydeder, sonra o coinin ileriki getirisiyle eşleştirir. Bu sayfa o eşleşmeleri toplar ve tek bir soruyu sorar: yüksek puan alan coinler gerçekten daha iyi getiri sağladı mı?",
-        how: "**Desil grafiği** ana görseldir. Puanlar en düşükten en yükseğe on dilime bölünür ve her dilimin ortalama getirisi çizilir. Puanlama çalışıyorsa çubuklar soldan sağa artmalıdır.\n\nÇubukların üstündeki ince çizgiler **güven aralığıdır**. Aralıklar birbirini bolca kesiyorsa fark gürültü olabilir — gerçek bir sinyal değil.\n\n**Sıra korelasyonu** puan sıralamasıyla getiri sıralamasının uyumunu tek sayıya indirir. Finansal veride 0,03–0,05 bile anlamlıdır; büyük değerler genellikle bir hata işaretidir.",
-        action: "İlişki düzse ağırlıkları değiştirip yeniden denemeyin — aynı veri üzerinde arama yapmak, sonunda o veriye uyan bir kombinasyon bulmanızı sağlar ve bu bir keşif değil ezberdir. Bunun yerine hipotezi değiştirin ve kilitli döneme dokunmadan yeniden test edin.",
-        terms: ["kalibrasyon", "desil", "monotonluk", "spearman", "ic", "guven_araligi", "out_of_sample"],
-      }}
+      summary="Puanlama gerçekten işe yarıyor mu? Bu sayfa cevabı ölçer ve cevap olumsuz olabilir."
       actions={
         <div className="flex flex-wrap items-center gap-3">
-          <Selector
-            label="Ufuk"
-            hint="Puan hesaplandıktan kaç saat sonraki getiriye bakılacağı."
-            options={HORIZONS.map((h) => ({ value: h.id, label: h.label }))}
-            value={horizon}
-            onChange={setHorizon}
-          />
-          <Selector
-            label="Pencere"
-            hint="Kaç günlük gözlem kullanılacağı. Kısa pencere daha güncel ama daha gürültülüdür."
-            options={WINDOWS.map((w) => ({ value: String(w.days), label: w.label }))}
-            value={String(days)}
-            onChange={(v) => setDays(Number(v))}
-          />
+          <span
+            className="flex items-center gap-1"
+            style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}
+          >
+            Ufuk
+            <InfoDot text="Puan hesaplandıktan kaç saat sonraki getiriye bakılacağı." />
+          </span>
+          <Segmented size="sm" value={horizon} onChange={setHorizon} options={HORIZONS} />
+          <span
+            className="flex items-center gap-1"
+            style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}
+          >
+            Pencere
+            <InfoDot text="Kaç günlük gözlem kullanılacağı. Kısa pencere daha güncel ama daha gürültülüdür." />
+          </span>
+          <Segmented size="sm" value={days} onChange={setDays} options={WINDOWS} />
         </div>
+      }
+      guide={
+        <>
+          <GuideSection title="Ne gösteriyor">
+            <p>
+              Sistem her puanı hesapladığında kaydeder, sonra o coinin ileriki getirisiyle
+              eşleştirir. Bu sayfa o eşleşmeleri toplar ve tek bir soruyu sorar: yüksek puan alan
+              coinler gerçekten daha iyi getiri sağladı mı?
+            </p>
+          </GuideSection>
+          <GuideSection title="Nasıl okunur">
+            <p>
+              <strong>Desil grafiği</strong> ana görseldir. Puanlar en düşükten en yükseğe on
+              dilime bölünür ve her dilimin ortalama getirisi çizilir. Puanlama çalışıyorsa
+              çubuklar soldan sağa artmalıdır.
+            </p>
+            <p>
+              Çubukların üstündeki ince çizgiler <strong>güven aralığıdır</strong>. Aralıklar
+              birbirini bolca kesiyorsa fark gürültü olabilir — gerçek bir sinyal değil.
+            </p>
+            <p>
+              <strong>Sıra korelasyonu</strong> puan sıralamasıyla getiri sıralamasının uyumunu
+              tek sayıya indirir. Finansal veride 0,03–0,05 bile anlamlıdır; büyük değerler
+              genellikle bir hata işaretidir.
+            </p>
+          </GuideSection>
+          <GuideSection title="Ne yapabilirim">
+            <p>
+              İlişki düzse ağırlıkları değiştirip yeniden denemeyin — aynı veri üzerinde arama
+              yapmak, sonunda o veriye uyan bir kombinasyon bulmanızı sağlar ve bu bir keşif
+              değil ezberdir. Bunun yerine hipotezi değiştirin ve kilitli döneme dokunmadan
+              yeniden test edin.
+            </p>
+          </GuideSection>
+        </>
       }
     >
       <Async query={query}>
         {(cal) => (
           <>
             <Verdict cal={cal} />
-
             <GateEdge cal={cal} />
 
-            <StatGrid cols={4}>
-              <Stat
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <Metric
                 label="Gözlem sayısı"
-                hint="Puan–getiri eşleşmesi sayısı. Sistem en az 500 gözlem ve 30 gün olmadan bir sonucu anlamlı saymaz."
-                value={<AmountText text={num(cal.n, 0)} size="xl" />}
-                sub={`${num(cal.span_days, 0)} günlük aralık`}
-                tone={cal.sufficient ? "neutral" : "warn"}
+                value={cal.n}
+                format={(value) => num(value, 0)}
+                accent={cal.sufficient ? undefined : "var(--sn-warn)"}
+                sub={`${num(cal.span_days, 0)} günlük aralık · en az 500 gözlem ve 30 gün gerekir`}
               />
-              <Stat
+              <Metric
                 label="Sıra korelasyonu"
-                term="spearman"
-                value={<AmountText text={num(cal.spearman, 3)} size="xl" />}
+                value={cal.spearman}
+                format={(value) => num(value, 3)}
+                accent={
+                  cal.spearman === null
+                    ? undefined
+                    : cal.spearman > 0
+                      ? "var(--sn-up)"
+                      : "var(--sn-down)"
+                }
                 sub={
                   cal.spearman_p !== null
                     ? `şansa bağlı olma ihtimali ${num(cal.spearman_p, 3)}`
-                    : null
-                }
-                tone={
-                  cal.spearman === null ? "neutral" : cal.spearman > 0 ? "up" : "down"
+                    : undefined
                 }
               />
-              <Stat
+              <Metric
                 label="Üst − alt dilim"
-                hint="En yüksek puanlı dilimin ortalama getirisi eksi en düşüğünkü. Pozitif ve anlamlıysa sıralama işe yarıyor."
-                value={<AmountText text={pct(cal.top_minus_bottom, 2)} size="xl" />}
+                value={cal.top_minus_bottom}
+                format={(value) => pct(value, 2)}
+                accent={
+                  cal.top_minus_bottom === null
+                    ? undefined
+                    : cal.top_minus_bottom > 0
+                      ? "var(--sn-up)"
+                      : "var(--sn-down)"
+                }
                 sub={
                   cal.top_minus_bottom_p !== null
                     ? `şansa bağlı olma ihtimali ${num(cal.top_minus_bottom_p, 3)}`
-                    : null
-                }
-                tone={
-                  cal.top_minus_bottom === null
-                    ? "neutral"
-                    : cal.top_minus_bottom > 0
-                      ? "up"
-                      : "down"
+                    : undefined
                 }
               />
-              <Stat
+              <TextMetric
                 label="Monotonluk"
-                term="monotonluk"
-                value={
-                  <span className={cx("text-[20px]", cal.monotonic ? "text-up" : "text-down")}>
-                    {cal.monotonic ? "Artıyor" : "Artmıyor"}
-                  </span>
-                }
+                info={<InfoDot id="monotonluk" />}
+                value={cal.monotonic ? "Artıyor" : "Artmıyor"}
+                tone={cal.monotonic ? "var(--sn-up)" : "var(--sn-down)"}
                 sub={
                   cal.monotonic
                     ? "dilim ortalamaları sürekli yükseliyor"
                     : "dilim ortalamaları düzensiz"
                 }
-                tone={cal.monotonic ? "up" : "down"}
               />
-            </StatGrid>
+            </div>
 
-            <Section
-              title="Puan dilimi → ortalama getiri"
-              term="desil"
+            <Panel
+              title={
+                <span className="flex items-center gap-1.5">
+                  Puan dilimi → ortalama getiri
+                  <InfoDot id="desil" />
+                </span>
+              }
               description="Puanlar en düşükten en yükseğe on dilime bölünür. Puanlama çalışıyorsa çubuklar soldan sağa artmalıdır."
             >
-              <p className="mb-3 max-w-3xl text-[11.5px] leading-relaxed text-ink-3">
-                Ortalama ile medyan ayrışıyorsa o dilimi birkaç aşırı getiri taşıyor demektir.
-                En düşük dilimde bu sık görülür: ortalama pozitif çıkar ama tipik gözlem
-                zarardadır. Karar verirken medyana bakın.
+              <p
+                className="mb-3 max-w-3xl"
+                style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)", lineHeight: 1.55 }}
+              >
+                Ortalama ile medyan ayrışıyorsa o dilimi birkaç aşırı getiri taşıyor demektir. En
+                düşük dilimde bu sık görülür: ortalama pozitif çıkar ama tipik gözlem zarardadır.
+                Karar verirken medyana bakın.
               </p>
+
               <DecileChart data={cal.deciles} />
-              {/* İki ölçü var; renk disiplini açıklama şeridi zorunlu kılıyor. */}
-              <Legend
-                className="mt-2"
-                items={[
-                  { label: "Ortalama getiri (çubuk)", color: "var(--ink3)" },
-                  { label: "Medyan getiri (kesik çizgi)", color: "var(--ink2)" },
-                ]}
-              />
+
+              {/* İki ölçü var; renk disiplini açıklama şeridini zorunlu kılıyor. */}
+              <div className="mt-2">
+                <ChartLegend
+                  items={[
+                    { label: "Ortalama getiri (çubuk)", color: "var(--sn-ink-3)" },
+                    { label: "Medyan getiri (kesik çizgi)", color: "var(--sn-ink-2)", dashed: true },
+                  ]}
+                />
+              </div>
 
               <div className="mt-4">
-                <SimpleTable
-                  dense
-                  head={
-                    <>
-                      <th>Dilim</th>
-                      <th className="col-num">Ortalama puan</th>
-                      <th className="col-num">Gözlem</th>
-                      <th className="col-num">Ortalama getiri</th>
-                      <th className="col-num">Medyan getiri</th>
-                      <th className="col-num">Güven aralığı</th>
-                      <th>Gürültüden ayrılıyor mu</th>
-                    </>
-                  }
-                >
-                  {cal.deciles.map((d) => {
-                    /* Aralık sıfırı içermiyorsa fark gürültüden ayrışmış demektir. */
-                    const separated = d.ci_low > 0 || d.ci_high < 0;
-                    return (
-                      <tr key={d.decile}>
-                        <td className="num">{d.decile}</td>
-                        <td className="col-num">{num(d.mean_score, 1)}</td>
-                        <td className="col-num">{num(d.count, 0)}</td>
-                        <td className="col-num">
-                          <span className={d.mean_return >= 0 ? "text-up" : "text-down"}>
-                            {pct(d.mean_return, 2)}
-                          </span>
-                        </td>
-                        <td className="col-num">
-                          <span className={d.median_return >= 0 ? "text-up" : "text-down"}>
-                            {pct(d.median_return, 2)}
-                          </span>
-                        </td>
-                        <td className="col-num text-ink-2">
-                          {pct(d.ci_low, 2)} … {pct(d.ci_high, 2)}
-                        </td>
-                        <td
-                          className={cx("text-[12px]", separated ? "text-ink" : "text-ink-3")}
-                        >
-                          {separated ? "Evet" : "Hayır — sıfırı içeriyor"}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </SimpleTable>
+                <DecileTable cal={cal} />
               </div>
-            </Section>
+            </Panel>
 
             <div className="grid gap-4 lg:grid-cols-2">
-              <Section
-                title="Aile bazında öngörü gücü"
-                term="ic"
+              <Panel
+                title={
+                  <span className="flex items-center gap-1.5">
+                    Aile bazında öngörü gücü
+                    <InfoDot id="ic" />
+                  </span>
+                }
                 description="Her ailenin ileri getiriyle ilişkisi. Uzun süre sıfır civarında gezen bir ailenin ağırlığı sorgulanmalıdır."
               >
-                <div className="space-y-2.5">
-                  {Object.entries(cal.family_ic).map(([family, ic]) => {
-                    /* IC değerleri küçüktür; ±0,1 bandı görsel ölçek olarak yeterli. */
-                    const scale = 0.1;
-                    const width = ic === null ? 0 : Math.min(100, (Math.abs(ic) / scale) * 100);
-                    return (
-                      <div key={family} className="flex items-center gap-2.5">
-                        <span className="w-28 shrink-0">
-                          <Term
-                            id={FAMILY_TERMS[family] ?? ""}
-                            className="text-[12.5px] text-ink-2"
-                          >
-                            {FAMILY_LABELS[family] ?? family}
-                          </Term>
-                        </span>
-                        {/* Sıfır ortada; sola negatif, sağa pozitif */}
-                        <div className="relative h-2 flex-1 rounded-full bg-inset">
-                          <span
-                            aria-hidden
-                            className="absolute top-0 bottom-0 left-1/2 w-px bg-line-strong"
-                          />
-                          {ic !== null && (
-                            <span
-                              className={cx(
-                                "absolute top-0 h-full rounded-full",
-                                ic >= 0 ? "left-1/2 bg-up" : "right-1/2 bg-down",
-                              )}
-                              style={{ width: `${width / 2}%` }}
-                            />
-                          )}
-                        </div>
-                        <span className="num w-14 text-right text-[12px] text-ink">
-                          {num(ic, 3)}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-                <p className="mt-3 text-[11.5px] leading-relaxed text-ink-3">
+                <FamilyIc familyIc={cal.family_ic} />
+                <p
+                  className="mt-3"
+                  style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)", lineHeight: 1.55 }}
+                >
                   Ölçek ±0,10. Finansal veride 0,03–0,05 bandı bile anlamlı sayılır; belirgin
                   biçimde büyük değerler genellikle bir hesap hatasını gösterir.
                 </p>
-              </Section>
+              </Panel>
 
-              <Section
+              <Panel
                 title="Sıra korelasyonunun seyri"
                 description="30 günlük kayan pencerede puan–getiri ilişkisi. Sürekli pozitif kalması, ilişkinin tek bir döneme bağlı olmadığını gösterir."
               >
@@ -273,33 +242,36 @@ export default function CalibrationPage() {
                   series={[
                     {
                       label: "Sıra korelasyonu",
-                      color: "var(--series-1)",
+                      color: "var(--sn-series-1)",
                       points: (cal.rolling_spearman ?? [])
-                        .filter((p) => p.value !== null)
-                        .map((p) => ({ at: p.at, value: p.value as number })),
+                        .filter((point) => point.value !== null)
+                        .map((point) => ({ at: point.at, value: point.value as number })),
                     },
                   ]}
-                  valueFormat={(v) => num(v, 3)}
+                  valueFormat={(value) => num(value, 3)}
                   emptyText="Kayan pencere için yeterli gözlem yok."
                 />
-                <p className="mt-2 text-[11.5px] leading-relaxed text-ink-3">
+                <p
+                  className="mt-2"
+                  style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)", lineHeight: 1.55 }}
+                >
                   Sıfır çizgisinin üstünde geçirdiği süre, altında geçirdiğinden belirgin biçimde
                   fazla olmalıdır. Sürekli sıfır etrafında salınıyorsa puanlama bilgi taşımıyor.
                 </p>
-              </Section>
+              </Panel>
             </div>
 
             <IcSeries cal={cal} />
 
-            <Section title="Bu sayfa neden var">
-              <div className="grid gap-5 md:grid-cols-2">
-                <Explain id="kalibrasyon" showTitle={false} />
-                <div className="space-y-4">
-                  <Explain id="desil" showTitle />
-                  <Explain id="out_of_sample" showTitle />
+            <Panel title="Bu sayfa neden var">
+              <div className="grid gap-4 md:grid-cols-2">
+                <Explain id="kalibrasyon" />
+                <div className="flex flex-col gap-4">
+                  <Explain id="desil" />
+                  <Explain id="out_of_sample" />
                 </div>
               </div>
-            </Section>
+            </Panel>
           </>
         )}
       </Async>
@@ -314,22 +286,19 @@ export default function CalibrationPage() {
 /**
  * Sonucu tek cümleyle, büyük puntoyla söyler.
  *
- * Kullanıcı grafikleri yorumlamak zorunda kalmamalı: sistemin kendi
- * hükmü en üstte durur.
+ * Kullanıcı grafikleri yorumlamak zorunda kalmamalı: sistemin kendi hükmü
+ * en üstte durur.
  */
 function Verdict({ cal }: { cal: Calibration }) {
   const insufficient = !cal.sufficient;
   const positive = cal.monotonic && (cal.spearman ?? 0) > 0;
-  /*
-   * Dağılım geneli düz olsa bile sistemin **aldığı** bölge ayrışıyor olabilir.
-   * Başlık yalnızca Spearman'a bakınca, gövdedeki kapı cümlesiyle çelişen bir
-   * hüküm veriyordu: "öngörü gücü gösteremiyor" yazarken hemen altında
-   * "kapının üstü havuzu anlamlı biçimde geçiyor" diyordu.
-   */
+
+  /* Dağılım geneli düz olsa bile sistemin ALDIĞI bölge ayrışıyor olabilir.
+     Başlık yalnızca Spearman'a bakınca gövdedeki kapı cümlesiyle çelişen bir
+     hüküm veriyordu: "öngörü gücü gösteremiyor" yazarken hemen altında
+     "kapının üstü havuzu anlamlı biçimde geçiyor" diyordu. */
   const gateWorks =
-    cal.gate_n >= 20 &&
-    (cal.gate_edge ?? 0) > 0 &&
-    Math.abs(cal.gate_edge_t ?? 0) >= 2;
+    cal.gate_n >= 20 && (cal.gate_edge ?? 0) > 0 && Math.abs(cal.gate_edge_t ?? 0) >= 2;
 
   const tone = insufficient ? "warn" : positive || gateWorks ? "up" : "down";
   const title = insufficient
@@ -340,22 +309,36 @@ function Verdict({ cal }: { cal: Calibration }) {
         ? "Dağılım geneli düz, ama sistemin aldığı bölge ayrışıyor"
         : "Puanlama öngörü gücü gösteremiyor";
 
+  const color =
+    tone === "up" ? "var(--sn-up)" : tone === "down" ? "var(--sn-down)" : "var(--sn-warn)";
+  const background =
+    tone === "up" ? "var(--sn-up-bg)" : tone === "down" ? "var(--sn-down-bg)" : "var(--sn-warn-bg)";
+
   return (
     <div
-      className={cx(
-        "rounded-xl border px-5 py-4",
-        tone === "up" && "border-up/30 bg-up-soft",
-        tone === "down" && "border-down/30 bg-down-soft",
-        tone === "warn" && "border-warn/30 bg-warn-soft",
-      )}
+      className="rounded-[var(--sn-r-md)] px-5 py-4"
+      style={{ background, border: `1px solid color-mix(in oklab, ${color} 30%, transparent)` }}
     >
-      <h2 className="text-[16px] font-semibold text-ink">{title}</h2>
-      <div className="mt-1.5 max-w-3xl text-[13px] leading-relaxed text-ink-2">
+      <h2 className="font-semibold" style={{ fontSize: "var(--sn-t-title)", color: "var(--sn-ink)" }}>
+        {title}
+      </h2>
+      <div
+        className="mt-1.5 max-w-3xl"
+        style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink-2)", lineHeight: 1.55 }}
+      >
         <RichText text={cal.verdict || fallbackVerdict(cal)} />
       </div>
       {!insufficient && !positive && !gateWorks && (
-        <p className="mt-2.5 max-w-3xl border-l-2 border-down pl-3 text-[12.5px] leading-relaxed text-ink-2">
-          <strong className="font-medium text-ink">Ne yapmamalı: </strong>
+        <p
+          className="mt-2.5 max-w-3xl pl-3"
+          style={{
+            borderLeft: "2px solid var(--sn-down)",
+            fontSize: "var(--sn-t-caption)",
+            color: "var(--sn-ink-2)",
+            lineHeight: 1.55,
+          }}
+        >
+          <strong style={{ color: "var(--sn-ink)", fontWeight: 550 }}>Ne yapmamalı: </strong>
           ağırlıkları değiştirip aynı veriyle yeniden denemek. Bu, sonunda o veriye uyan bir
           kombinasyon bulmanızı sağlar ve bulduğunuz şey bir keşif değil ezberdir. Hipotezi
           değiştirin, kilitli döneme dokunmayın ve kaç deneme yaptığınızı kaydedin.
@@ -375,17 +358,137 @@ function fallbackVerdict(cal: Calibration): string {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Kapının üstü — sistemin fiilen işlem yaptığı bölge                 */
+/*  Desil tablosu                                                      */
+/* ------------------------------------------------------------------ */
+
+function DecileTable({ cal }: { cal: Calibration }) {
+  type Row = Calibration["deciles"][number];
+
+  const columns: SimpleColumn<Row>[] = [
+    { header: "Dilim", num: true, width: "70px", cell: (row) => <NumText text={String(row.decile)} size="sm" /> },
+    { header: "Ortalama puan", num: true, cell: (row) => <NumText text={num(row.mean_score, 1)} size="sm" /> },
+    { header: "Gözlem", num: true, cell: (row) => <NumText text={num(row.count, 0)} size="sm" /> },
+    {
+      header: "Ortalama getiri",
+      num: true,
+      cell: (row) => (
+        <NumText
+          text={pct(row.mean_return, 2)}
+          size="sm"
+          tone={row.mean_return >= 0 ? "var(--sn-up)" : "var(--sn-down)"}
+        />
+      ),
+    },
+    {
+      header: "Medyan getiri",
+      num: true,
+      hint: "Ortalama birkaç aşırı getiriyle sürüklenir; medyan tipik gözlemi gösterir.",
+      cell: (row) => (
+        <NumText
+          text={pct(row.median_return, 2)}
+          size="sm"
+          tone={row.median_return >= 0 ? "var(--sn-up)" : "var(--sn-down)"}
+        />
+      ),
+    },
+    {
+      header: "Güven aralığı",
+      num: true,
+      term: "guven_araligi",
+      cell: (row) => (
+        <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>
+          {pct(row.ci_low, 2)} … {pct(row.ci_high, 2)}
+        </span>
+      ),
+    },
+    {
+      header: "Gürültüden ayrılıyor mu",
+      hint: "Güven aralığı sıfırı içermiyorsa fark gürültüden ayrışmış demektir.",
+      cell: (row) => {
+        const separated = row.ci_low > 0 || row.ci_high < 0;
+        return (
+          <span
+            style={{
+              fontSize: "var(--sn-t-caption)",
+              color: separated ? "var(--sn-ink)" : "var(--sn-ink-3)",
+            }}
+          >
+            {separated ? "Evet" : "Hayır — sıfırı içeriyor"}
+          </span>
+        );
+      },
+    },
+  ];
+
+  return (
+    <div className="sn-scroll overflow-x-auto">
+      <SimpleTable rows={cal.deciles} columns={columns} rowKey={(row) => row.decile} dense />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Aile IC çubukları                                                  */
 /* ------------------------------------------------------------------ */
 
 /**
- * Spearman ve üst−alt dilim farkı **tüm dağılıma** bakar. Sistem ise yalnızca
- * giriş kapısının üstünü alır; alt dilimleri hiç satın almaz. Bu iki ölçüm
- * farklı şeyler söyleyebilir ve söylüyor da.
+ * Sıfır ortada; sola negatif, sağa pozitif.
  *
- * Arka uç bunu bar bazında hesaplıyordu ama panel yalnızca karar cümlesinin
- * içinde metin olarak gösteriyordu — sayılar hiçbir yerde yoktu. Sistemin tek
- * kullandığı bölgenin ölçüsü, en görünür yerde durmalı.
+ * Ölçek ±0,10'a sabit: her ailenin kendi ölçeğine göre çizilmesi, 0,002'lik
+ * bir katsayıyı 0,08'lik bir katsayı kadar uzun gösterirdi.
+ */
+function FamilyIc({ familyIc }: { familyIc: Record<string, number | null> }) {
+  const SCALE = 0.1;
+
+  return (
+    <div className="flex flex-col gap-2.5">
+      {Object.entries(familyIc).map(([id, ic]) => {
+        const family = FAMILY_BY_ID.get(id);
+        const width = ic === null ? 0 : Math.min(100, (Math.abs(ic) / SCALE) * 100);
+        return (
+          <div key={id} className="flex items-center gap-2.5">
+            <span className="w-28 shrink-0">
+              <Term id={`aile_${id}`}>
+                <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>
+                  {family?.label ?? id}
+                </span>
+              </Term>
+            </span>
+            <div
+              className="relative h-2 flex-1 rounded-full"
+              style={{ background: "var(--sn-sunken)" }}
+            >
+              <span
+                aria-hidden
+                className="absolute top-0 bottom-0 left-1/2 w-px"
+                style={{ background: "var(--sn-border-strong)" }}
+              />
+              {ic !== null && (
+                <span
+                  className={cx("absolute top-0 h-full rounded-full", ic >= 0 ? "left-1/2" : "right-1/2")}
+                  style={{
+                    width: `${width / 2}%`,
+                    background: ic >= 0 ? "var(--sn-up)" : "var(--sn-down)",
+                  }}
+                />
+              )}
+            </div>
+            <NumText text={num(ic, 3)} size="sm" className="w-14 text-right" />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Kapının üstü                                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Spearman ve üst−alt dilim farkı **tüm dağılıma** bakar. Sistem ise
+ * yalnızca giriş kapısının üstünü alır; alt dilimleri hiç satın almaz. Bu
+ * iki ölçüm farklı şeyler söyleyebilir ve söylüyor da.
  */
 function GateEdge({ cal }: { cal: Calibration }) {
   if (cal.gate === null || cal.gate_n < 20 || cal.gate_edge === null) return null;
@@ -395,123 +498,87 @@ function GateEdge({ cal }: { cal: Calibration }) {
   const strong = t !== null && Math.abs(t) >= 2;
 
   return (
-    <Section
+    <Panel
       title="Kapının üstü — sistemin fiilen işlem yaptığı bölge"
       description={`Puanı ${num(cal.gate, 0)} ve üstünde olanların ileri getirisi, aynı barlardaki havuz ortalamasıyla karşılaştırılır. Karşılaştırma bar bazındadır: dönem ortalamalarını kıyaslamak, sinyalin sık çıktığı günler piyasanın da iyi olduğu günlerse sahte kenar üretir.`}
     >
-      <StatGrid cols={4}>
-        <Stat
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Metric
           label="Kapının üstü"
-          hint="Puanı giriş eşiğini geçen gözlemlerin ortalama ileri getirisi."
-          value={<AmountText text={pct(cal.gate_return, 2)} size="xl" />}
+          value={cal.gate_return}
+          format={(value) => pct(value, 2)}
+          accent={(cal.gate_return ?? 0) >= 0 ? "var(--sn-up)" : "var(--sn-down)"}
           sub={`${num(cal.gate_n, 0)} bar`}
-          tone={(cal.gate_return ?? 0) >= 0 ? "up" : "down"}
         />
-        <Stat
+        <Metric
           label="Havuz"
-          hint="Aynı barlardaki tüm havuzun ortalama ileri getirisi — karşılaştırma tabanı."
-          value={<AmountText text={pct(cal.pool_return, 2)} size="xl" />}
-          sub="aynı barlar"
-          tone={(cal.pool_return ?? 0) >= 0 ? "up" : "down"}
+          value={cal.pool_return}
+          format={(value) => pct(value, 2)}
+          accent={(cal.pool_return ?? 0) >= 0 ? "var(--sn-up)" : "var(--sn-down)"}
+          sub="aynı barlar — karşılaştırma tabanı"
         />
-        <Stat
+        <Metric
           label="Fark"
-          hint="Kapının üstü eksi havuz. Sistemin seçiciliğinin tek ölçüsü budur."
-          value={<AmountText text={pctSigned(edge, 2)} size="xl" />}
-          sub={t !== null ? `t = ${signed(t, 1)}` : null}
-          tone={edge > 0 ? "up" : "down"}
+          value={edge}
+          format={(value) => pctSigned(value, 2)}
+          accent={edge > 0 ? "var(--sn-up)" : "var(--sn-down)"}
+          sub={t !== null ? `t = ${signed(t, 1)}` : "sistemin seçiciliğinin tek ölçüsü"}
         />
-        <Stat
+        <TextMetric
           label="Gürültüden ayrılıyor mu"
-          hint="|t| ≥ 2 kabaca %95 güven demektir. Altındaysa fark tesadüf olabilir."
-          value={
-            <span className={cx("text-[20px]", strong ? "text-ink" : "text-ink-3")}>
-              {strong ? "Evet" : "Hayır"}
-            </span>
-          }
+          info={<InfoDot text="|t| ≥ 2 kabaca %95 güven demektir. Altındaysa fark tesadüf olabilir." />}
+          value={strong ? "Evet" : "Hayır"}
+          tone={strong ? "var(--sn-ink)" : "var(--sn-ink-3)"}
           sub={strong ? "|t| ≥ 2" : "|t| < 2 — tesadüf olabilir"}
-          tone={strong ? (edge > 0 ? "up" : "down") : "neutral"}
         />
-      </StatGrid>
-      <p className="mt-3 max-w-3xl border-l-2 border-line-strong pl-3 text-[11.5px] leading-relaxed text-ink-3">
-        <strong className="font-medium text-ink-2">Dikkat: </strong>
+      </div>
+
+      <p
+        className="mt-3 max-w-3xl pl-3"
+        style={{
+          borderLeft: "2px solid var(--sn-border-strong)",
+          fontSize: "var(--sn-t-caption)",
+          color: "var(--sn-ink-3)",
+          lineHeight: 1.55,
+        }}
+      >
+        <strong style={{ color: "var(--sn-ink-2)", fontWeight: 550 }}>Dikkat: </strong>
         bu ölçüm, eşiğin seçildiği veriyle aynı veri üzerinde yapılıyor. Kapının üstü iyi
-        görünüyorsa bu, kenarın gerçek olduğunun değil, <em>henüz çürütülmediğinin</em>
+        görünüyorsa bu, kenarın gerçek olduğunun değil, <em>henüz çürütülmediğinin</em>{" "}
         kanıtıdır. Eşiği bu sayıya bakarak oynatmak, ölçümü tamamen anlamsız kılar.
       </p>
-    </Section>
+    </Panel>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Aile IC zaman serisi                                               */
 /* ------------------------------------------------------------------ */
 
 function IcSeries({ cal }: { cal: Calibration }) {
-  const families = Array.from(new Set((cal.ic_series ?? []).map((p) => p.family)));
-  if (families.length === 0) return null;
+  const ids = Array.from(new Set((cal.ic_series ?? []).map((point) => point.family)));
+  if (ids.length === 0) return null;
 
-  const series = families.map((f) => ({
-    label: FAMILY_LABELS[f] ?? f,
-    color: FAMILY_COLORS[f] ?? "var(--ink3)",
+  const series = ids.map((id) => ({
+    label: FAMILY_BY_ID.get(id)?.label ?? id,
+    color: FAMILY_BY_ID.get(id)?.color ?? "var(--sn-ink-3)",
     points: (cal.ic_series ?? [])
-      .filter((p) => p.family === f && p.ic !== null)
-      .map((p) => ({ at: p.at, value: p.ic as number })),
+      .filter((point) => point.family === id && point.ic !== null)
+      .map((point) => ({ at: point.at, value: point.ic as number })),
   }));
 
   return (
-    <Section
-      title="Aile öngörü gücünün zaman içindeki seyri"
-      term="ic"
+    <Panel
+      title={
+        <span className="flex items-center gap-1.5">
+          Aile öngörü gücünün zaman içindeki seyri
+          <InfoDot id="ic" />
+        </span>
+      }
       description="Bir ailenin katsayısı uzun süre sıfır civarında geziyorsa, o aileye verilen ağırlık puana katkı veriyor ama öngörü katmıyor demektir."
     >
-      <CurveChart height={240} series={series} valueFormat={(v) => num(v, 3)} />
-      <Legend
-        className="mt-2"
-        items={series.map((s) => ({ label: s.label, color: s.color }))}
-      />
-    </Section>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-
-function Selector({
-  label,
-  hint,
-  options,
-  value,
-  onChange,
-}: {
-  label: string;
-  hint?: string;
-  options: { value: string; label: string }[];
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div className="flex items-center gap-1.5">
-      <span className="flex items-center gap-1 text-[12px] text-ink-2">
-        {label}
-        {hint && <InfoDot text={hint} align="start" />}
-      </span>
-      <div className="flex rounded-lg border border-line p-0.5">
-        {options.map((o) => (
-          <button
-            key={o.value}
-            type="button"
-            onClick={() => onChange(o.value)}
-            className={cx(
-              "rounded-md px-2 py-0.5 text-[12px] transition-colors",
-              value === o.value
-                ? "bg-brand-soft font-medium text-brand"
-                : "text-ink-2 hover:text-ink",
-            )}
-          >
-            {o.label}
-          </button>
-        ))}
+      <CurveChart height={240} series={series} valueFormat={(value) => num(value, 3)} />
+      <div className="mt-2">
+        <ChartLegend items={series.map((one) => ({ label: one.label, color: one.color }))} />
       </div>
-    </div>
+    </Panel>
   );
 }

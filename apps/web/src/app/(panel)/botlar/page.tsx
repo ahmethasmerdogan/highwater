@@ -9,18 +9,28 @@
  */
 
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Modal } from "@/ui";
 import { api, type Bot, type Strategy } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { toast } from "@/lib/toast";
-import { Page, Section, StatGrid, Async } from "@/components/common/page";
-import { Stat, AmountText, Signed } from "@/components/common/amount";
-import { InfoDot } from "@/components/common/explain";
-import { BotStatePill } from "@/components/common/pills";
-import { DataTable, type Column } from "@/components/data/data-table";
-import { money, pctSigned, relative } from "@/lib/format";
+import { money, num, pctSigned, relative } from "@/lib/format";
+import { Page, GuideSection } from "@/shell/page";
+import {
+  Async,
+  BotStatePill,
+  Button,
+  Delta,
+  FormField,
+  Metric,
+  Modal,
+  NumText,
+  Panel,
+  Select,
+  TextInput,
+} from "@/design";
+import { DataGrid } from "@/grid/data-grid";
+import type { GridColumn } from "@/grid/types";
 
 export default function BotsPage() {
   const { can } = useAuth();
@@ -34,243 +44,281 @@ export default function BotsPage() {
   });
 
   const action = useMutation({
-    mutationFn: ({ id, verb }: { id: number; verb: string }) =>
-      api.post(`/bots/${id}/${verb}`),
-    onSuccess: (_d, v) => {
+    mutationFn: ({ id, verb }: { id: number; verb: string }) => api.post(`/bots/${id}/${verb}`),
+    onSuccess: (_data, variables) => {
       const label =
-        v.verb === "start"
+        variables.verb === "start"
           ? "başlatıldı"
-          : v.verb === "pause"
+          : variables.verb === "pause"
             ? "duraklatıldı"
-            : v.verb === "stop"
+            : variables.verb === "stop"
               ? "durduruldu"
               : "kapatıldı";
       toast.success(`Bot ${label}`);
       void qc.invalidateQueries({ queryKey: ["bots"] });
     },
-    onError: (e: Error) => toast.error("İşlem yapılamadı", e.message),
+    onError: (error: Error) => toast.error("İşlem yapılamadı", error.message),
   });
 
   const bots = query.data ?? [];
-  const running = bots.filter((b) => b.state === "PAPER_RUNNING").length;
-  const totalEquity = bots.reduce((s, b) => s + (b.equity ?? 0), 0);
-  const totalCapital = bots.reduce((s, b) => s + b.capital, 0);
-  const openPositions = bots.reduce((s, b) => s + b.open_positions, 0);
+  const running = bots.filter((bot) => bot.state === "PAPER_RUNNING").length;
+  const totalEquity = bots.reduce((sum, bot) => sum + (bot.equity ?? 0), 0);
+  const totalCapital = bots.reduce((sum, bot) => sum + bot.capital, 0);
+  const openPositions = bots.reduce((sum, bot) => sum + bot.open_positions, 0);
+  const totalReturn = totalCapital > 0 ? totalEquity / totalCapital - 1 : 0;
 
-  const columns: Column<Bot>[] = [
-    {
-      key: "name",
-      header: "Bot",
-      sort: (r) => r.name,
-      cell: (r) => (
-        <Link href={`/botlar/${r.id}`} className="text-[13px] text-ink hover:text-brand">
-          {r.name}
-        </Link>
-      ),
-    },
-    {
-      key: "state",
-      header: "Durum",
-      width: "150px",
-      term: "bot_durum",
-      sort: (r) => r.state,
-      cell: (r) => (
-        <span className="flex flex-col gap-0.5">
-          <BotStatePill state={r.state} />
-          {r.halt_reason && (
-            <span className="text-[11px] text-warn">{r.halt_reason}</span>
-          )}
-        </span>
-      ),
-    },
-    {
-      key: "timeframe",
-      header: "Bar",
-      width: "80px",
-      term: "karar_bari",
-      sort: (r) => r.timeframe,
-      cell: (r) => <span className="font-mono text-[12px] text-ink-2">{r.timeframe}</span>,
-    },
-    {
-      key: "equity",
-      header: "Özsermaye",
-      num: true,
-      hint: "Nakit artı açık pozisyonların güncel karşılığı.",
-      sort: (r) => r.equity,
-      cell: (r) => <AmountText text={money(r.equity)} size="sm" />,
-    },
-    {
-      key: "return",
-      header: "Getiri",
-      num: true,
-      hint: "Başlangıç sermayesine göre toplam değişim.",
-      sort: (r) => (r.equity !== null ? r.equity / r.capital - 1 : null),
-      cell: (r) => {
-        if (r.equity === null) return <span className="text-ink-3">—</span>;
-        const ret = r.capital > 0 ? r.equity / r.capital - 1 : 0;
-        return <Signed value={ret} text={pctSigned(ret)} size="sm" />;
-      },
-    },
-    {
-      key: "cash",
-      header: "Nakit",
-      num: true,
-      defaultHidden: true,
-      hint: "Pozisyona girmemiş, elde duran tutar.",
-      sort: (r) => r.cash,
-      cell: (r) => <AmountText text={money(r.cash)} size="sm" />,
-    },
-    {
-      key: "open_positions",
-      header: "Açık",
-      num: true,
-      hint: "Şu an piyasada duran pozisyon sayısı.",
-      sort: (r) => r.open_positions,
-      cell: (r) => r.open_positions,
-    },
-    {
-      key: "heartbeat",
-      header: "Yaşam sinyali",
-      width: "130px",
-      term: "heartbeat",
-      sort: (r) => (r.last_heartbeat_at ? new Date(r.last_heartbeat_at).getTime() : null),
-      cell: (r) => (
-        <span className="text-[12px] text-ink-2">{relative(r.last_heartbeat_at)}</span>
-      ),
-    },
-    {
-      key: "actions",
-      header: "",
-      width: "190px",
-      cell: (r) =>
-        can("TRADER") ? (
-          <span
-            className="flex items-center gap-1"
-            // Satır tıklaması detay açıyor; düğmeler onu tetiklemesin.
-            onClick={(e) => e.stopPropagation()}
+  const columns = useMemo<GridColumn<Bot>[]>(
+    () => [
+      {
+        id: "name",
+        header: "Bot",
+        width: 230,
+        pin: true,
+        value: (row) => row.name,
+        search: (row) => `${row.name} ${row.state} ${row.timeframe}`,
+        cell: (row) => (
+          <Link
+            href={`/botlar/${row.id}`}
+            style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}
+            className="hover:underline"
           >
-            {r.state === "PAPER_RUNNING" ? (
-              <>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  shape="rect"
-                  onClick={() => action.mutate({ id: r.id, verb: "pause" })}
-                >
-                  Duraklat
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  shape="rect"
-                  onClick={() => action.mutate({ id: r.id, verb: "stop" })}
-                >
-                  Durdur
-                </Button>
-              </>
-            ) : (
-              <Button
-                size="sm"
-                variant="outline"
-                shape="rect"
-                onClick={() => action.mutate({ id: r.id, verb: "start" })}
-              >
-                Başlat
-              </Button>
+            {row.name}
+          </Link>
+        ),
+      },
+      {
+        id: "state",
+        header: "Durum",
+        width: 170,
+        hint: "Çalışıyor: karar alır ve pozisyon açabilir. Duraklatıldı: açık pozisyonları yönetir, yeni giriş yapmaz. Kısıtlı: bir devre kesici girişleri kapatmış.",
+        value: (row) => row.state,
+        cell: (row) => (
+          <span className="flex flex-col gap-0.5">
+            <BotStatePill state={row.state} />
+            {row.halt_reason && (
+              <span style={{ fontSize: "var(--sn-t-micro)", color: "var(--sn-warn)" }}>
+                {row.halt_reason}
+              </span>
             )}
           </span>
-        ) : null,
-    },
-  ];
+        ),
+      },
+      {
+        id: "timeframe",
+        header: "Bar",
+        width: 82,
+        hint: "Karar barı. Bu bar kapanmadan o barın verisi karara giremez.",
+        value: (row) => row.timeframe,
+        cell: (row) => (
+          <span className="sn-num" style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>
+            {row.timeframe}
+          </span>
+        ),
+      },
+      {
+        id: "equity",
+        header: "Özsermaye",
+        width: 126,
+        num: true,
+        hint: "Nakit artı açık pozisyonların güncel karşılığı.",
+        value: (row) => row.equity,
+        cell: (row) => <NumText text={money(row.equity)} size="sm" />,
+        footer: (list) => (
+          <NumText text={money(list.reduce((sum, row) => sum + (row.equity ?? 0), 0))} size="sm" />
+        ),
+      },
+      {
+        id: "return",
+        header: "Getiri",
+        width: 112,
+        num: true,
+        hint: "Başlangıç sermayesine göre toplam değişim.",
+        value: (row) => (row.equity !== null ? row.equity / row.capital - 1 : null),
+        cell: (row) => {
+          if (row.equity === null) return <NumText text="—" size="sm" />;
+          const ret = row.capital > 0 ? row.equity / row.capital - 1 : 0;
+          return <Delta value={ret} format={(value) => pctSigned(value)} size="sm" />;
+        },
+      },
+      {
+        id: "cash",
+        header: "Nakit",
+        width: 120,
+        num: true,
+        hidden: true,
+        hint: "Pozisyona girmemiş, elde duran tutar.",
+        value: (row) => row.cash,
+        cell: (row) => <NumText text={money(row.cash)} size="sm" />,
+      },
+      {
+        id: "open_positions",
+        header: "Açık",
+        width: 86,
+        num: true,
+        hint: "Şu an piyasada duran pozisyon sayısı.",
+        value: (row) => row.open_positions,
+        cell: (row) => <NumText text={String(row.open_positions)} size="sm" />,
+      },
+      {
+        id: "heartbeat",
+        header: "Yaşam sinyali",
+        width: 134,
+        hint: "Botun son kez haber verdiği an. Uzun süre sessiz kalan bir bot takılmış olabilir.",
+        value: (row) => (row.last_heartbeat_at ? new Date(row.last_heartbeat_at).getTime() : null),
+        cell: (row) => (
+          <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>
+            {relative(row.last_heartbeat_at)}
+          </span>
+        ),
+      },
+      {
+        id: "actions",
+        header: "",
+        width: 186,
+        cell: (row) =>
+          can("TRADER") ? (
+            /* Satır tıklaması detaya gider; düğmeler onu tetiklemesin. */
+            <span className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
+              {row.state === "PAPER_RUNNING" ? (
+                <>
+                  {/* Sessiz (`quiet`) değil: satır içinde zeminsiz bir düğme
+                      metin sütunundan ayırt edilmiyor ve tıklanabilir
+                      olduğu anlaşılmıyordu. */}
+                  <Button
+                    size="sm"
+                    variant="neutral"
+                    onClick={() => action.mutate({ id: row.id, verb: "pause" })}
+                  >
+                    Duraklat
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="neutral"
+                    onClick={() => action.mutate({ id: row.id, verb: "stop" })}
+                  >
+                    Durdur
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="neutral"
+                  onClick={() => action.mutate({ id: row.id, verb: "start" })}
+                >
+                  Başlat
+                </Button>
+              )}
+            </span>
+          ) : null,
+      },
+    ],
+    [can, action],
+  );
 
   return (
     <Page
       title="Botlar"
-      description="Her bot bir strateji sürümünü kendi sermayesi ve zaman dilimiyle bağımsız çalıştırır."
-      intro={{
-        storageKey: "botlar",
-        what: "Bir bot, seçilen strateji sürümünü belirli bir sermaye ve karar barıyla çalıştıran bağımsız bir süreçtir. Kendi nakdini, pozisyonlarını ve risk sayaçlarını taşır.\n\nBirden fazla bot aynı anda farklı ayarlarla çalışabilir — bu, ayarları karşılaştırmanın en dürüst yoludur çünkü ikisi de aynı piyasayı aynı anda görür.",
-        how: "**Bot arayüzden bağımsızdır.** Paneli kapatmak, tarayıcıyı kapatmak ya da bilgisayarı kapatmak botu durdurmaz; bot sunucuda çalışır.\n\n**Duraklat** açık pozisyonları yönetmeye devam eder ama yeni giriş yapmaz. **Durdur** botu tamamen keser. **Kısıtlı** durumu bir devre kesicinin girişleri kapattığı anlamına gelir — bot çalışıyordur ama alım yapmaz.",
-        action: "Bir botun neden karar aldığını görmek için adına tıklayın; olay kayıtları, işlemleri ve performansı orada. Sistem genelindeki kayıtlar için **Loglar** sayfası.",
-        terms: ["bot", "bot_durum", "strateji_surum", "heartbeat", "devre_kesici", "kagit_uzeri"],
-      }}
+      summary="Her bot bir strateji sürümünü kendi sermayesi ve zaman dilimiyle bağımsız çalıştırır."
       actions={
-        can("TRADER") && (
-          <Button size="sm" variant="amber" shape="rect" onClick={() => setCreateOpen(true)}>
+        can("TRADER") ? (
+          <Button size="sm" variant="primary" onClick={() => setCreateOpen(true)}>
             Yeni bot
           </Button>
-        )
+        ) : undefined
+      }
+      guide={
+        <>
+          <GuideSection title="Ne gösteriyor">
+            <p>
+              Bir bot, seçilen strateji sürümünü belirli bir sermaye ve karar barıyla çalıştıran
+              bağımsız bir süreçtir. Kendi nakdini, pozisyonlarını ve risk sayaçlarını taşır.
+            </p>
+            <p>
+              Birden fazla bot aynı anda farklı ayarlarla çalışabilir — bu, ayarları
+              karşılaştırmanın en dürüst yoludur çünkü ikisi de aynı piyasayı aynı anda görür.
+            </p>
+          </GuideSection>
+          <GuideSection title="Nasıl okunur">
+            <p>
+              <strong>Bot arayüzden bağımsızdır.</strong> Paneli kapatmak, tarayıcıyı kapatmak ya
+              da bilgisayarı kapatmak botu durdurmaz; bot sunucuda çalışır.
+            </p>
+            <p>
+              <strong>Duraklat</strong> açık pozisyonları yönetmeye devam eder ama yeni giriş
+              yapmaz. <strong>Durdur</strong> botu tamamen keser. <strong>Kısıtlı</strong> durumu
+              bir devre kesicinin girişleri kapattığı anlamına gelir — bot çalışıyordur ama alım
+              yapmaz.
+            </p>
+          </GuideSection>
+          <GuideSection title="Ne yapabilirim">
+            <p>
+              Bir botun neden karar aldığını görmek için adına tıklayın; olay kayıtları, işlemleri
+              ve performansı orada. Sistem genelindeki kayıtlar için Loglar sayfası.
+            </p>
+          </GuideSection>
+        </>
       }
     >
       {bots.length > 0 && (
-        <StatGrid cols={4}>
-          <Stat
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Metric
             label="Çalışan bot"
-            hint="Karar alan ve pozisyon açabilen botlar. Çalışmayan bot hiçbir şey yapmaz."
-            value={<AmountText text={`${running}`} size="xl" />}
+            value={running}
+            format={(value) => num(value, 0)}
+            accent={bots.length > 0 && running === 0 ? "var(--sn-warn)" : undefined}
             sub={`${bots.length} bot kurulu`}
-            tone={bots.length > 0 && running === 0 ? "warn" : "neutral"}
           />
-          <Stat
+          <Metric
             label="Toplam özsermaye"
-            hint="Tüm botların nakdi artı açık pozisyonlarının güncel karşılığı."
-            value={<AmountText text={money(totalEquity)} size="xl" />}
+            value={totalEquity}
+            format={(value) => money(value)}
+            accent="var(--sn-brand-solid)"
             sub={`başlangıç ${money(totalCapital)}`}
           />
-          <Stat
+          <Metric
             label="Toplam getiri"
-            hint="Tüm botların birleşik başlangıç sermayesine göre değişimi."
-            value={
-              <Signed
-                value={totalCapital > 0 ? totalEquity / totalCapital - 1 : 0}
-                text={pctSigned(totalCapital > 0 ? totalEquity / totalCapital - 1 : 0)}
-                size="xl"
-                arrow
-              />
-            }
+            value={totalReturn}
+            format={(value) => pctSigned(value)}
+            accent={totalReturn >= 0 ? "var(--sn-up)" : "var(--sn-down)"}
+            sub="birleşik başlangıç sermayesine göre"
           />
-          <Stat
+          <Metric
             label="Açık pozisyon"
-            hint="Tüm botların şu an piyasada duran pozisyon sayısı."
-            value={<AmountText text={`${openPositions}`} size="xl" />}
+            value={openPositions}
+            format={(value) => num(value, 0)}
+            sub="tüm botlarda"
           />
-        </StatGrid>
+        </div>
       )}
 
-      <Section padded={false}>
+      <Panel padded={false}>
         <Async
           query={query}
           empty={{
             title: "Henüz bot yok",
-            description:
-              "Bot kurup başlatana kadar sistem hiçbir işlem açmaz. Bot kurmak için önce bir strateji sürümü gerekir.",
+            hint: "Bot kurup başlatana kadar sistem hiçbir işlem açmaz. Bot kurmak için önce bir strateji sürümü gerekir.",
             action: can("TRADER") ? (
-              <Button size="sm" variant="amber" shape="rect" onClick={() => setCreateOpen(true)}>
+              <Button size="sm" variant="primary" onClick={() => setCreateOpen(true)}>
                 İlk botu kur
               </Button>
             ) : undefined,
           }}
         >
           {(list) => (
-            <DataTable
+            <DataGrid
               rows={list}
               columns={columns}
-              rowKey={(r) => r.id}
+              rowKey={(row) => String(row.id)}
               storageKey="botlar"
-              searchText={(r) => `${r.name} ${r.state} ${r.timeframe}`}
               searchPlaceholder="Bot ara…"
-              defaultSort={{ key: "name", dir: "asc" }}
-              footNote={
-                <span>
-                  Botlar sunucuda çalışır. Bu sayfayı kapatmak çalışan bir botu durdurmaz.
-                </span>
-              }
+              defaultSort={[{ id: "name", desc: false }]}
+              footNote="Botlar sunucuda çalışır. Bu sayfayı kapatmak çalışan bir botu durdurmaz."
             />
           )}
         </Async>
-      </Section>
+      </Panel>
 
-      {createOpen && <CreateBotModal onClose={() => setCreateOpen(false)} />}
+      <CreateBotModal open={createOpen} onClose={() => setCreateOpen(false)} />
     </Page>
   );
 }
@@ -279,7 +327,7 @@ export default function BotsPage() {
 /*  Yeni bot                                                           */
 /* ------------------------------------------------------------------ */
 
-function CreateBotModal({ onClose }: { onClose: () => void }) {
+function CreateBotModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
   const [name, setName] = useState("");
   const [versionId, setVersionId] = useState<number | null>(null);
@@ -289,15 +337,15 @@ function CreateBotModal({ onClose }: { onClose: () => void }) {
   const strategies = useQuery({
     queryKey: ["strategies"],
     queryFn: () => api.get<Strategy[]>("/strategies"),
+    enabled: open,
   });
 
   /* Sürüm listesi düzleştirilir: kullanıcı stratejiyi değil, çalıştırılacak
      sürümü seçer — bot her zaman belirli bir sürüme bağlanır. */
-  const versions = (strategies.data ?? []).flatMap((s) =>
-    s.versions.map((v) => ({
-      id: v.id,
-      label: `${s.name} · sürüm ${v.version}${v.frozen ? " (donuk)" : ""}`,
-      frozen: v.frozen,
+  const versions = (strategies.data ?? []).flatMap((strategy) =>
+    strategy.versions.map((version) => ({
+      id: version.id,
+      label: `${strategy.name} · sürüm ${version.version}${version.frozen ? " (donuk)" : ""}`,
     })),
   );
 
@@ -314,110 +362,93 @@ function CreateBotModal({ onClose }: { onClose: () => void }) {
       void qc.invalidateQueries({ queryKey: ["bots"] });
       onClose();
     },
-    onError: (e: Error) => toast.error("Bot kurulamadı", e.message),
+    onError: (error: Error) => toast.error("Bot kurulamadı", error.message),
   });
 
   const valid = name.trim().length > 0 && versionId !== null && Number(capital) > 0;
 
   return (
-    <Modal open onClose={onClose} label="Yeni bot" width="max-w-md">
-      <div className="p-5">
-        <h2 className="text-[15px] font-semibold text-ink">Yeni bot</h2>
-        <p className="mt-1 text-[12.5px] leading-relaxed text-ink-2">
-          Bot taslak olarak kurulur ve siz başlatana kadar hiçbir şey yapmaz.
-        </p>
+    <Modal
+      open={open}
+      onOpenChange={(next) => !next && onClose()}
+      title="Yeni bot"
+      description="Bot taslak olarak kurulur ve siz başlatana kadar hiçbir şey yapmaz."
+      footer={
+        <>
+          <Button variant="quiet" onClick={onClose}>
+            Vazgeç
+          </Button>
+          <Button variant="primary" disabled={!valid || create.isPending} onClick={() => create.mutate()}>
+            {create.isPending ? "Kuruluyor…" : "Botu kur"}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3.5">
+        <FormField label="Ad">
+          <TextInput
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Örn. Muhafazakâr 1h"
+            autoFocus
+          />
+        </FormField>
 
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (valid) create.mutate();
-          }}
-          className="mt-4 space-y-3.5"
+        <FormField
+          label="Strateji sürümü"
+          term="strateji_surum"
+          error={
+            versions.length === 0
+              ? "Hiç strateji sürümü yok. Önce Stratejiler sayfasından bir strateji oluşturun."
+              : null
+          }
         >
-          <label className="block">
-            <span className="text-[12px] font-medium text-ink-2">Ad</span>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Örn. Muhafazakâr 1h"
-              className="mt-1 h-9 w-full rounded-lg border border-line bg-inset px-2.5 text-[13px] text-ink placeholder:text-ink-3 focus:border-brand focus:outline-none"
-            />
-          </label>
+          <Select
+            value={versionId ?? ""}
+            onChange={(event) => setVersionId(Number(event.target.value) || null)}
+          >
+            <option value="">Seçin…</option>
+            {versions.map((version) => (
+              <option key={version.id} value={version.id}>
+                {version.label}
+              </option>
+            ))}
+          </Select>
+        </FormField>
 
-          <label className="block">
-            <span className="flex items-center gap-1 text-[12px] font-medium text-ink-2">
-              Strateji sürümü
-              <InfoDot id="strateji_surum" align="start" />
-            </span>
-            <select
-              value={versionId ?? ""}
-              onChange={(e) => setVersionId(Number(e.target.value) || null)}
-              className="mt-1 h-9 w-full rounded-lg border border-line bg-inset px-2.5 text-[13px] text-ink focus:border-brand focus:outline-none"
-            >
-              <option value="">Seçin…</option>
-              {versions.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.label}
+        <div className="grid grid-cols-2 gap-3">
+          <FormField label="Sermaye (USD)">
+            <TextInput
+              value={capital}
+              onChange={(event) => setCapital(event.target.value)}
+              inputMode="decimal"
+              numeric
+            />
+          </FormField>
+
+          <FormField label="Karar barı" term="karar_bari">
+            <Select value={timeframe} onChange={(event) => setTimeframe(event.target.value)}>
+              {["15m", "1h", "4h", "1d"].map((option) => (
+                <option key={option} value={option}>
+                  {option}
                 </option>
               ))}
-            </select>
-            {versions.length === 0 && (
-              <span className="mt-1 block text-[11.5px] text-warn">
-                Hiç strateji sürümü yok. Önce Stratejiler sayfasından bir strateji oluşturun.
-              </span>
-            )}
-          </label>
+            </Select>
+          </FormField>
+        </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block">
-              <span className="text-[12px] font-medium text-ink-2">Sermaye (USD)</span>
-              <input
-                value={capital}
-                onChange={(e) => setCapital(e.target.value)}
-                inputMode="decimal"
-                className="num mt-1 h-9 w-full rounded-lg border border-line bg-inset px-2.5 text-[13px] text-ink focus:border-brand focus:outline-none"
-              />
-            </label>
-
-            <label className="block">
-              <span className="flex items-center gap-1 text-[12px] font-medium text-ink-2">
-                Karar barı
-                <InfoDot id="karar_bari" align="start" />
-              </span>
-              <select
-                value={timeframe}
-                onChange={(e) => setTimeframe(e.target.value)}
-                className="mt-1 h-9 w-full rounded-lg border border-line bg-inset px-2.5 text-[13px] text-ink focus:border-brand focus:outline-none"
-              >
-                {["15m", "1h", "4h", "1d"].map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <p className="rounded-lg bg-inset px-3 py-2 text-[11.5px] leading-relaxed text-ink-2">
-            Kararlar seçilen bar kapandığında alınır. Kapanmamış bir barın verisi karara
-            girmez — bu, geçmiş testlerin dürüst kalması için zorunludur.
-          </p>
-
-          <div className="flex justify-end gap-2 pt-1">
-            <Button type="button" size="sm" variant="ghost" shape="rect" onClick={onClose}>
-              Vazgeç
-            </Button>
-            <Button
-              type="submit"
-              size="sm"
-              variant="amber"
-              shape="rect"
-              disabled={!valid || create.isPending}
-            >
-              {create.isPending ? "Kuruluyor…" : "Botu kur"}
-            </Button>
-          </div>
-        </form>
+        <p
+          className="rounded-[var(--sn-r-sm)] px-3 py-2"
+          style={{
+            background: "var(--sn-sunken)",
+            fontSize: "var(--sn-t-caption)",
+            color: "var(--sn-ink-2)",
+            lineHeight: 1.5,
+          }}
+        >
+          Kararlar seçilen bar kapandığında alınır. Kapanmamış bir barın verisi karara girmez —
+          bu, geçmiş testlerin dürüst kalması için zorunludur.
+        </p>
       </div>
     </Modal>
   );

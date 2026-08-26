@@ -4,18 +4,15 @@
  * Giriş.
  *
  * Açık kayıt yoktur: hesaplar yalnızca yönetici daveti ile oluşur ve iki
- * adımlı doğrulama zorunludur. İki adımlı akış — önce parola, sonra kod.
+ * adımlı doğrulama zorunludur. Akış iki adımlı — önce parola, sonra kod.
  */
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Alert, Button, Card, StatusPill } from "@/ui";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { demoCredentials, devCredentials, totpNow } from "@/lib/dev-auth";
-
-const FIELD =
-  "h-10 w-full rounded-lg border border-line bg-inset px-3 text-[14px] text-ink outline-none placeholder:text-ink-3 focus:border-brand";
+import { Alert, Button, FormField, Tag, TextInput, TooltipHost } from "@/design";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -28,8 +25,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState(dev?.password ?? "");
   const [code, setCode] = useState("");
   const [challenge, setChallenge] = useState("");
-  const [setupUri, setSetupUri] = useState<string | null>(null);
   const [setupSecret, setSetupSecret] = useState<string | null>(null);
+  const [showSetup, setShowSetup] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -58,7 +55,7 @@ export default function LoginPage() {
    *
    * İki adımlı akışın kendisi değişmez — parola doğrulanır, kod doğrulanır.
    * Yalnızca ikisi de kullanıcıdan istenmek yerine gömülü demo kimliğinden
-   * üretilir. Hesap İZLEYİCİ olduğu için görebildiğinden fazlasını yapamaz.
+   * üretilir.
    */
   const enterDemo = async () => {
     if (!demo) return;
@@ -66,9 +63,7 @@ export default function LoginPage() {
     setBusy(true);
     try {
       const result = await startLogin(demo.email, demo.password);
-      if (!demo.totpSecret) {
-        throw new Error("Demo hesabının doğrulama anahtarı tanımlı değil.");
-      }
+      if (!demo.totpSecret) throw new Error("Demo hesabının doğrulama anahtarı tanımlı değil.");
       await completeLogin(result.challenge_token ?? "", await totpNow(demo.totpSecret));
       router.replace("/");
     } catch (caught) {
@@ -90,8 +85,8 @@ export default function LoginPage() {
       const result = await startLogin(email, password);
       setChallenge(result.challenge_token ?? "");
       if (result.totp_setup) {
-        setSetupUri(result.totp_setup.provisioning_uri);
         setSetupSecret(result.totp_setup.secret);
+        setShowSetup(true);
       }
       setStep("code");
     } catch (caught) {
@@ -124,173 +119,223 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-canvas p-4">
-      <div className="w-full max-w-sm">
-        {/* Marka */}
-        <div className="mb-5 flex items-center gap-2.5">
-          <span
-            aria-hidden
-            className="flex size-8 items-center justify-center rounded-lg bg-accent-solid text-[15px] font-bold text-accent-ink"
-          >
-            S
-          </span>
-          <div className="min-w-0">
-            <div className="text-[15px] font-semibold tracking-tight text-ink">SARNIÇ</div>
-            <div className="text-[11px] text-ink-3">kağıt üstü işlem sistemi</div>
+    <TooltipHost>
+      <div
+        className="sn-root flex min-h-screen items-center justify-center p-4"
+        style={{ background: "var(--sn-bg)" }}
+      >
+        <div className="w-full max-w-sm">
+          <div className="mb-5 flex items-center gap-2.5">
+            <span
+              aria-hidden
+              className="flex h-8 w-8 items-center justify-center rounded-[var(--sn-r-sm)] font-bold"
+              style={{
+                background: "var(--sn-brand-solid)",
+                color: "var(--sn-on-brand)",
+                fontSize: 15,
+              }}
+            >
+              S
+            </span>
+            <div className="min-w-0">
+              <div
+                className="font-semibold"
+                style={{ fontSize: "var(--sn-t-title)", color: "var(--sn-ink)", letterSpacing: "0.01em" }}
+              >
+                SARNIÇ
+              </div>
+              <div style={{ fontSize: "var(--sn-t-micro)", color: "var(--sn-ink-3)" }}>
+                kağıt üstü işlem sistemi
+              </div>
+            </div>
+            <span className="ml-auto">
+              <Tag tone="brand">canlı para yok</Tag>
+            </span>
           </div>
-          <StatusPill size="sm" tone="amber" className="ml-auto">
-            canlı para yok
-          </StatusPill>
-        </div>
 
-        {dev && (
-          <Alert tone="warning" title="Form otomatik dolduruldu" className="mb-3">
-            {dev.totpSecret ? "Doğrulama kodu dahil. " : ""}Bu kolaylık{" "}
-            <code className="font-mono text-[12px]">NEXT_PUBLIC_AUTOFILL</code> bayrağına
-            bağlıdır ve panel dışarı açılırken kaldırılmalıdır.
-          </Alert>
-        )}
-
-        <Card className="p-6">
-          {step === "password" ? (
-            <form onSubmit={submitPassword} className="flex flex-col gap-4">
-              <div>
-                <h1 className="text-[16px] font-semibold text-ink">Giriş yap</h1>
-                <p className="mt-1 text-[12.5px] text-ink-2">
-                  E-posta ve parolanızı girin. Ardından doğrulama kodu istenecek.
-                </p>
-              </div>
-
-              <label className="flex flex-col gap-1.5">
-                <span className="text-[12px] font-medium text-ink-2">E-posta</span>
-                <input
-                  type="email"
-                  autoComplete="username"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className={FIELD}
-                />
-              </label>
-
-              <label className="flex flex-col gap-1.5">
-                <span className="text-[12px] font-medium text-ink-2">Parola</span>
-                <input
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className={FIELD}
-                />
-              </label>
-
-              {error && (
-                <p className="rounded-lg bg-down-soft px-3 py-2 text-[12.5px] text-ink">{error}</p>
-              )}
-
-              <Button type="submit" variant="amber" shape="rect" disabled={busy}>
-                {busy ? "Kontrol ediliyor…" : "Devam et"}
-              </Button>
-
-              {demo && (
-                <>
-                  <div className="flex items-center gap-3">
-                    <span className="h-px flex-1 bg-line" />
-                    <span className="text-[11.5px] text-ink-3">ya da</span>
-                    <span className="h-px flex-1 bg-line" />
-                  </div>
-
-                  <div className="rounded-lg border border-line bg-elev p-3">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      shape="rect"
-                      className="w-full"
-                      disabled={busy}
-                      onClick={() => void enterDemo()}
-                    >
-                      {busy ? "Giriş yapılıyor…" : "Demo hesabıyla gir"}
-                    </Button>
-                    <p className="mt-2 text-[11.5px] leading-relaxed text-ink-2">
-                      Sistemin tamamını gerçek veriyle gezebilirsiniz: havuz, puanlar,
-                      pozisyonlar, backtest ve loglar.
-                    </p>
-                    <p className="mt-1 text-[11.5px] leading-relaxed text-ink-3">
-                      Canlı para yoktur — tüm emirler kağıt üstü motordan geçer. Yine de
-                      bu hesap botları durdurabilir ve ayarları değiştirebilir; lütfen
-                      yalnızca bakın.
-                    </p>
-                  </div>
-                </>
-              )}
-            </form>
-          ) : (
-            <form onSubmit={submitCode} className="flex flex-col gap-4">
-              <div>
-                <h1 className="text-[16px] font-semibold text-ink">Doğrulama kodu</h1>
-                <p className="mt-1 text-[12.5px] text-ink-2">
-                  Kimlik doğrulayıcı uygulamanızdaki altı haneli kodu girin.
-                </p>
-              </div>
-
-              {setupUri && (
-                <Alert tone="info" title="İki adımlı doğrulama kurulumu">
-                  Kimlik doğrulayıcı uygulamanıza aşağıdaki anahtarı ekleyin, sonra ürettiği kodu
-                  girin. <strong className="font-medium">Bu anahtar bir daha gösterilmeyecek.</strong>
-                  <code className="mt-2 block rounded-lg bg-inset p-2 font-mono text-[11px] break-all">
-                    {setupSecret}
-                  </code>
-                </Alert>
-              )}
-
-              <label className="flex flex-col gap-1.5">
-                <span className="text-[12px] font-medium text-ink-2">Kod</span>
-                <input
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  maxLength={8}
-                  required
-                  autoFocus
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  placeholder="000000"
-                  className={`${FIELD} num text-center font-mono tracking-[0.3em]`}
-                />
-              </label>
-
-              {error && (
-                <p className="rounded-lg bg-down-soft px-3 py-2 text-[12.5px] text-ink">{error}</p>
-              )}
-
-              <Button
-                type="submit"
-                variant="amber"
-                shape="rect"
-                disabled={busy || code.length < 6}
-              >
-                {busy ? "Doğrulanıyor…" : "Giriş yap"}
-              </Button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setStep("password");
-                  setError("");
-                }}
-                className="text-[12.5px] text-ink-3 hover:text-ink-2"
-              >
-                Geri dön
-              </button>
-            </form>
+          {dev && (
+            <div className="mb-3">
+              <Alert tone="warn" title="Form otomatik dolduruldu">
+                {dev.totpSecret ? "Doğrulama kodu dahil. " : ""}Bu kolaylık{" "}
+                <span className="sn-num">NEXT_PUBLIC_AUTOFILL</span> bayrağına bağlıdır ve panel
+                dışarı açılırken kaldırılmalıdır.
+              </Alert>
+            </div>
           )}
-        </Card>
 
-        <p className="mt-4 text-center text-[11.5px] leading-relaxed text-ink-3">
-          Açık kayıt yok. Hesaplar yalnızca yönetici daveti ile oluşur ve iki adımlı doğrulama
-          zorunludur.
-        </p>
+          <div
+            className="rounded-[var(--sn-r-lg)] p-6"
+            style={{ background: "var(--sn-panel)", border: "1px solid var(--sn-hairline)" }}
+          >
+            {step === "password" ? (
+              <form onSubmit={submitPassword} className="flex flex-col gap-4">
+                <div>
+                  <h1
+                    className="font-semibold"
+                    style={{ fontSize: "var(--sn-t-title)", color: "var(--sn-ink)" }}
+                  >
+                    Giriş yap
+                  </h1>
+                  <p
+                    className="mt-1"
+                    style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}
+                  >
+                    E-posta ve parolanızı girin. Ardından doğrulama kodu istenecek.
+                  </p>
+                </div>
+
+                <FormField label="E-posta">
+                  <TextInput
+                    type="email"
+                    autoComplete="username"
+                    required
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    className="h-10"
+                  />
+                </FormField>
+
+                <FormField label="Parola">
+                  <TextInput
+                    type="password"
+                    autoComplete="current-password"
+                    required
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    className="h-10"
+                  />
+                </FormField>
+
+                {error && <Alert tone="down">{error}</Alert>}
+
+                <Button type="submit" variant="primary" disabled={busy} className="h-10">
+                  {busy ? "Kontrol ediliyor…" : "Devam et"}
+                </Button>
+
+                {demo && (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <span className="h-px flex-1" style={{ background: "var(--sn-hairline)" }} />
+                      <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}>
+                        ya da
+                      </span>
+                      <span className="h-px flex-1" style={{ background: "var(--sn-hairline)" }} />
+                    </div>
+
+                    <div
+                      className="rounded-[var(--sn-r-sm)] p-3"
+                      style={{ background: "var(--sn-raised)", border: "1px solid var(--sn-hairline)" }}
+                    >
+                      <Button
+                        type="button"
+                        variant="neutral"
+                        className="h-10 w-full"
+                        disabled={busy}
+                        onClick={() => void enterDemo()}
+                      >
+                        {busy ? "Giriş yapılıyor…" : "Demo hesabıyla gir"}
+                      </Button>
+                      <p
+                        className="mt-2"
+                        style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)", lineHeight: 1.5 }}
+                      >
+                        Sistemin tamamını gerçek veriyle gezebilirsiniz: havuz, puanlar,
+                        pozisyonlar, backtest ve loglar.
+                      </p>
+                      <p
+                        className="mt-1"
+                        style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)", lineHeight: 1.5 }}
+                      >
+                        Canlı para yoktur — tüm emirler kağıt üstü motordan geçer. Yine de bu
+                        hesap botları durdurabilir ve ayarları değiştirebilir; lütfen yalnızca
+                        bakın.
+                      </p>
+                    </div>
+                  </>
+                )}
+              </form>
+            ) : (
+              <form onSubmit={submitCode} className="flex flex-col gap-4">
+                <div>
+                  <h1
+                    className="font-semibold"
+                    style={{ fontSize: "var(--sn-t-title)", color: "var(--sn-ink)" }}
+                  >
+                    Doğrulama kodu
+                  </h1>
+                  <p
+                    className="mt-1"
+                    style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}
+                  >
+                    Kimlik doğrulayıcı uygulamanızdaki altı haneli kodu girin.
+                  </p>
+                </div>
+
+                {showSetup && setupSecret && (
+                  <Alert tone="info" title="İki adımlı doğrulama kurulumu">
+                    Kimlik doğrulayıcı uygulamanıza aşağıdaki anahtarı ekleyin, sonra ürettiği
+                    kodu girin.{" "}
+                    <strong style={{ color: "var(--sn-ink)", fontWeight: 550 }}>
+                      Bu anahtar bir daha gösterilmeyecek.
+                    </strong>
+                    <span
+                      className="sn-num mt-2 block rounded-[var(--sn-r-xs)] p-2 break-all"
+                      style={{ background: "var(--sn-sunken)", fontSize: "var(--sn-t-micro)" }}
+                    >
+                      {setupSecret}
+                    </span>
+                  </Alert>
+                )}
+
+                <FormField label="Kod">
+                  <TextInput
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={8}
+                    required
+                    autoFocus
+                    value={code}
+                    onChange={(event) => setCode(event.target.value)}
+                    placeholder="000000"
+                    className="sn-num h-10 text-center"
+                    style={{ letterSpacing: "0.3em", textAlign: "center" }}
+                  />
+                </FormField>
+
+                {error && <Alert tone="down">{error}</Alert>}
+
+                <Button
+                  type="submit"
+                  variant="primary"
+                  className="h-10"
+                  disabled={busy || code.length < 6}
+                >
+                  {busy ? "Doğrulanıyor…" : "Giriş yap"}
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="quiet"
+                  onClick={() => {
+                    setStep("password");
+                    setError("");
+                  }}
+                >
+                  Geri dön
+                </Button>
+              </form>
+            )}
+          </div>
+
+          <p
+            className="mt-4 text-center"
+            style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)", lineHeight: 1.5 }}
+          >
+            Açık kayıt yok. Hesaplar yalnızca yönetici daveti ile oluşur ve iki adımlı doğrulama
+            zorunludur.
+          </p>
+        </div>
       </div>
-    </div>
+    </TooltipHost>
   );
 }

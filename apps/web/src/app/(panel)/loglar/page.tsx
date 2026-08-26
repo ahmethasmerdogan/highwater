@@ -8,15 +8,13 @@
  * yüklerle yazar; bu sayfa hepsini `lib/humanize.ts` üzerinden Türkçe
  * cümleye çevirir.
  *
- * **Düzeltilen kusur:** eski sayfa `/logs` yanıtından `at`, `symbol` ve
- * `message` alanlarını okuyordu — uç bu alanları hiç döndürmüyor
- * (`created_at`, `kind`, `payload` döndürüyor). Zaman ve mesaj sütunları bu
- * yüzden boş basılıyordu; tablo okunmaz olmasının sebebi buydu.
+ * Uç `at`, `symbol` ve `message` değil `created_at`, `kind` ve `payload`
+ * döndürür — bu ayrım bir kez gözden kaçtı ve zaman/mesaj sütunları boş
+ * basıldı. Alan adları burada tek yerde eşlenir (`StreamRow`).
  */
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Button, StatusPill, cx } from "@/ui";
 import { api, type AuditEntry, type DataQualityEntry } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useLive, type LiveEvent } from "@/lib/ws";
@@ -31,11 +29,29 @@ import {
   type LogCategory,
   type Severity,
 } from "@/lib/humanize";
-import { Page, Section, Empty, Async } from "@/components/common/page";
-import { DataTable, type Column } from "@/components/data/data-table";
-import { Drawer, DrawerSection } from "@/components/data/drawer";
-import { Explain, Field, InfoDot, RichText, Term } from "@/components/common/explain";
 import { dateTime, relative, time } from "@/lib/format";
+import { Page, GuideSection } from "@/shell/page";
+import {
+  Async,
+  Button,
+  Chip,
+  Dot,
+  Drawer,
+  DrawerSection,
+  Empty,
+  Explain,
+  Field,
+  InfoDot,
+  NumText,
+  Panel,
+  RichText,
+  Segmented,
+  Tag,
+  Term,
+  type Tone,
+} from "@/design";
+import { DataGrid } from "@/grid/data-grid";
+import type { GridColumn } from "@/grid/types";
 
 /* ------------------------------------------------------------------ */
 /*  Tipler                                                             */
@@ -66,6 +82,13 @@ interface StreamRow {
 
 type Tab = "akis" | "kalite" | "denetim";
 
+const SEVERITY_TONE: Record<Severity, Tone> = {
+  error: "down",
+  warn: "warn",
+  success: "up",
+  info: "neutral",
+};
+
 /* ------------------------------------------------------------------ */
 /*  Sayfa                                                              */
 /* ------------------------------------------------------------------ */
@@ -75,50 +98,57 @@ export default function LogsPage() {
   const isAdmin = can();
   const [tab, setTab] = useState<Tab>(isAdmin ? "akis" : "kalite");
 
-  const tabs: { id: Tab; label: string; admin: boolean }[] = [
-    { id: "akis", label: "Olay akışı", admin: true },
-    { id: "kalite", label: "Veri kalitesi", admin: false },
-    { id: "denetim", label: "Denetim kaydı", admin: true },
-  ];
-  const visibleTabs = tabs.filter((t) => !t.admin || isAdmin);
+  const tabs = ([
+    { value: "akis", label: "Olay akışı", admin: true },
+    { value: "kalite", label: "Veri kalitesi", admin: false },
+    { value: "denetim", label: "Denetim kaydı", admin: true },
+  ] as { value: Tab; label: string; admin: boolean }[]).filter(
+    (entry) => !entry.admin || isAdmin,
+  );
 
   return (
     <Page
       title="Loglar"
-      description="Sistemin ne yaptığının kaydı: bot kararları, havuz yenilemeleri, veri sorunları ve yönetimsel işlemler."
-      intro={{
-        storageKey: "loglar",
-        what: "Motorun ürettiği her olay burada toplanır. Bot bir pozisyon açtığında, havuz yenilendiğinde, bir devre kesici tetiklendiğinde ya da veri akışı koptuğunda buraya bir satır düşer.",
-        how: "Her satır **ne olduğunu** tek cümleyle söyler. Satıra tıklayınca **ne anlama geldiği** ve gerekiyorsa **ne yapmanız gerektiği** açılır.\nSol taraftaki renkli işaret önem düzeyidir: gri bilgi, yeşil tamamlandı, turuncu uyarı, kırmızı hata.\nKategori etiketi olayın hangi alandan geldiğini söyler — havuz, puanlama, işlem, risk, veri, bağlantı, bot ya da sistem.",
-        action: "Bir sorun ararken önce **Hata** ve **Uyarı** süzgecini açın. Tekrarlayan bir hata görüyorsanız satıra tıklayıp ayrıntısına bakın; çoğu kaydın altında ne yapılması gerektiği yazılıdır.",
-        terms: ["devre_kesici", "havuz", "puan", "veri_tazeligi", "bosluk", "denetim_kaydi"],
-      }}
+      summary="Sistemin ne yaptığının kaydı: bot kararları, havuz yenilemeleri, veri sorunları ve yönetimsel işlemler."
+      guide={
+        <>
+          <GuideSection title="Ne gösteriyor">
+            <p>
+              Motorun ürettiği her olay burada toplanır. Bot bir pozisyon açtığında, havuz
+              yenilendiğinde, bir devre kesici tetiklendiğinde ya da veri akışı koptuğunda buraya
+              bir satır düşer.
+            </p>
+          </GuideSection>
+          <GuideSection title="Nasıl okunur">
+            <p>
+              Her satır <strong>ne olduğunu</strong> tek cümleyle söyler. Satıra tıklayınca{" "}
+              <strong>ne anlama geldiği</strong> ve gerekiyorsa{" "}
+              <strong>ne yapmanız gerektiği</strong> açılır.
+            </p>
+            <p>
+              Önem sütunu: gri bilgi, yeşil tamamlandı, turuncu uyarı, kırmızı hata. Kategori
+              etiketi olayın hangi alandan geldiğini söyler — havuz, puanlama, işlem, risk, veri,
+              bağlantı, bot ya da sistem.
+            </p>
+          </GuideSection>
+          <GuideSection title="Ne yapabilirim">
+            <p>
+              Bir sorun ararken önce Hata ve Uyarı süzgecini açın. Tekrarlayan bir hata
+              görüyorsanız satıra tıklayıp ayrıntısına bakın; çoğu kaydın altında ne yapılması
+              gerektiği yazılıdır.
+            </p>
+          </GuideSection>
+        </>
+      }
     >
-      {/* Sekmeler */}
-      <div className="flex flex-wrap gap-1 border-b border-line">
-        {visibleTabs.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setTab(t.id)}
-            className={cx(
-              "-mb-px border-b-2 px-3 py-2 text-[13px] transition-colors",
-              tab === t.id
-                ? "border-brand font-medium text-ink"
-                : "border-transparent text-ink-2 hover:text-ink",
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <Segmented value={tab} onChange={setTab} options={tabs} />
 
       {tab === "akis" && isAdmin && <EventStream />}
       {tab === "kalite" && <DataQuality />}
       {tab === "denetim" && isAdmin && <AuditTrail />}
 
-      {!isAdmin && tab === "kalite" && (
-        <p className="text-[12.5px] text-ink-3">
+      {!isAdmin && (
+        <p style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}>
           Olay akışı ve denetim kaydı yalnızca yöneticilere açıktır.
         </p>
       )}
@@ -145,35 +175,33 @@ function EventStream() {
 
   /* Kayıtlı olaylar + canlı olaylar tek akışta birleşir. */
   const rows = useMemo<StreamRow[]>(() => {
-    const stored: StreamRow[] = (query.data ?? []).map((e) => ({
-      id: `db:${e.id}`,
-      at: e.created_at,
-      kind: e.kind,
-      level: e.level,
-      botId: e.bot_id,
-      symbol: (e.payload?.symbol as string) ?? null,
-      payload: e.payload ?? {},
+    const stored: StreamRow[] = (query.data ?? []).map((event) => ({
+      id: `db:${event.id}`,
+      at: event.created_at,
+      kind: event.kind,
+      level: event.level,
+      botId: event.bot_id,
+      symbol: (event.payload?.symbol as string) ?? null,
+      payload: event.payload ?? {},
       live: false,
     }));
 
-    const live: StreamRow[] = liveEvents.map((e: LiveEvent, i) => ({
-      id: `live:${e.at}:${i}`,
-      at: e.at,
-      kind: e.kind,
-      level: e.level,
-      botId: e.bot_id,
-      symbol: e.symbol,
-      payload: e.payload ?? {},
+    const live: StreamRow[] = liveEvents.map((event: LiveEvent, index) => ({
+      id: `live:${event.at}:${index}`,
+      at: event.at,
+      kind: event.kind,
+      level: event.level,
+      botId: event.bot_id,
+      symbol: event.symbol,
+      payload: event.payload ?? {},
       live: true,
     }));
 
-    /*
-     * Canlı olay birazdan veritabanından da gelecek; ikisi birden görünmesin.
-     * Aynı (tür, saniye, sembol) üçlüsü aynı olay sayılır.
-     */
-    const seen = new Set(stored.map((r) => `${r.kind}|${r.at.slice(0, 19)}|${r.symbol ?? ""}`));
+    /* Canlı olay birazdan veritabanından da gelecek; ikisi birden
+       görünmesin. Aynı (tür, saniye, sembol) üçlüsü aynı olay sayılır. */
+    const seen = new Set(stored.map((row) => `${row.kind}|${row.at.slice(0, 19)}|${row.symbol ?? ""}`));
     const freshLive = live.filter(
-      (r) => !seen.has(`${r.kind}|${r.at.slice(0, 19)}|${r.symbol ?? ""}`),
+      (row) => !seen.has(`${row.kind}|${row.at.slice(0, 19)}|${row.symbol ?? ""}`),
     );
 
     return [...freshLive, ...stored].sort(
@@ -183,160 +211,191 @@ function EventStream() {
 
   const filtered = useMemo(
     () =>
-      rows.filter((r) => {
-        const h = humanizeEvent(r.kind, r.level, r.payload);
-        if (severity !== "all" && h.severity !== severity) return false;
-        if (category !== "all" && h.category !== category) return false;
+      rows.filter((row) => {
+        const human = humanizeEvent(row.kind, row.level, row.payload);
+        if (severity !== "all" && human.severity !== severity) return false;
+        if (category !== "all" && human.category !== category) return false;
         return true;
       }),
     [rows, severity, category],
   );
 
   const counts = useMemo(() => {
-    const c = { info: 0, success: 0, warn: 0, error: 0 } as Record<Severity, number>;
-    rows.forEach((r) => {
-      c[humanizeEvent(r.kind, r.level, r.payload).severity] += 1;
+    const tally = { info: 0, success: 0, warn: 0, error: 0 } as Record<Severity, number>;
+    rows.forEach((row) => {
+      tally[humanizeEvent(row.kind, row.level, row.payload).severity] += 1;
     });
-    return c;
+    return tally;
   }, [rows]);
 
-  const columns: Column<StreamRow>[] = [
-    {
-      key: "at",
-      header: "Zaman",
-      width: "150px",
-      sort: (r) => new Date(r.at).getTime(),
-      cell: (r) => (
-        <span className="flex flex-col leading-tight">
-          <span className="num text-[12px] text-ink">{time(r.at)}</span>
-          <span className="text-[10.5px] text-ink-3">{relative(r.at)}</span>
-        </span>
-      ),
-    },
-    {
-      key: "severity",
-      header: "Önem",
-      width: "90px",
-      sort: (r) => humanizeEvent(r.kind, r.level, r.payload).severity,
-      cell: (r) => <SeverityPill severity={humanizeEvent(r.kind, r.level, r.payload).severity} />,
-    },
-    {
-      key: "category",
-      header: "Kategori",
-      width: "110px",
-      sort: (r) => humanizeEvent(r.kind, r.level, r.payload).category,
-      cell: (r) => {
-        const c = humanizeEvent(r.kind, r.level, r.payload).category;
-        return (
-          <span className="inline-flex items-center gap-1 text-[12px] text-ink-2">
-            {CATEGORY_LABEL[c]}
-          </span>
-        );
-      },
-    },
-    {
-      key: "event",
-      header: "Ne oldu",
-      cell: (r) => {
-        const h = humanizeEvent(r.kind, r.level, r.payload);
-        const message = typeof r.payload?.message === "string" ? r.payload.message : "";
-        return (
-          <span className="flex min-w-0 flex-col leading-tight">
-            <span className="flex items-center gap-1.5 truncate text-[13px] text-ink">
-              {h.title}
-              {r.live && (
-                <span className="shrink-0 rounded bg-brand-soft px-1 text-[9.5px] font-medium text-brand">
-                  canlı
-                </span>
-              )}
+  const columns = useMemo<GridColumn<StreamRow>[]>(
+    () => [
+      {
+        id: "at",
+        header: "Zaman",
+        width: 128,
+        pin: true,
+        value: (row) => new Date(row.at).getTime(),
+        cell: (row) => (
+          <span className="flex flex-col leading-tight">
+            <span className="sn-num" style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink)" }}>
+              {time(row.at)}
             </span>
-            <span className="truncate text-[11.5px] text-ink-3">
-              {message || h.detail || payloadSummary(r.payload, 3)}
-            </span>
+            <span style={{ fontSize: 10, color: "var(--sn-ink-3)" }}>{relative(row.at)}</span>
           </span>
-        );
-      },
-    },
-    {
-      key: "symbol",
-      header: "Sembol",
-      width: "110px",
-      sort: (r) => r.symbol,
-      cell: (r) =>
-        r.symbol ? (
-          <span className="font-mono text-[12px] text-ink-2">{r.symbol}</span>
-        ) : (
-          <span className="text-ink-3">—</span>
         ),
-    },
-    {
-      key: "bot",
-      header: "Bot",
-      width: "70px",
-      num: true,
-      defaultHidden: true,
-      sort: (r) => r.botId,
-      cell: (r) => (r.botId === null ? "—" : `#${r.botId}`),
-    },
-    {
-      key: "kind",
-      header: "Olay kodu",
-      width: "170px",
-      defaultHidden: true,
-      hint: "Motorun kullandığı makine kodu. Bir kaydı geliştiriciyle konuşurken bu kodu verin.",
-      sort: (r) => r.kind,
-      cell: (r) => <span className="font-mono text-[11px] text-ink-3">{r.kind}</span>,
-    },
-  ];
+      },
+      {
+        id: "severity",
+        header: "Önem",
+        width: 96,
+        value: (row) => humanizeEvent(row.kind, row.level, row.payload).severity,
+        cell: (row) => {
+          const level = humanizeEvent(row.kind, row.level, row.payload).severity;
+          return <Tag tone={SEVERITY_TONE[level]}>{SEVERITY_LABEL[level]}</Tag>;
+        },
+      },
+      {
+        id: "category",
+        header: "Kategori",
+        width: 112,
+        value: (row) => humanizeEvent(row.kind, row.level, row.payload).category,
+        cell: (row) => (
+          <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>
+            {CATEGORY_LABEL[humanizeEvent(row.kind, row.level, row.payload).category]}
+          </span>
+        ),
+      },
+      {
+        id: "event",
+        header: "Ne oldu",
+        width: 460,
+        value: (row) => humanizeEvent(row.kind, row.level, row.payload).title,
+        search: (row) => {
+          const human = humanizeEvent(row.kind, row.level, row.payload);
+          return `${human.title} ${row.kind} ${row.symbol ?? ""} ${payloadSummary(row.payload, 8)}`;
+        },
+        cell: (row) => {
+          const human = humanizeEvent(row.kind, row.level, row.payload);
+          const message = typeof row.payload?.message === "string" ? row.payload.message : "";
+          return (
+            <span className="flex min-w-0 flex-col leading-tight">
+              <span
+                className="flex items-center gap-1.5 truncate"
+                style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}
+              >
+                {human.title}
+                {row.live && <Tag tone="brand">canlı</Tag>}
+              </span>
+              <span
+                className="truncate"
+                style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}
+              >
+                {message || human.detail || payloadSummary(row.payload, 3)}
+              </span>
+            </span>
+          );
+        },
+      },
+      {
+        id: "symbol",
+        header: "Sembol",
+        width: 112,
+        value: (row) => row.symbol,
+        cell: (row) =>
+          row.symbol ? (
+            <span className="sn-num" style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>
+              {row.symbol}
+            </span>
+          ) : (
+            <span style={{ color: "var(--sn-ink-4)" }}>—</span>
+          ),
+      },
+      {
+        id: "bot",
+        header: "Bot",
+        width: 74,
+        num: true,
+        hidden: true,
+        value: (row) => row.botId,
+        cell: (row) => <NumText text={row.botId === null ? "—" : `#${row.botId}`} size="sm" />,
+      },
+      {
+        id: "kind",
+        header: "Olay kodu",
+        width: 190,
+        hidden: true,
+        hint: "Motorun kullandığı makine kodu. Bir kaydı geliştiriciyle konuşurken bu kodu verin.",
+        value: (row) => row.kind,
+        cell: (row) => (
+          <span className="sn-num" style={{ fontSize: "var(--sn-t-micro)", color: "var(--sn-ink-3)" }}>
+            {row.kind}
+          </span>
+        ),
+      },
+    ],
+    [],
+  );
 
   return (
     <>
-      <Section
+      <Panel
         padded={false}
         title="Olay akışı"
         description="En yeni olay üstte. Canlı bağlantı açıkken yeni olaylar anında düşer."
         actions={
-          <span className="flex items-center gap-1.5 text-[12px] text-ink-3">
-            <span
-              aria-hidden
-              className={cx(
-                "size-1.5 rounded-full",
-                wsState === "open" ? "bg-up" : "bg-warn",
-              )}
-            />
+          <span
+            className="flex items-center gap-1.5"
+            style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}
+          >
+            <Dot tone={wsState === "open" ? "up" : "warn"} pulse={wsState === "open"} />
             {wsState === "open" ? "canlı" : "bağlantı yok"}
           </span>
         }
       >
-        {/* Süzgeçler */}
-        <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2.5">
+        <div
+          className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2.5"
+          style={{ borderBottom: "1px solid var(--sn-hairline)" }}
+        >
           <div className="flex flex-wrap items-center gap-1">
-            <span className="mr-1 text-[11.5px] text-ink-3">Önem:</span>
-            <FilterChip active={severity === "all"} onClick={() => setSeverity("all")}>
+            <span
+              className="mr-1"
+              style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}
+            >
+              Önem:
+            </span>
+            <Chip active={severity === "all"} onClick={() => setSeverity("all")}>
               Hepsi
-            </FilterChip>
-            {(["error", "warn", "success", "info"] as Severity[]).map((s) => (
-              <FilterChip key={s} active={severity === s} onClick={() => setSeverity(s)}>
-                {SEVERITY_LABEL[s]}
-                <span className="num ml-1 text-[10.5px] opacity-60">{counts[s]}</span>
-              </FilterChip>
+            </Chip>
+            {(["error", "warn", "success", "info"] as Severity[]).map((level) => (
+              <Chip key={level} active={severity === level} onClick={() => setSeverity(level)}>
+                {SEVERITY_LABEL[level]}
+                <span className="sn-num" style={{ fontSize: 10, opacity: 0.65 }}>
+                  {counts[level]}
+                </span>
+              </Chip>
             ))}
           </div>
 
           <div className="flex flex-wrap items-center gap-1">
-            <span className="mr-1 ml-2 text-[11.5px] text-ink-3">Kategori:</span>
-            <FilterChip active={category === "all"} onClick={() => setCategory("all")}>
+            <span
+              className="mr-1"
+              style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}
+            >
+              Kategori:
+            </span>
+            <Chip active={category === "all"} onClick={() => setCategory("all")}>
               Hepsi
-            </FilterChip>
-            {(Object.keys(CATEGORY_LABEL) as LogCategory[]).map((c) => (
-              <FilterChip
-                key={c}
-                active={category === c}
-                onClick={() => setCategory(c)}
-                title={CATEGORY_HINT[c]}
+            </Chip>
+            {(Object.keys(CATEGORY_LABEL) as LogCategory[]).map((key) => (
+              <Chip
+                key={key}
+                active={category === key}
+                onClick={() => setCategory(key)}
+                title={CATEGORY_HINT[key]}
               >
-                {CATEGORY_LABEL[c]}
-              </FilterChip>
+                {CATEGORY_LABEL[key]}
+              </Chip>
             ))}
           </div>
         </div>
@@ -345,38 +404,32 @@ function EventStream() {
           query={query}
           empty={{
             title: "Henüz olay yok",
-            description:
-              "Sistem çalışmaya başladığında bot kararları, havuz yenilemeleri ve veri olayları burada görünecek.",
+            hint: "Sistem çalışmaya başladığında bot kararları, havuz yenilemeleri ve veri olayları burada görünecek.",
           }}
         >
           {() =>
             filtered.length === 0 ? (
               <Empty
                 title="Süzgece uyan olay yok"
-                description="Seçili önem ya da kategori için kayıt bulunamadı. Süzgeçleri gevşetip yeniden bakın."
-                className="m-4 border-0"
+                hint="Seçili önem ya da kategori için kayıt bulunamadı. Süzgeçleri gevşetip yeniden bakın."
               />
             ) : (
-              <DataTable
+              <DataGrid
                 rows={filtered}
                 columns={columns}
-                rowKey={(r) => r.id}
+                rowKey={(row) => row.id}
                 onRowClick={setSelected}
                 storageKey="loglar-akis"
-                searchText={(r) => {
-                  const h = humanizeEvent(r.kind, r.level, r.payload);
-                  return `${h.title} ${r.kind} ${r.symbol ?? ""} ${payloadSummary(r.payload, 8)}`;
-                }}
                 searchPlaceholder="Olay, sembol ya da mesaj ara…"
-                defaultSort={{ key: "at", dir: "desc" }}
-                pageSize={60}
-                dense
+                defaultSort={[{ id: "at", desc: true }]}
+                density="compact"
+                maxHeight={640}
                 footNote={`Son ${rows.length} olay gösteriliyor.`}
               />
             )
           }
         </Async>
-      </Section>
+      </Panel>
 
       <EventDrawer row={selected} onClose={() => setSelected(null)} />
     </>
@@ -384,12 +437,10 @@ function EventStream() {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Olay detayı                                                        */
-/* ------------------------------------------------------------------ */
 
 function EventDrawer({ row, onClose }: { row: StreamRow | null; onClose: () => void }) {
   if (!row) return null;
-  const h = humanizeEvent(row.kind, row.level, row.payload);
+  const human = humanizeEvent(row.kind, row.level, row.payload);
   const fields = payloadFields(row.payload);
   const message = typeof row.payload?.message === "string" ? row.payload.message : "";
 
@@ -397,52 +448,66 @@ function EventDrawer({ row, onClose }: { row: StreamRow | null; onClose: () => v
     <Drawer
       open
       onClose={onClose}
-      title={h.title}
+      title={human.title}
       subtitle={`${dateTime(row.at)} · ${relative(row.at)}`}
-      badge={<SeverityPill severity={h.severity} />}
+      badge={<Tag tone={SEVERITY_TONE[human.severity]}>{SEVERITY_LABEL[human.severity]}</Tag>}
     >
       <DrawerSection title="Ne oldu">
-        <div className="rounded-lg border border-line bg-elev px-3.5 py-3 text-[13px] leading-relaxed text-ink-2">
-          {message ? <RichText text={message} /> : h.detail ? <RichText text={h.detail} /> : "—"}
+        <div
+          className="rounded-[var(--sn-r-sm)] px-3.5 py-3"
+          style={{
+            background: "var(--sn-raised)",
+            border: "1px solid var(--sn-hairline)",
+            fontSize: "var(--sn-t-body)",
+            color: "var(--sn-ink-2)",
+            lineHeight: 1.55,
+          }}
+        >
+          {message ? <RichText text={message} /> : human.detail ? <RichText text={human.detail} /> : "—"}
         </div>
       </DrawerSection>
 
-      {message && h.detail && (
+      {message && human.detail && (
         <DrawerSection title="Ne anlama geliyor">
-          <RichText text={h.detail} className="text-[13px]" />
+          <RichText text={human.detail} className="block text-[length:var(--sn-t-body)]" />
         </DrawerSection>
       )}
 
-      {h.action && (
+      {human.action && (
         <DrawerSection title="Ne yapmalı">
-          <p className="border-l-2 border-brand pl-3 text-[13px] leading-relaxed text-ink-2">
-            {h.action}
+          <p
+            className="pl-3"
+            style={{
+              borderLeft: "2px solid var(--sn-brand-solid)",
+              fontSize: "var(--sn-t-body)",
+              color: "var(--sn-ink-2)",
+              lineHeight: 1.55,
+            }}
+          >
+            {human.action}
           </p>
         </DrawerSection>
       )}
 
-      {h.term && (
+      {human.term && (
         <DrawerSection title="İlgili kavram">
-          <div className="rounded-lg border border-line bg-elev px-3.5 py-3">
-            <Explain id={h.term} />
-          </div>
+          <Explain id={human.term} />
         </DrawerSection>
       )}
 
-      <DrawerSection
-        title="Ayrıntılar"
-        description="Olayla birlikte kaydedilen değerler."
-      >
+      <DrawerSection title="Ayrıntılar" hint="Olayla birlikte kaydedilen değerler.">
         {fields.length === 0 ? (
-          <p className="text-[13px] text-ink-3">Bu olay ek bir değer taşımıyor.</p>
+          <p style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink-3)" }}>
+            Bu olay ek bir değer taşımıyor.
+          </p>
         ) : (
-          <div className="divide-y divide-line rounded-lg border border-line px-3.5">
-            {fields.map((f) => (
+          <div className="flex flex-col">
+            {fields.map((field) => (
               <Field
-                key={f.key}
-                label={f.label}
-                term={f.term}
-                value={<span className="font-mono text-[12.5px]">{f.value}</span>}
+                key={field.key}
+                label={field.label}
+                term={field.term}
+                value={<span className="sn-num">{field.value}</span>}
               />
             ))}
           </div>
@@ -450,18 +515,16 @@ function EventDrawer({ row, onClose }: { row: StreamRow | null; onClose: () => v
       </DrawerSection>
 
       <DrawerSection title="Künye">
-        <div className="divide-y divide-line rounded-lg border border-line px-3.5">
+        <div className="flex flex-col">
           <Field
             label="Olay kodu"
             hint="Motorun kullandığı makine kodu. Bir kaydı geliştiriciyle konuşurken bunu verin."
-            value={<span className="font-mono text-[12px]">{row.kind}</span>}
+            value={<span className="sn-num">{row.kind}</span>}
           />
-          <Field label="Kategori" value={CATEGORY_LABEL[h.category]} />
+          <Field label="Kategori" value={CATEGORY_LABEL[human.category]} />
           <Field label="Kaynak" value={row.live ? "Canlı akış" : "Veritabanı"} />
           {row.botId !== null && <Field label="Bot" value={`#${row.botId}`} />}
-          {row.symbol && (
-            <Field label="Sembol" value={<span className="font-mono">{row.symbol}</span>} />
-          )}
+          {row.symbol && <Field label="Sembol" value={<span className="sn-num">{row.symbol}</span>} />}
         </div>
       </DrawerSection>
     </Drawer>
@@ -483,98 +546,123 @@ function DataQuality() {
   });
 
   const rows = useMemo(
-    () => (query.data ?? []).filter((r) => (onlyOpen ? !r.resolved : true)),
+    () => (query.data ?? []).filter((row) => (onlyOpen ? !row.resolved : true)),
     [query.data, onlyOpen],
   );
 
-  const columns: Column<DataQualityEntry>[] = [
-    {
-      key: "created_at",
-      header: "Bulunma zamanı",
-      width: "160px",
-      sort: (r) => new Date(r.created_at).getTime(),
-      cell: (r) => <span className="num text-[12px]">{dateTime(r.created_at)}</span>,
-    },
-    {
-      key: "kind",
-      header: "Tür",
-      width: "130px",
-      sort: (r) => r.kind,
-      cell: (r) => <QualityKind kind={r.kind} />,
-    },
-    {
-      key: "symbol",
-      header: "Sembol",
-      width: "120px",
-      sort: (r) => r.symbol,
-      cell: (r) => <span className="font-mono text-[12px]">{r.symbol || "—"}</span>,
-    },
-    {
-      key: "timeframe",
-      header: "Zaman dilimi",
-      width: "110px",
-      term: "karar_bari",
-      sort: (r) => r.timeframe,
-      cell: (r) => <span className="font-mono text-[12px] text-ink-2">{r.timeframe}</span>,
-    },
-    {
-      key: "severity",
-      header: "Önem",
-      width: "90px",
-      sort: (r) => r.severity,
-      cell: (r) => (
-        <StatusPill size="sm" tone={r.severity === "ERROR" ? "red" : "orange"}>
-          {r.severity === "ERROR" ? "Hata" : "Uyarı"}
-        </StatusPill>
-      ),
-    },
-    {
-      key: "resolved",
-      header: "Durum",
-      width: "100px",
-      sort: (r) => (r.resolved ? 1 : 0),
-      cell: (r) => (
-        <StatusPill size="sm" tone={r.resolved ? "green" : "gray"}>
-          {r.resolved ? "Kapandı" : "Açık"}
-        </StatusPill>
-      ),
-    },
-    {
-      key: "detail",
-      header: "Ayrıntı",
-      cell: (r) => (
-        <span className="truncate text-[12px] text-ink-2">{payloadSummary(r.detail, 3)}</span>
-      ),
-    },
-  ];
+  const columns = useMemo<GridColumn<DataQualityEntry>[]>(
+    () => [
+      {
+        id: "created_at",
+        header: "Bulunma zamanı",
+        width: 162,
+        pin: true,
+        value: (row) => new Date(row.created_at).getTime(),
+        cell: (row) => <NumText text={dateTime(row.created_at)} size="sm" />,
+      },
+      {
+        id: "kind",
+        header: "Tür",
+        width: 140,
+        value: (row) => row.kind,
+        cell: (row) => <QualityKind kind={row.kind} />,
+      },
+      {
+        id: "symbol",
+        header: "Sembol",
+        width: 122,
+        value: (row) => row.symbol,
+        search: (row) => `${row.symbol} ${row.kind} ${row.timeframe}`,
+        cell: (row) => (
+          <span className="sn-num" style={{ fontSize: "var(--sn-t-caption)" }}>
+            {row.symbol || "—"}
+          </span>
+        ),
+      },
+      {
+        id: "timeframe",
+        header: "Zaman dilimi",
+        width: 116,
+        hint: "Bu bulgunun hangi mum çözünürlüğünde tespit edildiği.",
+        value: (row) => row.timeframe,
+        cell: (row) => (
+          <span className="sn-num" style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>
+            {row.timeframe}
+          </span>
+        ),
+      },
+      {
+        id: "severity",
+        header: "Önem",
+        width: 94,
+        value: (row) => row.severity,
+        cell: (row) => (
+          <Tag tone={row.severity === "ERROR" ? "down" : "warn"}>
+            {row.severity === "ERROR" ? "Hata" : "Uyarı"}
+          </Tag>
+        ),
+      },
+      {
+        id: "resolved",
+        header: "Durum",
+        width: 104,
+        value: (row) => (row.resolved ? 1 : 0),
+        cell: (row) => (
+          <Tag tone={row.resolved ? "up" : "neutral"}>{row.resolved ? "Kapandı" : "Açık"}</Tag>
+        ),
+      },
+      {
+        id: "detail",
+        header: "Ayrıntı",
+        width: 380,
+        cell: (row) => (
+          <span
+            className="truncate"
+            style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}
+          >
+            {payloadSummary(row.detail, 3)}
+          </span>
+        ),
+      },
+    ],
+    [],
+  );
 
-  const openCount = (query.data ?? []).filter((r) => !r.resolved).length;
+  const openCount = (query.data ?? []).filter((row) => !row.resolved).length;
 
   return (
     <>
-      <Section
+      <Panel
         padded={false}
-        title="Veri kalitesi"
-        term="veri_tazeligi"
+        title={
+          <span className="flex items-center gap-1.5">
+            Veri kalitesi
+            <InfoDot id="veri_tazeligi" />
+          </span>
+        }
         description="Piyasa verisindeki eksik mumlar ve alışılmadık hareketler. Boşluklar otomatik olarak yeniden çekilir."
         actions={
-          <Button
-            size="sm"
-            variant={onlyOpen ? "outline" : "ghost"}
-            shape="rect"
-            onClick={() => setOnlyOpen((v) => !v)}
-          >
+          <Button size="sm" variant={onlyOpen ? "neutral" : "quiet"} onClick={() => setOnlyOpen((value) => !value)}>
             {onlyOpen ? "Yalnızca açık" : "Hepsi"}
           </Button>
         }
       >
-        <div className="border-b border-line px-4 py-2.5 text-[12.5px] text-ink-2">
+        <div
+          className="px-4 py-2.5"
+          style={{
+            borderBottom: "1px solid var(--sn-hairline)",
+            fontSize: "var(--sn-t-caption)",
+            color: "var(--sn-ink-2)",
+          }}
+        >
           {openCount === 0 ? (
             "Açık bulgu yok — izlenen tüm zaman dilimleri güncel görünüyor."
           ) : (
             <>
-              <strong className="font-medium text-ink">{openCount} açık bulgu</strong> var.
-              Bunların çoğu <Term id="aykiri_deger" /> olabilir: küçük hacimli coinlerde
+              <strong style={{ color: "var(--sn-ink)", fontWeight: 550 }}>
+                {openCount} açık bulgu
+              </strong>{" "}
+              var. Bunların çoğu <Term id="aykiri_deger" /> olabilir: küçük hacimli coinlerde
               görülen büyük günlük hareketler veri hatası değil, gerçek piyasa hareketidir ve
               kendiliğinden kapanmaz.
             </>
@@ -585,32 +673,31 @@ function DataQuality() {
           query={query}
           empty={{
             title: "Kalite bulgusu yok",
-            description: "Veri akışında eksik mum ya da aykırı değer tespit edilmedi.",
+            hint: "Veri akışında eksik mum ya da aykırı değer tespit edilmedi.",
           }}
         >
           {() =>
             rows.length === 0 ? (
               <Empty
                 title="Açık bulgu yok"
-                description="Tüm veri kalitesi bulguları kapanmış durumda. Kapananları görmek için süzgeci kaldırın."
-                className="m-4 border-0"
+                hint="Tüm veri kalitesi bulguları kapanmış durumda. Kapananları görmek için süzgeci kaldırın."
               />
             ) : (
-              <DataTable
+              <DataGrid
                 rows={rows}
                 columns={columns}
-                rowKey={(r) => r.id}
+                rowKey={(row) => String(row.id)}
                 onRowClick={setSelected}
                 storageKey="loglar-kalite"
-                searchText={(r) => `${r.symbol} ${r.kind} ${r.timeframe}`}
                 searchPlaceholder="Sembol ya da tür ara…"
-                defaultSort={{ key: "created_at", dir: "desc" }}
-                dense
+                defaultSort={[{ id: "created_at", desc: true }]}
+                density="compact"
+                maxHeight={600}
               />
             )
           }
         </Async>
-      </Section>
+      </Panel>
 
       {selected && (
         <Drawer
@@ -618,24 +705,20 @@ function DataQuality() {
           onClose={() => setSelected(null)}
           title={`${selected.symbol || "Sistem"} · ${selected.timeframe}`}
           subtitle={dateTime(selected.created_at)}
-          badge={
-            <StatusPill size="sm" tone={selected.resolved ? "green" : "gray"}>
-              {selected.resolved ? "Kapandı" : "Açık"}
-            </StatusPill>
-          }
+          badge={<Tag tone={selected.resolved ? "up" : "neutral"}>{selected.resolved ? "Kapandı" : "Açık"}</Tag>}
         >
           <DrawerSection title="Ne bulundu">
             <QualityExplanation entry={selected} />
           </DrawerSection>
 
           <DrawerSection title="Ayrıntılar">
-            <div className="divide-y divide-line rounded-lg border border-line px-3.5">
-              {payloadFields(selected.detail).map((f) => (
+            <div className="flex flex-col">
+              {payloadFields(selected.detail).map((field) => (
                 <Field
-                  key={f.key}
-                  label={f.label}
-                  term={f.term}
-                  value={<span className="font-mono text-[12.5px]">{f.value}</span>}
+                  key={field.key}
+                  label={field.label}
+                  term={field.term}
+                  value={<span className="sn-num">{field.value}</span>}
                 />
               ))}
             </div>
@@ -651,9 +734,12 @@ function QualityKind({ kind }: { kind: string }) {
     kind === "gap" ? "Veri boşluğu" : kind === "outlier" ? "Aykırı değer" : readableCode(kind);
   const term = kind === "gap" ? "bosluk" : kind === "outlier" ? "aykiri_deger" : undefined;
   return (
-    <span className="inline-flex items-center gap-1 text-[12px] text-ink">
+    <span
+      className="inline-flex items-center gap-1"
+      style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink)" }}
+    >
       {label}
-      {term && <InfoDot id={term} align="start" />}
+      {term && <InfoDot id={term} />}
     </span>
   );
 }
@@ -666,7 +752,7 @@ function QualityExplanation({ entry }: { entry: DataQualityEntry }) {
         ? "Bu mumda alışılmadık büyüklükte bir fiyat hareketi var. **Çoğu zaman bu bir veri hatası değildir** — küçük hacimli coinlerde tek günde yüzde yüzü aşan hareketler gerçekten olur.\n\nBu tür kayıtlar kendiliğinden kapanmaz: geçmişteki bir mumun özelliği sonradan düzelmez."
         : "Veri denetimi bu kaydı üretti.";
 
-  return <RichText text={text} className="text-[13px]" />;
+  return <RichText text={text} className="block text-[length:var(--sn-t-body)]" />;
 }
 
 /* ------------------------------------------------------------------ */
@@ -680,128 +766,104 @@ function AuditTrail() {
     refetchInterval: 60_000,
   });
 
-  const columns: Column<AuditEntry>[] = [
-    {
-      key: "created_at",
-      header: "Zaman",
-      width: "160px",
-      sort: (r) => new Date(r.created_at).getTime(),
-      cell: (r) => <span className="num text-[12px]">{dateTime(r.created_at)}</span>,
-    },
-    {
-      key: "user_id",
-      header: "Kullanıcı",
-      width: "100px",
-      num: true,
-      sort: (r) => r.user_id,
-      cell: (r) => (r.user_id === null ? "sistem" : `#${r.user_id}`),
-    },
-    {
-      key: "action",
-      header: "Eylem",
-      width: "190px",
-      sort: (r) => r.action,
-      cell: (r) => <span className="text-[12.5px] text-ink">{readableCode(r.action)}</span>,
-    },
-    {
-      key: "target",
-      header: "Hedef",
-      width: "150px",
-      sort: (r) => r.target,
-      cell: (r) => <span className="font-mono text-[12px] text-ink-2">{r.target || "—"}</span>,
-    },
-    {
-      key: "payload",
-      header: "Ayrıntı",
-      cell: (r) => (
-        <span className="truncate text-[12px] text-ink-2">{payloadSummary(r.payload, 4)}</span>
-      ),
-    },
-    {
-      key: "ip",
-      header: "IP",
-      width: "130px",
-      defaultHidden: true,
-      sort: (r) => r.ip,
-      cell: (r) => <span className="font-mono text-[11.5px] text-ink-3">{r.ip || "—"}</span>,
-    },
-  ];
+  const columns = useMemo<GridColumn<AuditEntry>[]>(
+    () => [
+      {
+        id: "created_at",
+        header: "Zaman",
+        width: 162,
+        pin: true,
+        value: (row) => new Date(row.created_at).getTime(),
+        cell: (row) => <NumText text={dateTime(row.created_at)} size="sm" />,
+      },
+      {
+        id: "user_id",
+        header: "Kullanıcı",
+        width: 104,
+        num: true,
+        value: (row) => row.user_id,
+        cell: (row) => <NumText text={row.user_id === null ? "sistem" : `#${row.user_id}`} size="sm" />,
+      },
+      {
+        id: "action",
+        header: "Eylem",
+        width: 200,
+        value: (row) => row.action,
+        search: (row) => `${row.action} ${row.target} ${row.ip}`,
+        cell: (row) => (
+          <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink)" }}>
+            {readableCode(row.action)}
+          </span>
+        ),
+      },
+      {
+        id: "target",
+        header: "Hedef",
+        width: 158,
+        value: (row) => row.target,
+        cell: (row) => (
+          <span className="sn-num" style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>
+            {row.target || "—"}
+          </span>
+        ),
+      },
+      {
+        id: "payload",
+        header: "Ayrıntı",
+        width: 360,
+        cell: (row) => (
+          <span
+            className="truncate"
+            style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}
+          >
+            {payloadSummary(row.payload, 4)}
+          </span>
+        ),
+      },
+      {
+        id: "ip",
+        header: "IP",
+        width: 136,
+        hidden: true,
+        value: (row) => row.ip,
+        cell: (row) => (
+          <span className="sn-num" style={{ fontSize: "var(--sn-t-micro)", color: "var(--sn-ink-3)" }}>
+            {row.ip || "—"}
+          </span>
+        ),
+      },
+    ],
+    [],
+  );
 
   return (
-    <Section
+    <Panel
       padded={false}
-      title="Denetim kaydı"
-      term="denetim_kaydi"
+      title={
+        <span className="flex items-center gap-1.5">
+          Denetim kaydı
+          <InfoDot id="denetim_kaydi" />
+        </span>
+      }
       description="Her yönetimsel işlem burada tutulur: kim, ne zaman, neyi değiştirdi ve hangi IP'den."
     >
       <Async
         query={query}
-        empty={{
-          title: "Denetim kaydı boş",
-          description: "Henüz kaydedilmiş bir yönetimsel işlem yok.",
-        }}
+        empty={{ title: "Denetim kaydı boş", hint: "Henüz kaydedilmiş bir yönetimsel işlem yok." }}
       >
         {(rows) => (
-          <DataTable
+          <DataGrid
             rows={rows}
             columns={columns}
-            rowKey={(r) => r.id}
+            rowKey={(row) => String(row.id)}
             storageKey="loglar-denetim"
-            searchText={(r) => `${r.action} ${r.target} ${r.ip}`}
             searchPlaceholder="Eylem, hedef ya da IP ara…"
-            defaultSort={{ key: "created_at", dir: "desc" }}
-            dense
+            defaultSort={[{ id: "created_at", desc: true }]}
+            density="compact"
+            maxHeight={600}
           />
         )}
       </Async>
-    </Section>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Küçük parçalar                                                     */
-/* ------------------------------------------------------------------ */
-
-function SeverityPill({ severity }: { severity: Severity }) {
-  const tone =
-    severity === "error"
-      ? "red"
-      : severity === "warn"
-        ? "orange"
-        : severity === "success"
-          ? "green"
-          : "gray";
-  return (
-    <StatusPill size="sm" tone={tone}>
-      {SEVERITY_LABEL[severity]}
-    </StatusPill>
-  );
-}
-
-function FilterChip({
-  active,
-  onClick,
-  title,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  title?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      className={cx(
-        "rounded-md border px-2 py-0.5 text-[11.5px] transition-colors",
-        active
-          ? "border-brand bg-brand-soft font-medium text-brand"
-          : "border-line text-ink-2 hover:border-line-strong hover:text-ink",
-      )}
-    >
-      {children}
-    </button>
+    </Panel>
   );
 }

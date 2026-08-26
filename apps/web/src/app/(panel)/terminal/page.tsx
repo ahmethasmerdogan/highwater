@@ -15,11 +15,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DockviewReact, type DockviewApi, type IDockviewPanelProps } from "dockview-react";
 import { useMutation } from "@tanstack/react-query";
-import { Button, Kbd } from "@/ui";
 import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
 import { parseCommand, type PanelKind } from "@/lib/terminal-commands";
-import { InfoDot } from "@/components/common/explain";
+import { Button, Chip, InfoDot } from "@/design";
 import {
   CalibrationPanel,
   ChartPanel,
@@ -31,7 +30,7 @@ import {
   ScoresPanel,
   SrPanel,
   type PanelParams,
-} from "@/components/terminal/panels";
+} from "@/terminal/panels";
 
 const LAYOUT_KEY = "sarnic.terminal.layout";
 
@@ -244,9 +243,17 @@ export default function TerminalPage() {
   return (
     <div className="flex h-full flex-col">
       {/* Dar ekran uyarısı */}
-      <div className="border-b border-line bg-warn-soft px-4 py-3 text-[13px] text-ink lg:hidden">
-        <strong className="font-medium">Terminal masaüstü içindir.</strong>{" "}
-        <span className="text-ink-2">
+      <div
+        className="px-4 py-3 lg:hidden"
+        style={{
+          background: "var(--sn-warn-bg)",
+          borderBottom: "1px solid var(--sn-hairline)",
+          fontSize: "var(--sn-t-body)",
+          color: "var(--sn-ink)",
+        }}
+      >
+        <strong style={{ fontWeight: 550 }}>Terminal masaüstü içindir.</strong>{" "}
+        <span style={{ color: "var(--sn-ink-2)" }}>
           Çok panelli çalışma alanı dar ekranda okunmaz. Buradaki bilgilerin tamamı Panel,
           Puanlar, Havuz ve Pozisyonlar sayfalarında da var.
         </span>
@@ -254,45 +261,56 @@ export default function TerminalPage() {
 
       <div className="hidden flex-1 flex-col lg:flex">
         {/* Komut satırı */}
-        <div className="flex flex-wrap items-center gap-3 border-b border-line bg-surface px-4 py-2">
+        <div
+          className="flex flex-wrap items-center gap-3 px-4 py-2"
+          style={{ background: "var(--sn-panel)", borderBottom: "1px solid var(--sn-hairline)" }}
+        >
           <form onSubmit={submit} className="flex min-w-72 flex-1 items-center gap-2">
-            <span className="text-[13px] text-ink-3">›</span>
+            <span style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink-3)" }}>›</span>
             <input
               ref={inputRef}
               value={command}
-              onChange={(e) => {
-                setCommand(e.target.value);
+              onChange={(event) => {
+                setCommand(event.target.value);
                 setError("");
               }}
               placeholder="SOLUSDT G 1h · SCAN 80 · POOL · POS · LOG · KILL"
-              className="w-full bg-transparent font-mono text-[13px] text-ink uppercase placeholder:font-sans placeholder:normal-case placeholder:text-ink-3 focus:outline-none"
+              className="sn-num w-full bg-transparent uppercase focus:outline-none"
+              style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}
             />
-            <Kbd>/</Kbd>
+            <kbd
+              className="sn-num rounded-[var(--sn-r-xs)] px-1.5"
+              style={{
+                background: "var(--sn-sunken)",
+                color: "var(--sn-ink-3)",
+                fontSize: "var(--sn-t-micro)",
+              }}
+            >
+              /
+            </kbd>
           </form>
 
           <div className="flex items-center gap-1.5">
-            <span className="flex items-center gap-1 text-[11.5px] text-ink-3">
+            <span
+              className="flex items-center gap-1"
+              style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}
+            >
               Yerleşim
-              <InfoDot
-                text="Hazır bir yerleşim kurar. Panelleri sürükleyip bölebilir, sekmelere yığabilirsiniz; düzeniniz tarayıcıda saklanır."
-                align="end"
-              />
+              <InfoDot text="Hazır bir yerleşim kurar. Panelleri sürükleyip bölebilir, sekmelere yığabilirsiniz; düzeniniz tarayıcıda saklanır." />
             </span>
-            {TEMPLATES.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                title={t.hint}
-                onClick={() => applyTemplate(t.id)}
-                className="rounded-lg border border-line px-2 py-0.5 text-[11.5px] text-ink-2 hover:border-line-strong hover:text-ink"
+            {TEMPLATES.map((template) => (
+              <Chip
+                key={template.id}
+                active={false}
+                title={template.hint}
+                onClick={() => applyTemplate(template.id)}
               >
-                {t.label}
-              </button>
+                {template.label}
+              </Chip>
             ))}
             <Button
               size="sm"
-              variant="ghost"
-              shape="rect"
+              variant="quiet"
               onClick={() => {
                 apiRef.current?.clear();
                 try {
@@ -308,7 +326,15 @@ export default function TerminalPage() {
         </div>
 
         {error && (
-          <div className="border-b border-line bg-down-soft px-4 py-1.5 text-[12.5px] text-ink">
+          <div
+            className="px-4 py-1.5"
+            style={{
+              background: "var(--sn-down-bg)",
+              borderBottom: "1px solid var(--sn-hairline)",
+              fontSize: "var(--sn-t-caption)",
+              color: "var(--sn-ink)",
+            }}
+          >
             {error}
           </div>
         )}
@@ -322,7 +348,7 @@ export default function TerminalPage() {
           />
           {ready && apiRef.current?.panels.length === 0 && (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-              <p className="text-[13px] text-ink-3">
+              <p style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink-3)" }}>
                 Panel yok. Yukarıdan bir yerleşim seçin ya da komut yazın.
               </p>
             </div>
@@ -330,24 +356,31 @@ export default function TerminalPage() {
         </div>
 
         {/* Komut yardımı */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line bg-surface px-4 py-1.5 text-[11px] text-ink-3">
-          <span>
-            <span className="font-mono text-ink-2">SEMBOL G [dilim]</span> grafik
-          </span>
-          <span>
-            <span className="font-mono text-ink-2">SEMBOL SC</span> puan kartı
-          </span>
-          <span>
-            <span className="font-mono text-ink-2">SEMBOL SR</span> destek/direnç
-          </span>
-          <span>
-            <span className="font-mono text-ink-2">SCAN 80</span> puanı ≥80 olanlar
-          </span>
-          <span>
-            <span className="font-mono text-ink-2">POOL · POS · ORD · LOG · CAL</span> paneller
-          </span>
-          <span className="text-warn">
-            <span className="font-mono">KILL</span> acil durdurma (onay ister)
+        <div
+          className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-1.5"
+          style={{
+            background: "var(--sn-panel)",
+            borderTop: "1px solid var(--sn-hairline)",
+            fontSize: "var(--sn-t-micro)",
+            color: "var(--sn-ink-3)",
+          }}
+        >
+          {[
+            ["SEMBOL G [dilim]", "grafik"],
+            ["SEMBOL SC", "puan kartı"],
+            ["SEMBOL SR", "destek/direnç"],
+            ["SCAN 80", "puanı ≥80 olanlar"],
+            ["POOL · POS · ORD · LOG · CAL", "paneller"],
+          ].map(([code, label]) => (
+            <span key={code}>
+              <span className="sn-num" style={{ color: "var(--sn-ink-2)" }}>
+                {code}
+              </span>{" "}
+              {label}
+            </span>
+          ))}
+          <span style={{ color: "var(--sn-warn)" }}>
+            <span className="sn-num">KILL</span> acil durdurma (onay ister)
           </span>
         </div>
       </div>

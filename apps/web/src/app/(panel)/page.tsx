@@ -3,31 +3,36 @@
 /**
  * Panel — sistemin tek ekranda özeti.
  *
- * Buradaki her sayı bir soruya cevap verir ve her kutunun yanında o sorunun
- * ne olduğu yazılıdır. Kötü haber (zarar, düşüş, durmuş bot, bayat veri)
- * iyi haberle aynı büyüklükte ve aynı yerde durur; saklanmaz.
+ * Sıralama bilinçli: önce **engel var mı** (uyarı şeridi), sonra **para
+ * nerede** (metrikler), sonra **işe yarıyor mu** (eğri + kıyas), en sonda
+ * **ne oluyor** (pozisyonlar, botlar, uyarılar).
+ *
+ * Kıyas eğrisi opsiyonel bir süs değil: sistemin birincil çıktısı ölçümdür.
+ * Botların eğrisi havuzun eşit ağırlıklı al-ve-tut sepetini geçemiyorsa,
+ * seçim yapmak değer katmıyor demektir ve panel bunu saklamaz.
  */
 
 import Link from "next/link";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Button, cx } from "@/ui";
 import {
   api,
   type Benchmark,
-  type PortfolioEquity,
   type LivePnl,
+  type PortfolioEquity,
   type Position,
   type SystemStatus,
 } from "@/lib/api";
-import { useLive } from "@/lib/ws";
-import { humanizeEvent, type Severity } from "@/lib/humanize";
-import { Page, Section, StatGrid, Empty } from "@/components/common/page";
-import { Stat, AmountText, Signed } from "@/components/common/amount";
-import { BotStatePill } from "@/components/common/pills";
-import { CurveChart, type CurveSeries } from "@/components/viz/charts";
-import { SimpleTable } from "@/components/data/data-table";
 import { money, num, pct, pctSigned, price, relative, time } from "@/lib/format";
+import { humanizeEvent, type Severity } from "@/lib/humanize";
+import { useLive } from "@/lib/ws";
+import { Page, GuideSection } from "@/shell/page";
+import { Button, Dot, Empty, Panel, Tag } from "@/design/primitives";
+import { Delta, Metric, NumCell, NumText } from "@/design/numeric";
+import { CurveChart, type CurveSeries } from "@/design/chart";
+import { Bar } from "@/design/viz";
+import { DataGrid } from "@/grid/data-grid";
+import type { GridColumn } from "@/grid/types";
 
 export default function DashboardPage() {
   const { data: status } = useQuery({
@@ -62,29 +67,26 @@ export default function DashboardPage() {
 
   const { events } = useLive();
 
-  /* Özsermaye + kıyas eğrileri aynı eksende; ortak 100 tabanına endekslenir. */
   const curves = useMemo<CurveSeries[]>(() => {
     const out: CurveSeries[] = [];
 
-    /*
-     * Uç bir dizi değil `{bots, total}` döndürür. Diziymiş gibi okunduğunda
-     * uzunluk `undefined` çıkıyor ve botların eğrisi **sessizce** çizilmiyordu;
-     * grafikte yalnızca kıyas görünüyordu.
-     */
+    /* Uç bir dizi değil `{bots, total}` döndürür. Diziymiş gibi okunduğunda
+       uzunluk `undefined` çıkar ve botların eğrisi SESSİZCE çizilmez;
+       grafikte yalnızca kıyas görünürdü. */
     if ((equity?.total.length ?? 0) > 0) {
       out.push({
         label: "Botlar",
-        color: "var(--series-1)",
-        points: equity!.total.map((p) => ({ at: p.at, value: p.equity })),
+        color: "var(--sn-series-1)",
+        points: equity!.total.map((point) => ({ at: point.at, value: point.equity })),
       });
     }
 
     if (benchmark?.benchmark?.length) {
       out.push({
         label: "Havuz sepeti (al ve tut)",
-        color: "var(--series-2)",
+        color: "var(--sn-series-2)",
         dashed: true,
-        points: benchmark.benchmark.map((p) => ({ at: p.at, value: p.value })),
+        points: benchmark.benchmark.map((point) => ({ at: point.at, value: point.value })),
       });
     }
 
@@ -95,101 +97,111 @@ export default function DashboardPage() {
   const alerts = useMemo(
     () =>
       events
-        .map((e) => ({ event: e, human: humanizeEvent(e.kind, e.level, e.payload) }))
-        .filter((x) => x.human.severity === "warn" || x.human.severity === "error")
+        .map((event) => ({ event, human: humanizeEvent(event.kind, event.level, event.payload) }))
+        .filter((entry) => entry.human.severity === "warn" || entry.human.severity === "error")
         .slice(0, 6),
     [events],
   );
 
   const stalePrices = live?.stale_symbols ?? [];
+  const exposurePct = live && live.equity > 0 ? live.exposure / live.equity : null;
 
   return (
     <Page
       title="Panel"
-      description="Sistemin şu anki durumu: para nerede, botlar ne yapıyor, dikkat edilmesi gereken bir şey var mı."
-      intro={{
-        storageKey: "panel",
-        what: "Tüm botların toplam durumu, özsermaye eğrisi, açık pozisyonlar ve son uyarılar. Sistemde canlı para yoktur — tüm emirler dahili kağıt motorundan geçer, veriler ise gerçektir.",
-        how: "**Özsermaye** botların toplam değeridir: nakit artı açık pozisyonların güncel karşılığı.\n**Gerçekleşmemiş** kâr/zarar açık pozisyonlardan gelir ve pozisyon kapanana kadar değişir — cebe girmiş sayılmaz.\nEğri grafiğinde botların eğrisi kıyas sepetiyle birlikte çizilir. Kıyası geçemiyorsanız, seçim yapmak değer katmıyor demektir.",
-        action: "Bir sayı beklediğinizden farklıysa ilgili sayfaya gidin: pozisyonlar için **Pozisyonlar**, botların neden karar aldığını görmek için **Loglar**, puanlamanın işe yarayıp yaramadığı için **Kalibrasyon**.",
-        terms: ["kagit_uzeri", "kiyas", "maruziyet", "drawdown", "havuz"],
-      }}
+      summary="Sistemin şu anki durumu: para nerede, botlar ne yapıyor, dikkat edilmesi gereken bir şey var mı."
+      guide={
+        <>
+          <GuideSection title="Ne gösteriyor">
+            <p>
+              Tüm botların toplam durumu, özsermaye eğrisi, açık pozisyonlar ve son uyarılar.
+              Sistemde canlı para yoktur — tüm emirler dahili kağıt motorundan geçer, veriler ise
+              gerçektir.
+            </p>
+          </GuideSection>
+          <GuideSection title="Nasıl okunur">
+            <p>
+              <strong>Özsermaye</strong> botların toplam değeridir: nakit artı açık pozisyonların
+              güncel karşılığı.
+            </p>
+            <p>
+              <strong>Gerçekleşmemiş</strong> kâr/zarar açık pozisyonlardan gelir ve pozisyon
+              kapanana kadar değişir — cebe girmiş sayılmaz.
+            </p>
+            <p>
+              Eğri grafiğinde botların eğrisi kıyas sepetiyle birlikte çizilir ve ikisi de 100
+              tabanına endekslenir. Kıyası geçemiyorsanız, seçim yapmak değer katmıyor demektir.
+            </p>
+          </GuideSection>
+          <GuideSection title="Ne yapabilirim">
+            <p>
+              Bir sayı beklediğinizden farklıysa ilgili sayfaya gidin: pozisyonlar için
+              Pozisyonlar, botların neden karar aldığını görmek için Loglar, puanlamanın işe
+              yarayıp yaramadığı için Kalibrasyon.
+            </p>
+          </GuideSection>
+        </>
+      }
     >
-      {/* Uyarı şeridi */}
       {status && <SystemBanner status={status} stalePrices={stalePrices} />}
 
-      {/* Ölçümler */}
-      <StatGrid cols={4}>
-        <Stat
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Metric
           label="Özsermaye"
-          hint="Tüm botların toplam değeri: elde kalan nakit artı açık pozisyonların güncel piyasa karşılığı."
-          value={<AmountText text={money(live?.equity)} size="xl" />}
-          sub={
+          value={live?.equity}
+          format={(value) => money(value)}
+          accent="var(--sn-brand-solid)"
+          delta={
             live ? (
-              <span className="flex items-center gap-1.5">
-                <span>başlangıç {money(live.capital)}</span>
-                <Signed value={live.total_return} text={pctSigned(live.total_return)} size="sm" />
-              </span>
-            ) : null
+              <Delta value={live.total_return} format={(value) => pctSigned(value)} size="sm" />
+            ) : undefined
           }
+          sub={live ? `başlangıç ${money(live.capital)}` : "yükleniyor…"}
         />
-
-        <Stat
+        <Metric
           label="Bugün gerçekleşen"
-          hint="Bugün kapanan işlemlerin net toplamı. Komisyon düşülmüştür ve bu tutar cebe girmiştir."
-          value={
-            <Signed
-              value={live?.realized_today}
-              text={money(live?.realized_today)}
-              size="xl"
-              arrow
-            />
+          value={live?.realized_today}
+          format={(value) => money(value)}
+          accent={
+            live && live.realized_today !== 0
+              ? live.realized_today > 0
+                ? "var(--sn-up)"
+                : "var(--sn-down)"
+              : undefined
           }
-          sub="kapanmış işlemler"
-          tone={
-            live?.realized_today === undefined || live.realized_today === 0
-              ? "neutral"
-              : live.realized_today > 0
-                ? "up"
-                : "down"
-          }
+          sub="kapanmış işlemler — cebe girdi"
         />
-
-        <Stat
+        <Metric
           label="Gerçekleşmemiş"
-          hint="Açık pozisyonların anlık kâr/zararı. Pozisyon kapanana kadar değişir — henüz kazanılmış sayılmaz."
-          value={
-            <Signed
-              value={live?.unrealized_pnl}
-              text={money(live?.unrealized_pnl)}
-              size="xl"
-              arrow
-            />
+          value={live?.unrealized_pnl}
+          format={(value) => money(value)}
+          accent={
+            live && live.unrealized_pnl !== 0
+              ? live.unrealized_pnl > 0
+                ? "var(--sn-up)"
+                : "var(--sn-down)"
+              : undefined
           }
-          sub={`${live?.open_positions ?? 0} açık pozisyon`}
+          sub={live ? `${num(live.open_positions, 0)} açık pozisyon` : undefined}
         />
-
-        <Stat
+        <Metric
           label="Maruziyet"
-          term="maruziyet"
-          value={
-            <AmountText
-              text={live ? pct(live.equity > 0 ? live.exposure / live.equity : 0) : "—"}
-              size="xl"
-            />
+          value={exposurePct}
+          format={(value) => (value === null || value === undefined ? "—" : pct(value, 2))}
+          sub={
+            live
+              ? `${money(live.exposure)} pozisyonda · ${money(live.cash)} nakit`
+              : undefined
           }
-          sub={live ? `${money(live.exposure)} pozisyonda · ${money(live.cash)} nakit` : null}
         />
-      </StatGrid>
+      </div>
 
-      {/* Eğri */}
-      <Section
+      <Panel
         title="Özsermaye ve kıyas"
-        term="kiyas"
         description="Botların eğrisi, havuzun eşit ağırlıklı al-ve-tut sepetiyle birlikte. İkisi de 100 tabanına endekslenmiştir; böylece farklı başlangıç tutarları karşılaştırılabilir."
         actions={
           <Link href="/kalibrasyon">
-            <Button size="sm" variant="ghost" shape="rect">
+            <Button size="sm" variant="quiet">
               Kalibrasyon
             </Button>
           </Link>
@@ -198,197 +210,45 @@ export default function DashboardPage() {
         <CurveChart
           series={curves}
           normalize
-          height={260}
-          valueFormat={(v) => `${num(v, 1)}`}
-          emptyText="Henüz eğri çizilecek kadar veri yok. Botlar çalışmaya başladıkça burası dolar."
+          height={280}
+          valueFormat={(value) => num(value, 1)}
+          emptyText="Henüz eğri yok — botlar çalıştıkça özsermaye noktaları birikir."
         />
-
+        {/* Hüküm sunucuda yazılır ve örneklem yetersizse bunu ZATEN söyler.
+            Panelin ayrıca "örneklem yetersiz" cümlesi eklemesi aynı uyarıyı
+            arka arkaya iki kez basıyordu. Yetersizlik burada yalnızca RENK
+            olarak taşınır. */}
         {benchmark?.verdict && (
-          <p className="mt-3 rounded-lg border border-line bg-elev px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink-2">
-            <strong className="font-medium text-ink">Değerlendirme: </strong>
-            {benchmark.verdict}
-            {benchmark.sufficient === false && (
-              <>
-                {" "}
-                <span className="text-warn">
-                  Örneklem henüz karar vermeye yetmiyor; bu fark gürültü olabilir.
-                </span>
-              </>
-            )}
+          <p
+            className="mt-3 flex items-start gap-2"
+            style={{ fontSize: "var(--sn-t-caption)", lineHeight: 1.5 }}
+          >
+            <span className="mt-1.5">
+              <Dot tone={benchmark.sufficient === false ? "warn" : "info"} />
+            </span>
+            <span
+              style={{
+                color: benchmark.sufficient === false ? "var(--sn-warn)" : "var(--sn-ink-2)",
+              }}
+            >
+              {benchmark.verdict}
+            </span>
           </p>
         )}
-      </Section>
+      </Panel>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        {/* Botlar */}
-        <Section
-          title="Botlar"
-          description="Her bot kendi sermayesi ve pozisyonlarıyla bağımsız çalışır."
-          padded={false}
-          actions={
-            <Link href="/botlar">
-              <Button size="sm" variant="ghost" shape="rect">
-                Tümü
-              </Button>
-            </Link>
-          }
-        >
-          {!live || live.bots.length === 0 ? (
-            <Empty
-              title="Bot yok"
-              description="Henüz hiç bot kurulmamış. Bot kurup başlatana kadar sistem işlem açmaz."
-              action={
-                <Link href="/botlar">
-                  <Button size="sm" variant="amber" shape="rect">
-                    Botlara git
-                  </Button>
-                </Link>
-              }
-              className="m-4 border-0"
-            />
-          ) : (
-            <SimpleTable
-              head={
-                <>
-                  <th>Bot</th>
-                  <th>Durum</th>
-                  <th className="col-num">Özsermaye</th>
-                  <th className="col-num">Getiri</th>
-                  <th className="col-num">Açık</th>
-                </>
-              }
-            >
-              {live.bots.map((b) => (
-                <tr key={b.bot_id}>
-                  <td>
-                    <Link
-                      href={`/botlar/${b.bot_id}`}
-                      className="text-[13px] text-ink hover:text-brand"
-                    >
-                      {b.name}
-                    </Link>
-                  </td>
-                  <td>
-                    <BotStatePill state={b.state} />
-                  </td>
-                  <td className="col-num">
-                    <AmountText text={money(b.equity)} size="sm" />
-                  </td>
-                  <td className="col-num">
-                    <Signed value={b.total_return} text={pctSigned(b.total_return)} size="sm" />
-                  </td>
-                  <td className="col-num">{b.open_positions}</td>
-                </tr>
-              ))}
-            </SimpleTable>
-          )}
-        </Section>
-
-        {/* Son uyarılar */}
-        <Section
-          title="Dikkat gerektirenler"
-          description="Son uyarı ve hatalar. Bilgi düzeyindeki kayıtlar buraya çıkmaz."
-          padded={false}
-          actions={
-            <Link href="/loglar">
-              <Button size="sm" variant="ghost" shape="rect">
-                Tüm loglar
-              </Button>
-            </Link>
-          }
-        >
-          {alerts.length === 0 ? (
-            <div className="px-5 py-8 text-center text-[13px] text-ink-3">
-              Şu an dikkat gerektiren bir şey yok.
-            </div>
-          ) : (
-            <ul className="divide-y divide-line">
-              {alerts.map(({ event, human }, i) => (
-                <li key={`${event.at}-${i}`} className="flex gap-3 px-5 py-2.5">
-                  <span
-                    aria-hidden
-                    className={cx(
-                      "mt-1.5 size-1.5 shrink-0 rounded-full",
-                      human.severity === "error" ? "bg-down" : "bg-warn",
-                    )}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[13px] text-ink">{human.title}</div>
-                    <div className="truncate text-[11.5px] text-ink-3">
-                      {typeof event.payload?.message === "string"
-                        ? event.payload.message
-                        : (human.detail ?? "")}
-                    </div>
-                  </div>
-                  <span className="shrink-0 text-[11px] text-ink-3">{time(event.at)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Section>
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <BotSummary live={live} />
+        <AlertList alerts={alerts} />
       </div>
 
-      {/* Açık pozisyonlar */}
-      <Section
-        title="Açık pozisyonlar"
-        description="Şu an piyasada duran pozisyonlar. Stop seviyeleri girişin altındadır ve aşağı indirilmez."
-        padded={false}
-        actions={
-          <Link href="/pozisyonlar">
-            <Button size="sm" variant="ghost" shape="rect">
-              Tümü
-            </Button>
-          </Link>
-        }
-      >
-        {positions.length === 0 ? (
-          <Empty
-            title="Açık pozisyon yok"
-            description="Botlar şu an piyasada değil. Puanı giriş eşiğini geçen bir aday çıktığında ve risk sınırları elverdiğinde pozisyon açılır."
-            className="m-4 border-0"
-          />
-        ) : (
-          <SimpleTable
-            head={
-              <>
-                <th>Sembol</th>
-                <th className="col-num">Giriş</th>
-                <th className="col-num">Güncel</th>
-                <th className="col-num">Stop</th>
-                <th className="col-num">K/Z</th>
-                <th className="col-num">%</th>
-                <th>Süre</th>
-              </>
-            }
-          >
-            {positions.slice(0, 8).map((p) => (
-              <tr key={p.id}>
-                <td className="font-mono text-[12.5px]">{p.symbol}</td>
-                <td className="col-num">{price(p.entry_price)}</td>
-                <td className="col-num">{price(p.last_price)}</td>
-                <td className="col-num text-ink-2">{price(p.stop)}</td>
-                <td className="col-num">
-                  <Signed value={p.unrealized_pnl} text={money(p.unrealized_pnl)} size="sm" />
-                </td>
-                <td className="col-num">
-                  <Signed
-                    value={p.unrealized_pct}
-                    text={pctSigned(p.unrealized_pct)}
-                    size="sm"
-                  />
-                </td>
-                <td className="text-[12px] text-ink-3">{relative(p.entry_time)}</td>
-              </tr>
-            ))}
-          </SimpleTable>
-        )}
-      </Section>
+      <OpenPositions rows={positions} />
     </Page>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/*  Sistem uyarı şeridi                                                */
+/*  Uyarı şeridi                                                       */
 /* ------------------------------------------------------------------ */
 
 /**
@@ -397,13 +257,7 @@ export default function DashboardPage() {
  * Boş havuz ya da bayat veri sessizce geçilirse kullanıcı "bot neden işlem
  * açmıyor" sorusunun cevabını aramakla vakit kaybeder.
  */
-function SystemBanner({
-  status,
-  stalePrices,
-}: {
-  status: SystemStatus;
-  stalePrices: string[];
-}) {
+function SystemBanner({ status, stalePrices }: { status: SystemStatus; stalePrices: string[] }) {
   const problems: { text: string; tone: Severity }[] = [];
 
   if (status.universe_size === 0) {
@@ -427,35 +281,34 @@ function SystemBanner({
   if (stalePrices.length > 0) {
     problems.push({
       tone: "warn",
-      text: `${stalePrices.length} sembolün güncel fiyatı bilinmiyor (${stalePrices.slice(0, 3).join(", ")}${stalePrices.length > 3 ? "…" : ""}). Gerçekleşmemiş kâr/zarar eksik hesaplanmış olabilir.`,
+      text: `${stalePrices.length} sembolün güncel fiyatı bilinmiyor (${stalePrices
+        .slice(0, 3)
+        .join(", ")}${stalePrices.length > 3 ? "…" : ""}). Gerçekleşmemiş kâr/zarar eksik hesaplanmış olabilir.`,
     });
   }
 
   if (problems.length === 0) return null;
 
   return (
-    <div className="space-y-2">
-      {problems.map((p, i) => (
+    <div className="flex flex-col gap-2">
+      {problems.map((problem) => (
         <div
-          key={i}
-          className={cx(
-            "flex items-start gap-2.5 rounded-xl border px-4 py-3 text-[13px]",
-            p.tone === "error"
-              ? "border-down/30 bg-down-soft"
-              : "border-warn/30 bg-warn-soft",
-          )}
+          key={problem.text}
+          className="flex items-start gap-2.5 rounded-[var(--sn-r-md)] px-4 py-3"
+          style={{
+            background: problem.tone === "error" ? "var(--sn-down-bg)" : "var(--sn-warn-bg)",
+            border: `1px solid ${problem.tone === "error" ? "var(--sn-down)" : "var(--sn-warn)"}33`,
+            fontSize: "var(--sn-t-body)",
+          }}
         >
-          <span
-            aria-hidden
-            className={cx(
-              "mt-1.5 size-1.5 shrink-0 rounded-full",
-              p.tone === "error" ? "bg-down" : "bg-warn",
-            )}
-          />
-          <span className="text-ink">{p.text}</span>
+          <span className="mt-1.5">
+            <Dot tone={problem.tone === "error" ? "down" : "warn"} />
+          </span>
+          <span style={{ color: "var(--sn-ink)" }}>{problem.text}</span>
           <Link
             href="/loglar"
-            className="ml-auto shrink-0 text-[12.5px] text-ink-2 underline underline-offset-2 hover:text-ink"
+            className="ml-auto shrink-0 underline underline-offset-2"
+            style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}
           >
             Loglara bak
           </Link>
@@ -465,3 +318,259 @@ function SystemBanner({
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  Botlar                                                             */
+/* ------------------------------------------------------------------ */
+
+function BotSummary({ live }: { live: LivePnl | undefined }) {
+  const bots = live?.bots ?? [];
+
+  return (
+    <Panel
+      title="Botlar"
+      description="Her botun kendi özsermayesi ve getirisi."
+      actions={
+        <Link href="/botlar">
+          <Button size="sm" variant="quiet">
+            Tümü
+          </Button>
+        </Link>
+      }
+      padded={false}
+    >
+      {bots.length === 0 ? (
+        <Empty
+          title="Çalışan bot yok"
+          hint="Bir bot kurup başlatana kadar sistem karar almaz ve pozisyon açmaz."
+          action={
+            <Link href="/botlar">
+              <Button size="sm" variant="primary">
+                Botlara git
+              </Button>
+            </Link>
+          }
+        />
+      ) : (
+        <ul>
+          {bots.map((bot) => (
+            <li
+              key={bot.bot_id}
+              className="flex items-center gap-3 px-4 py-2.5"
+              style={{ borderTop: "1px solid var(--sn-hairline)" }}
+            >
+              <Dot tone={bot.state === "PAPER_RUNNING" ? "up" : "warn"} />
+              <Link
+                href={`/botlar/${bot.bot_id}`}
+                className="min-w-0 flex-1 truncate hover:underline"
+                style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}
+              >
+                {bot.name}
+              </Link>
+              {bot.open_positions > 0 && (
+                <Tag tone="neutral" mono>
+                  {bot.open_positions} poz
+                </Tag>
+              )}
+              <NumText text={money(bot.equity)} size="sm" />
+              <span className="w-[76px] text-right">
+                <Delta value={bot.total_return} format={(value) => pctSigned(value)} size="sm" />
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Uyarılar                                                           */
+/* ------------------------------------------------------------------ */
+
+function AlertList({
+  alerts,
+}: {
+  alerts: { event: { at: string; payload: Record<string, unknown> }; human: { title: string; detail?: string; severity: Severity } }[];
+}) {
+  return (
+    <Panel
+      title="Dikkat gerektirenler"
+      description="Son uyarı ve hatalar. Bilgi düzeyindeki kayıtlar buraya çıkmaz."
+      actions={
+        <Link href="/loglar">
+          <Button size="sm" variant="quiet">
+            Tüm loglar
+          </Button>
+        </Link>
+      }
+      padded={false}
+    >
+      {alerts.length === 0 ? (
+        <Empty
+          title="Şu an dikkat gerektiren bir şey yok"
+          hint="Uyarı ve hatalar oluştuğu anda buraya düşer; sayfayı yenilemek gerekmez."
+        />
+      ) : (
+        <ul>
+          {alerts.map(({ event, human }, index) => (
+            <li
+              key={`${event.at}-${index}`}
+              className="flex gap-3 px-4 py-2.5"
+              style={{ borderTop: "1px solid var(--sn-hairline)" }}
+            >
+              <span className="mt-1.5">
+                <Dot tone={human.severity === "error" ? "down" : "warn"} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}>
+                  {human.title}
+                </div>
+                <div
+                  className="truncate"
+                  style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}
+                >
+                  {typeof event.payload?.message === "string"
+                    ? event.payload.message
+                    : (human.detail ?? "")}
+                </div>
+              </div>
+              <span
+                className="sn-num shrink-0"
+                style={{ fontSize: "var(--sn-t-micro)", color: "var(--sn-ink-3)" }}
+              >
+                {time(event.at)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Açık pozisyonlar                                                   */
+/* ------------------------------------------------------------------ */
+
+function OpenPositions({ rows }: { rows: Position[] }) {
+  const columns = useMemo<GridColumn<Position>[]>(
+    () => [
+      {
+        id: "symbol",
+        header: "Sembol",
+        width: 130,
+        pin: true,
+        value: (row) => row.symbol,
+        search: (row) => row.symbol,
+        cell: (row) => (
+          <span className="sn-num" style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}>
+            {row.symbol}
+          </span>
+        ),
+      },
+      {
+        id: "entry_time",
+        header: "Süre",
+        width: 100,
+        value: (row) => new Date(row.entry_time).getTime(),
+        cell: (row) => (
+          <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>
+            {relative(row.entry_time)}
+          </span>
+        ),
+      },
+      {
+        id: "entry_price",
+        header: "Giriş",
+        width: 118,
+        num: true,
+        value: (row) => row.entry_price,
+        cell: (row) => <NumCell value={row.entry_price} text={price(row.entry_price)} tint={false} />,
+      },
+      {
+        id: "last_price",
+        header: "Güncel",
+        width: 118,
+        num: true,
+        value: (row) => row.last_price,
+        cell: (row) => <NumCell value={row.last_price} text={price(row.last_price)} />,
+      },
+      {
+        id: "unrealized_pnl",
+        header: "K/Z",
+        width: 124,
+        num: true,
+        value: (row) => row.unrealized_pnl,
+        cell: (row) => <NumCell value={row.unrealized_pnl} text={money(row.unrealized_pnl)} colorize />,
+        footer: (list) => (
+          <NumText
+            text={money(list.reduce((sum, row) => sum + (row.unrealized_pnl ?? 0), 0))}
+            size="sm"
+          />
+        ),
+      },
+      {
+        id: "unrealized_pct",
+        header: "%",
+        width: 96,
+        num: true,
+        value: (row) => row.unrealized_pct,
+        cell: (row) => (
+          <NumCell
+            value={row.unrealized_pct}
+            text={row.unrealized_pct === null ? "—" : pct(row.unrealized_pct, 2)}
+            colorize
+          />
+        ),
+      },
+      {
+        id: "score_at_entry",
+        header: "Girişteki puan",
+        width: 128,
+        num: true,
+        value: (row) => row.score_at_entry,
+        cell: (row) => (
+          <span className="inline-flex items-center gap-2">
+            <Bar value={row.score_at_entry} width={26} height={3} />
+            <NumCell value={row.score_at_entry} text={num(row.score_at_entry, 1)} size="sm" tint={false} />
+          </span>
+        ),
+      },
+    ],
+    [],
+  );
+
+  return (
+    <Panel
+      title="Açık pozisyonlar"
+      description="Şu an piyasada duran her pozisyon."
+      actions={
+        <Link href="/pozisyonlar">
+          <Button size="sm" variant="quiet">
+            Ayrıntı
+          </Button>
+        </Link>
+      }
+      padded={false}
+    >
+      <DataGrid
+        rows={rows}
+        columns={columns}
+        rowKey={(row) => String(row.id)}
+        storageKey="panel-pozisyonlar"
+        searchable={false}
+        defaultSort={[{ id: "unrealized_pnl", desc: true }]}
+        maxHeight={360}
+        rowAccent={(row) =>
+          row.unrealized_pnl === null
+            ? null
+            : row.unrealized_pnl >= 0
+              ? "var(--sn-up)"
+              : "var(--sn-down)"
+        }
+        emptyTitle="Açık pozisyon yok"
+        emptyHint="Botlar puan eşiğini geçen bir aday bulduğunda pozisyon açar. Aday yoksa beklemek doğru davranıştır."
+      />
+    </Panel>
+  );
+}

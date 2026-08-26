@@ -9,13 +9,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Modal, cx } from "@/ui";
 import { api, type ChatMessage, type ChatRoom, type User } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useLiveChannel } from "@/lib/ws";
 import { toast } from "@/lib/toast";
-import { Page, Empty } from "@/components/common/page";
 import { dateTime, time } from "@/lib/format";
+import { Page } from "@/shell/page";
+import { Button, Empty, FormField, Modal, TextInput } from "@/design";
+import { cx } from "@/design/cx";
 
 export default function ChatPage() {
   const { user } = useAuth();
@@ -54,7 +55,7 @@ export default function ChatPage() {
       setDraft("");
       void qc.invalidateQueries({ queryKey: ["chat-messages", roomId] });
     },
-    onError: (e: Error) => toast.error("Mesaj gönderilemedi", e.message),
+    onError: (error: Error) => toast.error("Mesaj gönderilemedi", error.message),
   });
 
   /* Yeni mesajda en alta kaydır. */
@@ -70,96 +71,120 @@ export default function ChatPage() {
     [messages.data],
   );
 
-  const activeRoom = rooms.data?.find((r) => r.id === roomId);
+  const activeRoom = rooms.data?.find((room) => room.id === roomId);
 
   return (
     <Page
       title="Sohbet"
-      description="Ekip içi mesajlaşma."
-      intro={{
-        storageKey: "sohbet",
-        what: "Panele erişimi olan kullanıcılar arasında birebir ve grup mesajlaşması.",
-        how: "Soldaki listeden bir oda seçin. Yeni mesaj geldiğinde akış kendiliğinden tazelenir.",
-        action: "Yeni bir oda açmak için sağ üstteki düğmeyi kullanın ve katılacak kişileri seçin.",
-      }}
+      summary="Panele erişimi olan kullanıcılar arasında birebir ve grup mesajlaşması."
       actions={
-        <Button size="sm" variant="outline" shape="rect" onClick={() => setCreateOpen(true)}>
+        <Button size="sm" variant="neutral" onClick={() => setCreateOpen(true)}>
           Yeni oda
         </Button>
       }
     >
       {(rooms.data ?? []).length === 0 ? (
-        <Empty
-          title="Hiç sohbet odası yok"
-          description="Bir oda açıp ekip arkadaşlarınızı ekleyin."
-          action={
-            <Button size="sm" variant="amber" shape="rect" onClick={() => setCreateOpen(true)}>
-              İlk odayı aç
-            </Button>
-          }
-        />
+        <div
+          className="rounded-[var(--sn-r-md)]"
+          style={{ background: "var(--sn-panel)", border: "1px solid var(--sn-hairline)" }}
+        >
+          <Empty
+            title="Hiç sohbet odası yok"
+            hint="Bir oda açıp ekip arkadaşlarınızı ekleyin."
+            action={
+              <Button size="sm" variant="primary" onClick={() => setCreateOpen(true)}>
+                İlk odayı aç
+              </Button>
+            }
+          />
+        </div>
       ) : (
         <div className="grid gap-4 lg:grid-cols-[220px_1fr]">
-          {/* Oda listesi */}
-          <div className="rounded-xl border border-line bg-surface p-1.5">
-            {(rooms.data ?? []).map((r) => (
-              <button
-                key={r.id}
-                type="button"
-                onClick={() => setRoomId(r.id)}
-                className={cx(
-                  "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px]",
-                  r.id === roomId ? "bg-inset font-medium text-ink" : "text-ink-2 hover:bg-inset",
-                )}
-              >
-                <span className="min-w-0 flex-1 truncate">{r.name}</span>
-                {r.unread > 0 && (
-                  <span className="num rounded-full bg-brand px-1.5 text-[10px] font-semibold text-accent-ink">
-                    {r.unread}
-                  </span>
-                )}
-              </button>
-            ))}
+          <div
+            className="rounded-[var(--sn-r-md)] p-1.5"
+            style={{ background: "var(--sn-panel)", border: "1px solid var(--sn-hairline)" }}
+          >
+            {(rooms.data ?? []).map((room) => {
+              const active = room.id === roomId;
+              return (
+                <button
+                  key={room.id}
+                  type="button"
+                  onClick={() => setRoomId(room.id)}
+                  className={cx(
+                    "sn-focus flex w-full items-center gap-2 rounded-[var(--sn-r-sm)] px-2.5 py-2 text-left",
+                    "transition-colors duration-[var(--sn-dur-1)]",
+                    !active && "hover:bg-[var(--sn-sunken)]",
+                  )}
+                  style={{
+                    background: active ? "var(--sn-brand-bg)" : undefined,
+                    color: active ? "var(--sn-brand)" : "var(--sn-ink-2)",
+                    fontSize: "var(--sn-t-body)",
+                  }}
+                >
+                  <span className="min-w-0 flex-1 truncate">{room.name}</span>
+                  {room.unread > 0 && (
+                    <span
+                      className="sn-num rounded-full px-1.5 font-semibold"
+                      style={{
+                        background: "var(--sn-brand-solid)",
+                        color: "var(--sn-on-brand)",
+                        fontSize: 10,
+                      }}
+                    >
+                      {room.unread}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
-          {/* Mesajlar */}
-          <div className="flex h-[calc(100vh-19rem)] min-h-96 flex-col overflow-hidden rounded-xl border border-line bg-surface">
-            <div className="border-b border-line px-4 py-2.5">
-              <div className="text-[13.5px] font-medium text-ink">
+          <div
+            className="flex h-[calc(100vh-16rem)] min-h-96 flex-col overflow-hidden rounded-[var(--sn-r-md)]"
+            style={{ background: "var(--sn-panel)", border: "1px solid var(--sn-hairline)" }}
+          >
+            <div className="px-4 py-2.5" style={{ borderBottom: "1px solid var(--sn-hairline)" }}>
+              <div
+                className="font-medium"
+                style={{ fontSize: "var(--sn-t-body-lg)", color: "var(--sn-ink)" }}
+              >
                 {activeRoom?.name ?? "—"}
               </div>
-              <div className="text-[11.5px] text-ink-3">
+              <div style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}>
                 {activeRoom ? `${activeRoom.members.length} kişi` : ""}
               </div>
             </div>
 
-            <div className="thin-scroll flex-1 space-y-2 overflow-y-auto px-4 py-3">
+            <div className="sn-scroll flex flex-1 flex-col gap-2 overflow-y-auto px-4 py-3">
               {ordered.length === 0 ? (
-                <p className="py-8 text-center text-[13px] text-ink-3">
+                <p
+                  className="py-8 text-center"
+                  style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink-3)" }}
+                >
                   Bu odada henüz mesaj yok. İlk mesajı siz yazın.
                 </p>
               ) : (
-                ordered.map((m) => {
-                  const mine = m.user_id === user?.id;
+                ordered.map((message) => {
+                  const mine = message.user_id === user?.id;
                   return (
-                    <div
-                      key={m.id}
-                      className={cx("flex", mine ? "justify-end" : "justify-start")}
-                    >
+                    <div key={message.id} className={cx("flex", mine ? "justify-end" : "justify-start")}>
                       <div
-                        className={cx(
-                          "max-w-[72%] rounded-lg px-3 py-2",
-                          mine ? "bg-brand-soft" : "bg-inset",
-                        )}
+                        className="max-w-[72%] rounded-[var(--sn-r-sm)] px-3 py-2"
+                        style={{ background: mine ? "var(--sn-brand-bg)" : "var(--sn-sunken)" }}
                       >
-                        <div className="text-[13px] leading-relaxed break-words text-ink">
-                          {m.body}
+                        <div
+                          className="break-words"
+                          style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)", lineHeight: 1.5 }}
+                        >
+                          {message.body}
                         </div>
                         <div
-                          className="mt-0.5 text-[10.5px] text-ink-3"
-                          title={dateTime(m.created_at)}
+                          className="mt-0.5"
+                          title={dateTime(message.created_at)}
+                          style={{ fontSize: 10, color: "var(--sn-ink-3)" }}
                         >
-                          {mine ? "siz" : `#${m.user_id ?? "?"}`} · {time(m.created_at)}
+                          {mine ? "siz" : `#${message.user_id ?? "?"}`} · {time(message.created_at)}
                         </div>
                       </div>
                     </div>
@@ -170,24 +195,23 @@ export default function ChatPage() {
             </div>
 
             <form
-              onSubmit={(e) => {
-                e.preventDefault();
+              onSubmit={(event) => {
+                event.preventDefault();
                 if (draft.trim()) send.mutate(draft.trim());
               }}
-              className="flex items-center gap-2 border-t border-line px-3 py-2.5"
+              className="flex items-center gap-2 px-3 py-2.5"
+              style={{ borderTop: "1px solid var(--sn-hairline)" }}
             >
-              <input
+              <TextInput
                 value={draft}
-                onChange={(e) => setDraft(e.target.value)}
+                onChange={(event) => setDraft(event.target.value)}
                 placeholder="Mesaj yazın…"
                 disabled={roomId === null}
-                className="h-9 flex-1 rounded-lg border border-line bg-inset px-3 text-[13px] text-ink placeholder:text-ink-3 focus:border-brand focus:outline-none"
               />
               <Button
                 type="submit"
                 size="sm"
-                variant="amber"
-                shape="rect"
+                variant="primary"
                 disabled={!draft.trim() || send.isPending}
               >
                 Gönder
@@ -197,14 +221,14 @@ export default function ChatPage() {
         </div>
       )}
 
-      {createOpen && <CreateRoomModal onClose={() => setCreateOpen(false)} />}
+      <CreateRoomModal open={createOpen} onClose={() => setCreateOpen(false)} />
     </Page>
   );
 }
 
 /* ------------------------------------------------------------------ */
 
-function CreateRoomModal({ onClose }: { onClose: () => void }) {
+function CreateRoomModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
   const { can } = useAuth();
   const [name, setName] = useState("");
@@ -215,7 +239,7 @@ function CreateRoomModal({ onClose }: { onClose: () => void }) {
   const users = useQuery({
     queryKey: ["users"],
     queryFn: () => api.get<User[]>("/users"),
-    enabled: can(),
+    enabled: can() && open,
     retry: false,
   });
 
@@ -231,74 +255,64 @@ function CreateRoomModal({ onClose }: { onClose: () => void }) {
       void qc.invalidateQueries({ queryKey: ["chat-rooms"] });
       onClose();
     },
-    onError: (e: Error) => toast.error("Oda oluşturulamadı", e.message),
+    onError: (error: Error) => toast.error("Oda oluşturulamadı", error.message),
   });
 
   return (
-    <Modal open onClose={onClose} label="Yeni sohbet odası" width="max-w-md">
-      <div className="p-5">
-        <h2 className="text-[15px] font-semibold text-ink">Yeni sohbet odası</h2>
+    <Modal
+      open={open}
+      onOpenChange={(next) => !next && onClose()}
+      title="Yeni sohbet odası"
+      footer={
+        <>
+          <Button variant="quiet" onClick={onClose}>
+            Vazgeç
+          </Button>
+          <Button
+            variant="primary"
+            disabled={!name.trim() || create.isPending}
+            onClick={() => create.mutate()}
+          >
+            Oluştur
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3.5">
+        <FormField label="Oda adı">
+          <TextInput value={name} onChange={(event) => setName(event.target.value)} autoFocus />
+        </FormField>
 
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (name.trim()) create.mutate();
-          }}
-          className="mt-4 space-y-3.5"
-        >
-          <label className="block">
-            <span className="text-[12px] font-medium text-ink-2">Oda adı</span>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              autoFocus
-              className="mt-1 h-9 w-full rounded-lg border border-line bg-inset px-2.5 text-[13px] text-ink focus:border-brand focus:outline-none"
-            />
-          </label>
-
-          {can() && (users.data ?? []).length > 0 && (
-            <div>
-              <span className="text-[12px] font-medium text-ink-2">Katılacaklar</span>
-              <div className="thin-scroll mt-1 max-h-40 space-y-1 overflow-y-auto rounded-lg border border-line p-2">
-                {(users.data ?? []).map((u) => (
-                  <label
-                    key={u.id}
-                    className="flex cursor-pointer items-center gap-2 text-[12.5px] text-ink"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={members.includes(u.id)}
-                      onChange={(e) =>
-                        setMembers((prev) =>
-                          e.target.checked
-                            ? [...prev, u.id]
-                            : prev.filter((id) => id !== u.id),
-                        )
-                      }
-                      className="accent-[var(--brand)]"
-                    />
-                    {u.display_name || u.email}
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="flex justify-end gap-2 pt-1">
-            <Button type="button" size="sm" variant="ghost" shape="rect" onClick={onClose}>
-              Vazgeç
-            </Button>
-            <Button
-              type="submit"
-              size="sm"
-              variant="amber"
-              shape="rect"
-              disabled={!name.trim() || create.isPending}
+        {can() && (users.data ?? []).length > 0 && (
+          <FormField label="Katılacaklar">
+            <div
+              className="sn-scroll flex max-h-40 flex-col gap-1 overflow-y-auto rounded-[var(--sn-r-sm)] p-2"
+              style={{ border: "1px solid var(--sn-border)" }}
             >
-              Oluştur
-            </Button>
-          </div>
-        </form>
+              {(users.data ?? []).map((member) => (
+                <label
+                  key={member.id}
+                  className="flex cursor-pointer items-center gap-2"
+                  style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink)" }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={members.includes(member.id)}
+                    onChange={(event) =>
+                      setMembers((previous) =>
+                        event.target.checked
+                          ? [...previous, member.id]
+                          : previous.filter((id) => id !== member.id),
+                      )
+                    }
+                    className="accent-[var(--sn-brand-solid)]"
+                  />
+                  {member.display_name || member.email}
+                </label>
+              ))}
+            </div>
+          </FormField>
+        )}
       </div>
     </Modal>
   );

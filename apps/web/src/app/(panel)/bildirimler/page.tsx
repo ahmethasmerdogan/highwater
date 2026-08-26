@@ -13,7 +13,6 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, StatusPill, cx } from "@/ui";
 import { api, type Notification } from "@/lib/api";
 import { toast } from "@/lib/toast";
 import {
@@ -23,10 +22,30 @@ import {
   payloadFields,
   type Severity,
 } from "@/lib/humanize";
-import { Page, Section, Async, Empty } from "@/components/common/page";
-import { Explain, Field, RichText } from "@/components/common/explain";
-import { Drawer, DrawerSection } from "@/components/data/drawer";
 import { dateTime, relative } from "@/lib/format";
+import { Page, GuideSection } from "@/shell/page";
+import {
+  Async,
+  Button,
+  Drawer,
+  DrawerSection,
+  Empty,
+  Explain,
+  Field,
+  Panel,
+  RichText,
+  Segmented,
+  Tag,
+  type Tone,
+} from "@/design";
+import { cx } from "@/design/cx";
+
+const SEVERITY_TONE: Record<Severity, Tone> = {
+  error: "down",
+  warn: "warn",
+  success: "up",
+  info: "neutral",
+};
 
 export default function NotificationsPage() {
   const qc = useQueryClient();
@@ -54,126 +73,148 @@ export default function NotificationsPage() {
       void qc.invalidateQueries({ queryKey: ["notifications"] });
       void qc.invalidateQueries({ queryKey: ["unread-count"] });
     },
-    onError: (e: Error) => toast.error("İşaretlenemedi", e.message),
+    onError: (error: Error) => toast.error("İşaretlenemedi", error.message),
   });
 
-  // `useMemo` bağımlılığı olarak kullanılıyor; her çizimde yeni dizi
-  // üretmemesi için sabitleniyor.
   const all = useMemo(() => query.data ?? [], [query.data]);
-  const unreadCount = all.filter((n) => !n.read_at).length;
+  const unreadCount = all.filter((item) => !item.read_at).length;
   const rows = useMemo(
-    () => (filter === "okunmamis" ? all.filter((n) => !n.read_at) : all),
+    () => (filter === "okunmamis" ? all.filter((item) => !item.read_at) : all),
     [all, filter],
   );
 
-  const open = (n: Notification) => {
-    setSelected(n);
-    if (!n.read_at) markRead.mutate(n.id);
+  const open = (item: Notification) => {
+    setSelected(item);
+    if (!item.read_at) markRead.mutate(item.id);
   };
 
   return (
     <Page
       title="Bildirimler"
-      description="Sistemin size söylediği her şey — makine diliyle değil, ne yapmanız gerektiğiyle birlikte."
-      intro={{
-        storageKey: "bildirimler",
-        what: "Bot bir pozisyon açtığında ya da kapattığında, bir devre kesici tetiklendiğinde, havuz güncellendiğinde ya da veri akışı bozulduğunda buraya bir bildirim düşer.",
-        how: "Her bildirimin başlığı **ne olduğunu** söyler. Tıklayınca **ne anlama geldiği**, ilgili değerler ve gerekiyorsa **ne yapmanız gerektiği** açılır. Ham teknik döküm gösterilmez; değerler etiketli alanlar hâlinde durur.\n\nSoldaki renkli işaret önem düzeyidir. Kırmızı ve turuncu olanlar müdahale gerektirebilir.",
-        action: "Okunmamışları süzüp yalnızca yenilere bakabilirsiniz. Aynı olayın Discord'a da gitmesini isterseniz **Entegrasyonlar** sayfasından kanal eşlemesi yapın.",
-        terms: ["devre_kesici", "cikis_sebebi", "havuz", "kagit_uzeri"],
-      }}
+      summary="Sistemin size söylediği her şey — makine diliyle değil, ne yapmanız gerektiğiyle birlikte."
       actions={
-        unreadCount > 0 && (
+        unreadCount > 0 ? (
           <Button
             size="sm"
-            variant="outline"
-            shape="rect"
+            variant="neutral"
             disabled={markAll.isPending}
             onClick={() => markAll.mutate()}
           >
             Tümünü okundu işaretle
           </Button>
-        )
+        ) : undefined
+      }
+      guide={
+        <>
+          <GuideSection title="Ne gösteriyor">
+            <p>
+              Bot bir pozisyon açtığında ya da kapattığında, bir devre kesici tetiklendiğinde,
+              havuz güncellendiğinde ya da veri akışı bozulduğunda buraya bir bildirim düşer.
+            </p>
+          </GuideSection>
+          <GuideSection title="Nasıl okunur">
+            <p>
+              Her bildirimin başlığı <strong>ne olduğunu</strong> söyler. Tıklayınca{" "}
+              <strong>ne anlama geldiği</strong>, ilgili değerler ve gerekiyorsa{" "}
+              <strong>ne yapmanız gerektiği</strong> açılır. Ham teknik döküm gösterilmez;
+              değerler etiketli alanlar hâlinde durur.
+            </p>
+            <p>
+              Soldaki renkli işaret önem düzeyidir. Kırmızı ve turuncu olanlar müdahale
+              gerektirebilir.
+            </p>
+          </GuideSection>
+          <GuideSection title="Ne yapabilirim">
+            <p>
+              Okunmamışları süzüp yalnızca yenilere bakabilirsiniz. Aynı olayın Discord&apos;a da
+              gitmesini isterseniz Entegrasyonlar sayfasından kanal eşlemesi yapın.
+            </p>
+          </GuideSection>
+        </>
       }
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <FilterButton active={filter === "hepsi"} onClick={() => setFilter("hepsi")}>
-          Hepsi <span className="num opacity-60">{all.length}</span>
-        </FilterButton>
-        <FilterButton active={filter === "okunmamis"} onClick={() => setFilter("okunmamis")}>
-          Okunmamış <span className="num opacity-60">{unreadCount}</span>
-        </FilterButton>
-      </div>
+      <Segmented
+        value={filter}
+        onChange={setFilter}
+        options={[
+          { value: "hepsi", label: "Hepsi", count: all.length },
+          { value: "okunmamis", label: "Okunmamış", count: unreadCount },
+        ]}
+      />
 
-      <Section padded={false}>
+      <Panel padded={false}>
         <Async
           query={query}
           empty={{
             title: "Bildirim yok",
-            description:
-              "Sistem çalışmaya başladığında pozisyon açılışları, devre kesiciler ve havuz güncellemeleri burada görünecek.",
+            hint: "Sistem çalışmaya başladığında pozisyon açılışları, devre kesiciler ve havuz güncellemeleri burada görünecek.",
           }}
         >
           {() =>
             rows.length === 0 ? (
               <Empty
                 title="Okunmamış bildirim yok"
-                description="Hepsini okumuşsunuz. Tümünü görmek için süzgeci değiştirin."
-                className="m-4 border-0"
+                hint="Hepsini okumuşsunuz. Tümünü görmek için süzgeci değiştirin."
               />
             ) : (
-              <ul className="divide-y divide-line">
-                {rows.map((n) => {
-                  const h = humanizeNotification(n);
-                  const unread = !n.read_at;
+              <ul>
+                {rows.map((item) => {
+                  const human = humanizeNotification(item);
+                  const unread = !item.read_at;
+                  const tone = SEVERITY_TONE[human.severity];
                   return (
-                    <li key={n.id}>
+                    <li key={item.id} style={{ borderTop: "1px solid var(--sn-hairline)" }}>
                       <button
                         type="button"
-                        onClick={() => open(n)}
+                        onClick={() => open(item)}
                         className={cx(
-                          "flex w-full gap-3 px-5 py-3 text-left transition-colors hover:bg-inset",
-                          unread && "bg-brand-soft/30",
+                          "sn-focus flex w-full gap-3 px-4 py-3 text-left",
+                          "transition-colors duration-[var(--sn-dur-1)] hover:bg-[var(--sn-sunken)]",
                         )}
+                        style={unread ? { background: "var(--sn-brand-bg)" } : undefined}
                       >
                         <span
                           aria-hidden
-                          className={cx(
-                            "mt-1.5 size-2 shrink-0 rounded-full",
-                            h.severity === "error"
-                              ? "bg-down"
-                              : h.severity === "warn"
-                                ? "bg-warn"
-                                : h.severity === "success"
-                                  ? "bg-up"
-                                  : "bg-ink-3",
-                          )}
+                          className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full"
+                          style={{
+                            background:
+                              tone === "down"
+                                ? "var(--sn-down)"
+                                : tone === "warn"
+                                  ? "var(--sn-warn)"
+                                  : tone === "up"
+                                    ? "var(--sn-up)"
+                                    : "var(--sn-idle)",
+                          }}
                         />
                         <span className="min-w-0 flex-1">
                           <span className="flex flex-wrap items-center gap-2">
                             <span
-                              className={cx(
-                                "text-[13.5px] text-ink",
-                                unread && "font-medium",
-                              )}
+                              style={{
+                                fontSize: "var(--sn-t-body)",
+                                color: "var(--sn-ink)",
+                                fontWeight: unread ? 550 : 400,
+                              }}
                             >
-                              {h.title}
+                              {human.title}
                             </span>
-                            <span className="text-[11px] text-ink-3">
-                              {CATEGORY_LABEL[h.category]}
+                            <span style={{ fontSize: "var(--sn-t-micro)", color: "var(--sn-ink-3)" }}>
+                              {CATEGORY_LABEL[human.category]}
                             </span>
-                            {unread && (
-                              <span className="rounded bg-brand-soft px-1.5 text-[10px] font-medium text-brand">
-                                yeni
-                              </span>
-                            )}
+                            {unread && <Tag tone="brand">yeni</Tag>}
                           </span>
-                          <span className="mt-0.5 block line-clamp-2 text-[12.5px] leading-snug text-ink-2">
-                            {n.body || h.detail || "—"}
+                          <span
+                            className="mt-0.5 line-clamp-2 block"
+                            style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)", lineHeight: 1.45 }}
+                          >
+                            {item.body || human.detail || "—"}
                           </span>
                         </span>
-                        <span className="shrink-0 text-right text-[11.5px] whitespace-nowrap text-ink-3">
-                          {relative(n.created_at)}
+                        <span
+                          className="shrink-0 text-right whitespace-nowrap"
+                          style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}
+                        >
+                          {relative(item.created_at)}
                         </span>
                       </button>
                     </li>
@@ -183,7 +224,7 @@ export default function NotificationsPage() {
             )
           }
         </Async>
-      </Section>
+      </Panel>
 
       <NotificationDrawer notification={selected} onClose={() => setSelected(null)} />
     </Page>
@@ -201,72 +242,81 @@ function NotificationDrawer({
 }) {
   if (!notification) return null;
 
-  const h = humanizeNotification(notification);
+  const human = humanizeNotification(notification);
   const fields = payloadFields(notification.payload);
 
   return (
     <Drawer
       open
       onClose={onClose}
-      title={h.title}
+      title={human.title}
+      badge={<Tag tone={SEVERITY_TONE[human.severity]}>{SEVERITY_LABEL[human.severity]}</Tag>}
       subtitle={`${dateTime(notification.created_at)} · ${relative(notification.created_at)}`}
-      badge={<SeverityPill severity={h.severity} />}
     >
       <DrawerSection title="Ne oldu">
-        <div className="rounded-lg border border-line bg-elev px-3.5 py-3">
-          <RichText text={notification.body || h.detail || "—"} className="text-[13px]" />
+        <div
+          className="rounded-[var(--sn-r-sm)] px-3.5 py-3"
+          style={{ background: "var(--sn-raised)", border: "1px solid var(--sn-hairline)" }}
+        >
+          <RichText
+            text={notification.body || human.detail || "—"}
+            className="block text-[length:var(--sn-t-body)]"
+          />
         </div>
       </DrawerSection>
 
-      {h.detail && notification.body && h.detail !== notification.body && (
+      {human.detail && notification.body && human.detail !== notification.body && (
         <DrawerSection title="Ne anlama geliyor">
-          <RichText text={h.detail} className="text-[13px]" />
+          <RichText text={human.detail} className="block text-[length:var(--sn-t-body)]" />
         </DrawerSection>
       )}
 
-      {h.action && (
+      {human.action && (
         <DrawerSection title="Ne yapmalı">
-          <p className="border-l-2 border-brand pl-3 text-[13px] leading-relaxed text-ink-2">
-            {h.action}
+          <p
+            className="pl-3"
+            style={{
+              borderLeft: "2px solid var(--sn-brand-solid)",
+              fontSize: "var(--sn-t-body)",
+              color: "var(--sn-ink-2)",
+              lineHeight: 1.55,
+            }}
+          >
+            {human.action}
           </p>
         </DrawerSection>
       )}
 
       {fields.length > 0 && (
-        <DrawerSection
-          title="İlgili değerler"
-          description="Bildirimle birlikte kaydedilen bilgiler."
-        >
-          <div className="divide-y divide-line rounded-lg border border-line px-3.5">
-            {fields.map((f) => (
+        <DrawerSection title="İlgili değerler" hint="Bildirimle birlikte kaydedilen bilgiler.">
+          <div className="flex flex-col">
+            {fields.map((field) => (
               <Field
-                key={f.key}
-                label={f.label}
-                term={f.term}
-                value={<span className="font-mono text-[12.5px]">{f.value}</span>}
+                key={field.key}
+                label={field.label}
+                term={field.term}
+                value={<span className="sn-num">{field.value}</span>}
               />
             ))}
           </div>
         </DrawerSection>
       )}
 
-      {h.term && (
+      {human.term && (
         <DrawerSection title="İlgili kavram">
-          <div className="rounded-lg border border-line bg-elev px-3.5 py-3">
-            <Explain id={h.term} />
-          </div>
+          <Explain id={human.term} />
         </DrawerSection>
       )}
 
       <DrawerSection title="Künye">
-        <div className="divide-y divide-line rounded-lg border border-line px-3.5">
+        <div className="flex flex-col">
           <Field
             label="Olay kodu"
             hint="Motorun kullandığı makine kodu. Bir kaydı geliştiriciyle konuşurken bunu verin."
-            value={<span className="font-mono text-[12px]">{notification.kind}</span>}
+            value={<span className="sn-num">{notification.kind}</span>}
           />
-          <Field label="Kategori" value={CATEGORY_LABEL[h.category]} />
-          <Field label="Önem" value={SEVERITY_LABEL[h.severity]} />
+          <Field label="Kategori" value={CATEGORY_LABEL[human.category]} />
+          <Field label="Önem" value={SEVERITY_LABEL[human.severity]} />
           <Field
             label="Okunma"
             value={notification.read_at ? dateTime(notification.read_at) : "Okunmadı"}
@@ -274,46 +324,5 @@ function NotificationDrawer({
         </div>
       </DrawerSection>
     </Drawer>
-  );
-}
-
-function SeverityPill({ severity }: { severity: Severity }) {
-  const tone =
-    severity === "error"
-      ? "red"
-      : severity === "warn"
-        ? "orange"
-        : severity === "success"
-          ? "green"
-          : "gray";
-  return (
-    <StatusPill size="sm" tone={tone}>
-      {SEVERITY_LABEL[severity]}
-    </StatusPill>
-  );
-}
-
-function FilterButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cx(
-        "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12.5px] transition-colors",
-        active
-          ? "border-brand bg-brand-soft font-medium text-brand"
-          : "border-line text-ink-2 hover:border-line-strong hover:text-ink",
-      )}
-    >
-      {children}
-    </button>
   );
 }

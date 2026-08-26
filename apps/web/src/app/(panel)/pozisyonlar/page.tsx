@@ -1,24 +1,18 @@
 "use client";
 
 /**
- * Pozisyonlar — açık pozisyonlar, kapanmış işlemler, emirler ve maliyet.
+ * Pozisyonlar — açık pozisyonlar, kapanmış işlemler ve emir defteri.
  *
- * Maliyet bölümü ayrı bir sekme değil, sayfanın parçası: bir stratejinin
- * kâğıt üzerinde kârlı görünüp maliyetten sonra zarara dönmesi bu üründe en
- * sık karşılaşılan yanılgıdır ve gizlenmez.
+ * Sayfanın taşıdığı asıl fikir **R**'dir: bir işlemin sonucu, o işlemde
+ * göze alınan riske bölünür. İki işlemin TL kârını doğrudan karşılaştırmak
+ * yanıltıcıdır — biri büyük pozisyonla küçük hareket, öbürü küçük
+ * pozisyonla büyük hareket yakalamış olabilir. Bu yüzden R sütunu her
+ * tabloda vardır ve gizlenemez.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { cx } from "@/ui";
 import { api, type CostSummary, type Order, type Position, type Trade } from "@/lib/api";
-import { Page, Section, StatGrid, Async } from "@/components/common/page";
-import { Stat, AmountText, Signed } from "@/components/common/amount";
-import { Field } from "@/components/common/explain";
-import { ExitReasonPill, OrderStatusPill } from "@/components/common/pills";
-import { DataTable, type Column } from "@/components/data/data-table";
-import { Drawer, DrawerSection } from "@/components/data/drawer";
-import { rejectReason } from "@/lib/humanize";
 import {
   bps,
   dateTime,
@@ -26,58 +20,91 @@ import {
   money,
   num,
   pct,
-  pctSigned,
   price,
   relative,
   rMultiple,
 } from "@/lib/format";
+import { Page, GuideSection } from "@/shell/page";
+import { Panel, Segmented, Tag, Tip } from "@/design/primitives";
+import { Delta, Metric, NumCell, NumText } from "@/design/numeric";
+import { Bar, RangeDot } from "@/design/viz";
+import { Drawer, DrawerSection, KeyValue } from "@/design/drawer";
+import { DataGrid } from "@/grid/data-grid";
+import type { GridColumn } from "@/grid/types";
 
 type Tab = "acik" | "kapali" | "emirler";
 
 export default function PositionsPage() {
   const [tab, setTab] = useState<Tab>("acik");
 
+  const open = useQuery({
+    queryKey: ["positions", "open"],
+    queryFn: () => api.get<Position[]>("/positions", { status_filter: "OPEN" }),
+    refetchInterval: 20_000,
+  });
+  const trades = useQuery({
+    queryKey: ["trades"],
+    queryFn: () => api.get<Trade[]>("/trades", { limit: 500 }),
+    refetchInterval: 60_000,
+  });
+  const orders = useQuery({
+    queryKey: ["orders"],
+    queryFn: () => api.get<Order[]>("/orders", { limit: 300 }),
+    refetchInterval: 60_000,
+  });
+
   return (
     <Page
       title="Pozisyonlar"
-      description="Şu an piyasada duran pozisyonlar, kapanmış işlemler ve gönderilen emirler."
-      intro={{
-        storageKey: "pozisyonlar",
-        what: "Botların açtığı her pozisyon ve kapanan her işlem burada. Emirler sekmesi, gönderilen ama dolmayan ya da reddedilen emirleri de gösterir — reddedilen bir emir sessizce kaybolmaz.",
-        how: "**R (risk birimi)** bu sayfadaki en önemli sütundur. Bir işlemin sonucu, o işlemde göze alınan riske bölünür: +2R, riskin iki katı kazanç demektir. İki işlemin TL kârını doğrudan karşılaştırmak yanıltıcıdır çünkü biri büyük pozisyonla küçük hareket, diğeri küçük pozisyonla büyük hareket yakalamış olabilir.\n\n**Stop** her zaman girişin altındadır ve aşağı indirilmez. Yukarı taşınabilir: başabaşa çekme ve iz süren stop kârın bir kısmını kilitler.",
-        action: "Bir işlemin neden açıldığını görmek için satıra tıklayın. Maliyet payı %30'u geçiyorsa strateji fazla işlem yapıyor demektir — bunu aşağıdaki maliyet bölümünden takip edin.",
-        terms: ["r_katsayisi", "stop", "basabas", "iz_suren", "mfe_mae", "kayma", "maliyet_payi", "cikis_sebebi"],
-      }}
+      summary="Şu an piyasada duran pozisyonlar, kapanmış işlemler ve gönderilen emirler."
+      guide={
+        <>
+          <GuideSection title="Ne gösteriyor">
+            <p>
+              Botların açtığı her pozisyon ve kapanan her işlem burada. Emirler sekmesi, gönderilen
+              ama dolmayan ya da reddedilen emirleri de gösterir — reddedilen bir emir sessizce
+              kaybolmaz.
+            </p>
+          </GuideSection>
+          <GuideSection title="Nasıl okunur">
+            <p>
+              <strong>R (risk birimi)</strong> bu sayfadaki en önemli sütundur. Bir işlemin sonucu,
+              o işlemde göze alınan riske bölünür: +2R, riskin iki katı kazanç demektir.
+            </p>
+            <p>
+              <strong>Stop</strong> her zaman girişin altındadır ve aşağı indirilmez. Yukarı
+              taşınabilir: başabaşa çekme ve iz süren stop kârın bir kısmını kilitler.
+            </p>
+            <p>
+              <strong>MFE / MAE</strong> işlemin en iyi ve en kötü anını gösterir. Yüksek MFE ile
+              düşük sonuç, kârın geri verildiği anlamına gelir — çıkış kuralı gözden geçirilmeli.
+            </p>
+          </GuideSection>
+          <GuideSection title="Ne yapabilirim">
+            <p>
+              Maliyet payı %30&apos;u geçiyorsa strateji fazla işlem yapıyor demektir. Aşağıdaki
+              maliyet bölümü bunu ölçer; komisyon ve kaymanın brüt kârın ne kadarını yediğini
+              gösterir.
+            </p>
+          </GuideSection>
+        </>
+      }
     >
       <CostPanel />
 
-      <div className="flex flex-wrap gap-1 border-b border-line">
-        {(
-          [
-            { id: "acik", label: "Açık pozisyonlar" },
-            { id: "kapali", label: "Kapanmış işlemler" },
-            { id: "emirler", label: "Emirler" },
-          ] as { id: Tab; label: string }[]
-        ).map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setTab(t.id)}
-            className={cx(
-              "-mb-px border-b-2 px-3 py-2 text-[13px] transition-colors",
-              tab === t.id
-                ? "border-brand font-medium text-ink"
-                : "border-transparent text-ink-2 hover:text-ink",
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <Segmented
+        value={tab}
+        onChange={setTab}
+        options={[
+          { value: "acik", label: "Açık pozisyonlar", count: open.data?.length },
+          { value: "kapali", label: "Kapanmış işlemler", count: trades.data?.length },
+          { value: "emirler", label: "Emirler", count: orders.data?.length },
+        ]}
+      />
 
-      {tab === "acik" && <OpenPositions />}
-      {tab === "kapali" && <ClosedTrades />}
-      {tab === "emirler" && <Orders />}
+      {tab === "acik" && <OpenPositions rows={open.data ?? []} loading={open.isLoading} />}
+      {tab === "kapali" && <ClosedTrades rows={trades.data ?? []} loading={trades.isLoading} />}
+      {tab === "emirler" && <Orders rows={orders.data ?? []} loading={orders.isLoading} />}
     </Page>
   );
 }
@@ -86,6 +113,13 @@ export default function PositionsPage() {
 /*  Maliyet                                                            */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Komisyon ve kaymanın brüt kârdan aldığı pay.
+ *
+ * Ayrı bir bölüm olmasının sebebi: maliyet, tek tek işlemlere bakarken
+ * görünmez. İşlem başına 8 baz puan önemsiz görünür; 400 işlemde brüt
+ * kârın yarısı olur.
+ */
 function CostPanel() {
   const { data } = useQuery({
     queryKey: ["costs"],
@@ -93,104 +127,53 @@ function CostPanel() {
     refetchInterval: 120_000,
   });
 
-  if (!data) return null;
+  if (!data || data.trades === 0) return null;
 
-  const ratio = data.cost_ratio;
+  const heavy = data.cost_ratio !== null && data.cost_ratio > 0.3;
   const measured = data.measured_spread;
 
   return (
-    <Section
-      title="İşlem maliyeti"
-      term="maliyet_payi"
-      description="Kârın ne kadarı komisyon ve kaymaya gidiyor. Bir strateji kâğıt üzerinde kârlı görünüp maliyetten sonra zarara dönebilir."
-    >
-      <StatGrid cols={4}>
-        <Stat
-          label="Brüt kâr"
-          hint="Maliyetler düşülmeden önceki toplam sonuç."
-          value={<Signed value={data.gross_pnl} text={money(data.gross_pnl)} size="lg" />}
-          sub={`${data.trades} işlem`}
-        />
-        <Stat
-          label="Komisyon"
-          hint="Ödenen toplam komisyon."
-          value={<AmountText text={money(data.fees)} size="lg" />}
-        />
-        <Stat
-          label="Net kâr"
-          hint="Maliyetler düşüldükten sonra gerçekten kalan tutar."
-          value={<Signed value={data.net_pnl} text={money(data.net_pnl)} size="lg" />}
-          tone={data.net_pnl >= 0 ? "up" : "down"}
-        />
-        <Stat
-          label="Maliyet payı"
-          hint="Brüt kârın kaçta kaçı maliyete gitti. %30'u geçiyorsa işlem sıklığı stratejinin kendi kenarını yiyor demektir. Brüt zarardaysa bu oran hesaplanamaz."
-          value={<AmountText text={ratio === null ? "—" : pct(ratio)} size="lg" />}
-          tone={ratio !== null && ratio > 0.3 ? "warn" : "neutral"}
-        />
-      </StatGrid>
-
-      <div className="mt-4 grid gap-4 md:grid-cols-2">
-        <div className="rounded-lg border border-line px-3.5 py-1">
-          <div className="border-b border-line py-2 text-[12px] font-semibold text-ink">
-            Modellenmiş kayma
-          </div>
-          <Field
-            label="Ortalama kayma"
-            term="kayma"
-            value={<span className="num">{bps(data.avg_slippage_bps)}</span>}
-          />
-          <Field
-            label="En yüksek kayma"
-            hint="Tek bir emirde görülen en büyük fiyat sapması."
-            value={<span className="num">{bps(data.max_slippage_bps)}</span>}
-          />
-          <p className="py-2 text-[11.5px] leading-relaxed text-ink-3">
-            Bu değerler kağıt motorun emir defteri modelinden gelir ve bir{" "}
-            <strong className="text-ink-2">varsayım</strong> içerir.
-          </p>
-        </div>
-
-        {measured && (
-          <div className="rounded-lg border border-line px-3.5 py-1">
-            <div className="border-b border-line py-2 text-[12px] font-semibold text-ink">
-              Ölçülmüş spread
-            </div>
-            <Field
-              label="Ortanca spread"
-              term="spread"
-              value={<span className="num">{bps(measured.median_bps)}</span>}
-            />
-            <Field
-              label="%90'lık dilim"
-              hint="Ölçümlerin %90'ı bu değerin altında kaldı. Kötü anları temsil eder."
-              value={<span className="num">{bps(measured.p90_bps)}</span>}
-            />
-            <Field
-              label="Tek yön maliyeti"
-              hint="Komisyon artı yarım spread — bir alım ya da satımın gerçek maliyeti."
-              value={<span className="num">{bps(measured.one_way_bps)}</span>}
-            />
-            {measured.assumed_one_way_bps !== undefined && (
-              <Field
-                label="Varsayılan (doğrulama deneyi)"
-                hint="Sistemin ilk doğrulama deneyinde kullandığı varsayım. Ölçülen değer bundan yüksekse deney iyimser çıkmış demektir."
-                value={<span className="num">{bps(measured.assumed_one_way_bps)}</span>}
-              />
-            )}
-            <p className="py-2 text-[11.5px] leading-relaxed text-ink-3">
-              Bu değerler gerçek emir defterinden{" "}
-              <strong className="text-ink-2">ölçülmüştür</strong>, varsayım değildir.
-              {measured.samples ? ` ${num(measured.samples, 0)} örnek.` : ""}
-            </p>
-          </div>
-        )}
-      </div>
-
-      {data.note && (
-        <p className="mt-3 text-[12px] text-ink-3">{data.note}</p>
-      )}
-    </Section>
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <Metric
+        label="Brüt kâr/zarar"
+        value={data.gross_pnl}
+        format={(value) => money(value)}
+        sub={`${num(data.trades, 0)} kapanmış işlem`}
+      />
+      <Metric
+        label="Komisyon + kayma"
+        value={-Math.abs(data.fees)}
+        format={(value) => money(value)}
+        accent="var(--sn-warn)"
+        sub={
+          data.avg_slippage_bps !== null
+            ? `ortalama kayma ${bps(data.avg_slippage_bps)}`
+            : "kayma ölçülmedi"
+        }
+      />
+      <Metric
+        label="Net kâr/zarar"
+        value={data.net_pnl}
+        format={(value) => money(value)}
+        accent={data.net_pnl >= 0 ? "var(--sn-up)" : "var(--sn-down)"}
+        sub="cebe giren"
+      />
+      <Metric
+        label="Maliyet payı"
+        value={data.cost_ratio}
+        format={(value) => (value === null || value === undefined ? "—" : pct(value, 1))}
+        accent={heavy ? "var(--sn-down)" : undefined}
+        sub={
+          data.cost_ratio === null
+            ? "brüt zararda — pay hesaplanmaz"
+            : heavy
+              ? "%30 üstü: strateji fazla işlem yapıyor"
+              : measured?.one_way_bps !== undefined
+                ? `ölçülen tek yön ${bps(measured.one_way_bps)}`
+                : "brüt kârın maliyete giden kısmı"
+        }
+      />
+    </div>
   );
 }
 
@@ -198,496 +181,536 @@ function CostPanel() {
 /*  Açık pozisyonlar                                                   */
 /* ------------------------------------------------------------------ */
 
-function OpenPositions() {
+function OpenPositions({ rows, loading }: { rows: Position[]; loading: boolean }) {
   const [selected, setSelected] = useState<Position | null>(null);
 
-  const query = useQuery({
-    queryKey: ["positions", "open"],
-    queryFn: () => api.get<Position[]>("/positions", { status_filter: "OPEN" }),
-    refetchInterval: 20_000,
-  });
-
-  const rows = query.data ?? [];
-  const totalUnrealized = rows.reduce((s, p) => s + (p.unrealized_pnl ?? 0), 0);
-
-  const columns: Column<Position>[] = [
-    {
-      key: "symbol",
-      header: "Sembol",
-      width: "120px",
-      sort: (r) => r.symbol,
-      cell: (r) => <span className="font-mono text-[12.5px] text-ink">{r.symbol}</span>,
-    },
-    {
-      key: "qty",
-      header: "Miktar",
-      num: true,
-      defaultHidden: true,
-      sort: (r) => r.qty,
-      cell: (r) => num(r.qty, 6),
-    },
-    {
-      key: "entry_price",
-      header: "Giriş",
-      num: true,
-      sort: (r) => r.entry_price,
-      cell: (r) => price(r.entry_price),
-    },
-    {
-      key: "last_price",
-      header: "Güncel",
-      num: true,
-      sort: (r) => r.last_price,
-      cell: (r) =>
-        r.last_price === null ? (
-          <span className="text-warn" title="Bu sembolün güncel fiyatı bilinmiyor">
-            —
+  const columns = useMemo<GridColumn<Position>[]>(
+    () => [
+      {
+        id: "symbol",
+        header: "Sembol",
+        width: 130,
+        pin: true,
+        value: (row) => row.symbol,
+        search: (row) => row.symbol,
+        cell: (row) => (
+          <span className="sn-num" style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}>
+            {row.symbol}
           </span>
-        ) : (
-          price(r.last_price)
         ),
-    },
-    {
-      key: "stop",
-      header: "Stop",
-      num: true,
-      term: "stop",
-      sort: (r) => r.stop,
-      cell: (r) => (
-        <span className="flex items-center justify-end gap-1.5">
-          {r.breakeven_locked && (
-            <span
-              className="rounded bg-up-soft px-1 text-[9.5px] font-medium text-up"
-              title="Stop başabaşa çekildi; bu pozisyon artık zarar edemez."
-            >
-              başabaş
-            </span>
-          )}
-          <span className="num text-ink-2">{price(r.stop)}</span>
-        </span>
-      ),
-    },
-    {
-      key: "risk",
-      header: "Açık risk",
-      num: true,
-      hint: "Güncel fiyattan stop'a kadar olan mesafenin pozisyon büyüklüğüyle çarpımı — şu an masada duran tutar.",
-      sort: (r) => (r.last_price !== null ? (r.last_price - r.stop) * r.qty : null),
-      cell: (r) => {
-        if (r.last_price === null) return <span className="text-ink-3">—</span>;
-        return <span className="num">{money((r.last_price - r.stop) * r.qty)}</span>;
       },
-    },
-    {
-      key: "unrealized_pnl",
-      header: "K/Z",
-      num: true,
-      sort: (r) => r.unrealized_pnl,
-      cell: (r) => <Signed value={r.unrealized_pnl} text={money(r.unrealized_pnl)} size="sm" />,
-    },
-    {
-      key: "unrealized_pct",
-      header: "%",
-      num: true,
-      sort: (r) => r.unrealized_pct,
-      cell: (r) => (
-        <Signed value={r.unrealized_pct} text={pctSigned(r.unrealized_pct)} size="sm" />
-      ),
-    },
-    {
-      key: "score_at_entry",
-      header: "Girişteki puan",
-      num: true,
-      term: "puan",
-      sort: (r) => r.score_at_entry,
-      cell: (r) => num(r.score_at_entry, 1),
-    },
-    {
-      key: "entry_time",
-      header: "Açılış",
-      width: "120px",
-      sort: (r) => new Date(r.entry_time).getTime(),
-      cell: (r) => <span className="text-[12px] text-ink-2">{relative(r.entry_time)}</span>,
-    },
-  ];
+      {
+        id: "entry_time",
+        header: "Süre",
+        width: 96,
+        hint: "Pozisyonun açık kaldığı süre.",
+        value: (row) => new Date(row.entry_time).getTime(),
+        cell: (row) => (
+          <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>
+            {relative(row.entry_time)}
+          </span>
+        ),
+      },
+      {
+        id: "qty",
+        header: "Miktar",
+        width: 120,
+        num: true,
+        value: (row) => row.qty,
+        cell: (row) => <NumCell value={row.qty} text={num(row.qty, 4)} size="sm" tint={false} />,
+      },
+      {
+        id: "entry_price",
+        header: "Giriş",
+        width: 120,
+        num: true,
+        value: (row) => row.entry_price,
+        cell: (row) => <NumCell value={row.entry_price} text={price(row.entry_price)} tint={false} />,
+      },
+      {
+        id: "last_price",
+        header: "Güncel",
+        width: 120,
+        num: true,
+        hint: "Son işlem fiyatı. Piyasa verisi kesilirse bu sayı donar; üst çubuk bunu ayrıca yazar.",
+        value: (row) => row.last_price,
+        cell: (row) => <NumCell value={row.last_price} text={price(row.last_price)} />,
+      },
+      {
+        id: "stop",
+        header: "Stop",
+        width: 148,
+        num: true,
+        hint: "Zararı kesme fiyatı. Girişin altındadır ve aşağı indirilmez; başabaşa çekilmiş olabilir.",
+        value: (row) => row.stop,
+        cell: (row) => (
+          <span className="inline-flex items-center gap-1.5">
+            {row.breakeven_locked && (
+              <Tip content="Stop başabaşa çekildi: bu pozisyon artık zarar yazamaz.">
+                <span>
+                  <Tag tone="info">BE</Tag>
+                </span>
+              </Tip>
+            )}
+            <NumCell value={row.stop} text={price(row.stop)} tint={false} />
+          </span>
+        ),
+      },
+      {
+        id: "risk",
+        header: "Açık risk",
+        width: 118,
+        num: true,
+        hint: "Stop tetiklenirse kaybedilecek tutar. Pozisyon büyüklüğü × (giriş − stop).",
+        value: (row) => openRisk(row),
+        cell: (row) => {
+          const risk = openRisk(row);
+          return <NumCell value={risk} text={money(risk)} size="sm" tint={false} />;
+        },
+        footer: (list) => (
+          <NumText text={money(list.reduce((sum, row) => sum + (openRisk(row) ?? 0), 0))} size="sm" />
+        ),
+      },
+      {
+        id: "unrealized_pnl",
+        header: "K/Z",
+        width: 126,
+        num: true,
+        hint: "Gerçekleşmemiş kâr/zarar. Pozisyon kapanana kadar değişir — cebe girmiş sayılmaz.",
+        value: (row) => row.unrealized_pnl,
+        cell: (row) => <NumCell value={row.unrealized_pnl} text={money(row.unrealized_pnl)} colorize />,
+        footer: (list) => (
+          <NumText
+            text={money(list.reduce((sum, row) => sum + (row.unrealized_pnl ?? 0), 0))}
+            size="sm"
+          />
+        ),
+      },
+      {
+        id: "unrealized_pct",
+        header: "%",
+        width: 96,
+        num: true,
+        value: (row) => row.unrealized_pct,
+        cell: (row) => (
+          <NumCell
+            value={row.unrealized_pct}
+            text={row.unrealized_pct === null ? "—" : pct(row.unrealized_pct, 2)}
+            colorize
+          />
+        ),
+      },
+      {
+        id: "score_at_entry",
+        header: "Girişteki puan",
+        width: 128,
+        num: true,
+        hint: "Pozisyon açılırken sembolün puanı. Düşük puanla açılmış bir pozisyon, eşiğin gevşediğini gösterebilir.",
+        value: (row) => row.score_at_entry,
+        cell: (row) => (
+          <span className="inline-flex items-center gap-2">
+            <Bar value={row.score_at_entry} width={26} height={3} />
+            <NumCell value={row.score_at_entry} text={num(row.score_at_entry, 1)} size="sm" tint={false} />
+          </span>
+        ),
+      },
+      {
+        id: "bot_id",
+        header: "Bot",
+        width: 76,
+        num: true,
+        hidden: true,
+        value: (row) => row.bot_id,
+        cell: (row) => <NumText text={String(row.bot_id)} size="sm" />,
+      },
+    ],
+    [],
+  );
 
   return (
     <>
-      {rows.length > 0 && (
-        <StatGrid cols={3}>
-          <Stat
-            label="Açık pozisyon"
-            value={<AmountText text={`${rows.length}`} size="xl" />}
-          />
-          <Stat
-            label="Gerçekleşmemiş K/Z"
-            hint="Pozisyonlar kapanana kadar değişir. Henüz kazanılmış sayılmaz."
-            value={<Signed value={totalUnrealized} text={money(totalUnrealized)} size="xl" arrow />}
-            tone={totalUnrealized >= 0 ? "up" : "down"}
-          />
-          <Stat
-            label="Fiyatı bilinmeyen"
-            hint="Güncel fiyatı gelmeyen semboller. Varsa gerçekleşmemiş kâr/zarar eksik hesaplanmıştır."
-            value={
-              <AmountText text={`${rows.filter((r) => r.last_price === null).length}`} size="xl" />
-            }
-            tone={rows.some((r) => r.last_price === null) ? "warn" : "neutral"}
-          />
-        </StatGrid>
-      )}
+      <Panel
+        title="Açık pozisyonlar"
+        description="Piyasada duran her pozisyon. Satıra tıklayın: giriş gerekçesi ve stop geçmişi açılır."
+        padded={false}
+      >
+        <DataGrid
+          rows={rows}
+          columns={columns}
+          rowKey={(row) => String(row.id)}
+          onRowClick={setSelected}
+          storageKey="pozisyonlar-acik"
+          searchPlaceholder="Sembol ara…"
+          defaultSort={[{ id: "unrealized_pnl", desc: true }]}
+          rowAccent={(row) =>
+            row.unrealized_pnl === null
+              ? null
+              : row.unrealized_pnl >= 0
+                ? "var(--sn-up)"
+                : "var(--sn-down)"
+          }
+          emptyTitle={loading ? "Yükleniyor…" : "Açık pozisyon yok"}
+          emptyHint={
+            loading
+              ? undefined
+              : "Botlar puan eşiğini geçen bir aday bulduğunda pozisyon açar. Eşiği geçen aday yoksa beklemek doğru davranıştır."
+          }
+        />
+      </Panel>
 
-      <Section padded={false}>
-        <Async
-          query={query}
-          empty={{
-            title: "Açık pozisyon yok",
-            description:
-              "Botlar şu an piyasada değil. Puanı giriş eşiğini geçen bir aday çıktığında ve risk sınırları elverdiğinde pozisyon açılır.",
-          }}
-        >
-          {(list) => (
-            <DataTable
-              rows={list}
-              columns={columns}
-              rowKey={(r) => r.id}
-              onRowClick={setSelected}
-              storageKey="pozisyonlar-acik"
-              searchText={(r) => r.symbol}
-              searchPlaceholder="Sembol ara…"
-              defaultSort={{ key: "unrealized_pnl", dir: "desc" }}
-              dense
-            />
-          )}
-        </Async>
-      </Section>
-
-      {selected && (
-        <Drawer
-          open
-          onClose={() => setSelected(null)}
-          title={<span className="font-mono">{selected.symbol}</span>}
-          subtitle={`${relative(selected.entry_time)} açıldı · bot #${selected.bot_id}`}
-        >
-          <DrawerSection
-            title="Risk hesabı"
-            description="Bu pozisyon açılırken ne kadar risk alındı ve şu an ne durumda."
-          >
-            <div className="divide-y divide-line rounded-lg border border-line px-3.5">
-              <Field
-                label="Giriş fiyatı"
-                value={<span className="num">{price(selected.entry_price)}</span>}
-              />
-              <Field
-                label="İlk stop"
-                hint="Pozisyon açılırken belirlenen zarar durdurma seviyesi. 1R bu mesafedir."
-                value={<span className="num">{price(selected.initial_stop)}</span>}
-              />
-              <Field
-                label="Güncel stop"
-                term="stop"
-                value={<span className="num">{price(selected.stop)}</span>}
-              />
-              <Field
-                label="Başabaş kilidi"
-                term="basabas"
-                value={selected.breakeven_locked ? "Kilitli — zarar edemez" : "Henüz kilitlenmedi"}
-              />
-              <Field
-                label="Başlangıç riski (1R)"
-                hint="Girişten ilk stop'a kadarki mesafenin miktarla çarpımı — pozisyon açılırken göze alınan tutar."
-                value={
-                  <span className="num">
-                    {money((selected.entry_price - selected.initial_stop) * selected.qty)}
-                  </span>
-                }
-              />
-              <Field
-                label="Şu anki sonuç"
-                term="r_katsayisi"
-                value={
-                  <Signed
-                    value={selected.unrealized_pnl}
-                    text={rMultiple(
-                      selected.unrealized_pnl !== null &&
-                        selected.entry_price !== selected.initial_stop
-                        ? selected.unrealized_pnl /
-                            ((selected.entry_price - selected.initial_stop) * selected.qty)
-                        : null,
-                    )}
-                    size="sm"
-                  />
-                }
-              />
+      <Drawer
+        open={Boolean(selected)}
+        onClose={() => setSelected(null)}
+        title={selected?.symbol ?? ""}
+        subtitle={selected ? `Bot ${selected.bot_id} · ${dateTime(selected.entry_time)}` : undefined}
+      >
+        {selected && (
+          <>
+            <div className="flex items-baseline gap-3">
+              <Delta value={selected.unrealized_pnl} format={(value) => money(value)} size="hero" />
+              <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}>
+                gerçekleşmemiş
+              </span>
             </div>
-          </DrawerSection>
 
-          <DrawerSection title="Pozisyon">
-            <div className="divide-y divide-line rounded-lg border border-line px-3.5">
-              <Field label="Miktar" value={<span className="num">{num(selected.qty, 8)}</span>} />
-              <Field
-                label="Güncel fiyat"
-                value={<span className="num">{price(selected.last_price)}</span>}
+            <DrawerSection
+              title="Fiyatın stop ile giriş arasındaki yeri"
+              hint="Nokta stopa yaklaştıkça pozisyon riske yaklaşır. Stop girişin üstündeyse pozisyon başabaşa kilitlenmiştir."
+            >
+              <RangeDot
+                value={selected.last_price}
+                low={selected.stop}
+                high={Math.max(selected.entry_price, selected.last_price ?? selected.entry_price)}
+                lowLabel={`stop ${price(selected.stop)}`}
+                highLabel={`giriş ${price(selected.entry_price)}`}
               />
-              <Field
-                label="Girişteki puan"
-                term="puan"
-                value={<span className="num">{num(selected.score_at_entry, 1)}</span>}
+            </DrawerSection>
+
+            <DrawerSection title="Sayılar">
+              <KeyValue
+                rows={[
+                  { label: "Miktar", value: <NumText text={num(selected.qty, 6)} size="sm" /> },
+                  { label: "Giriş fiyatı", value: <NumText text={price(selected.entry_price)} size="sm" /> },
+                  { label: "Güncel fiyat", value: <NumText text={price(selected.last_price)} size="sm" /> },
+                  { label: "Stop", value: <NumText text={price(selected.stop)} size="sm" /> },
+                  {
+                    label: "İlk stop",
+                    value: <NumText text={price(selected.initial_stop)} size="sm" />,
+                  },
+                  {
+                    label: "Açık risk",
+                    value: <NumText text={money(openRisk(selected))} size="sm" />,
+                  },
+                  {
+                    label: "Girişteki puan",
+                    value: <NumText text={num(selected.score_at_entry, 1)} size="sm" />,
+                  },
+                  {
+                    label: "Başabaş kilidi",
+                    value: selected.breakeven_locked ? (
+                      <Tag tone="info">kilitli</Tag>
+                    ) : (
+                      <Tag tone="neutral">yok</Tag>
+                    ),
+                  },
+                ]}
               />
-              <Field label="Açılış zamanı" value={dateTime(selected.entry_time)} />
-            </div>
-          </DrawerSection>
-        </Drawer>
-      )}
+            </DrawerSection>
+          </>
+        )}
+      </Drawer>
     </>
   );
+}
+
+/** Stop tetiklenirse kaybedilecek tutar. */
+function openRisk(position: Position): number | null {
+  if (!Number.isFinite(position.qty) || !Number.isFinite(position.stop)) return null;
+  const reference = position.last_price ?? position.entry_price;
+  return (reference - position.stop) * position.qty;
 }
 
 /* ------------------------------------------------------------------ */
 /*  Kapanmış işlemler                                                  */
 /* ------------------------------------------------------------------ */
 
-function ClosedTrades() {
-  const query = useQuery({
-    queryKey: ["trades"],
-    queryFn: () => api.get<Trade[]>("/trades", { limit: 500 }),
-    refetchInterval: 60_000,
-  });
-
-  const columns: Column<Trade>[] = [
-    {
-      key: "exit_time",
-      header: "Kapanış",
-      width: "150px",
-      sort: (r) => new Date(r.exit_time).getTime(),
-      cell: (r) => <span className="num text-[12px]">{dateTime(r.exit_time)}</span>,
-    },
-    {
-      key: "symbol",
-      header: "Sembol",
-      width: "120px",
-      sort: (r) => r.symbol,
-      cell: (r) => <span className="font-mono text-[12.5px]">{r.symbol}</span>,
-    },
-    {
-      key: "exit_reason",
-      header: "Sebep",
-      width: "180px",
-      term: "cikis_sebebi",
-      sort: (r) => r.exit_reason,
-      cell: (r) => <ExitReasonPill reason={r.exit_reason} />,
-    },
-    {
-      key: "pnl",
-      header: "K/Z",
-      num: true,
-      sort: (r) => r.pnl,
-      cell: (r) => <Signed value={r.pnl} text={money(r.pnl)} size="sm" />,
-    },
-    {
-      key: "pnl_r",
-      header: "Sonuç",
-      num: true,
-      term: "r_katsayisi",
-      sort: (r) => r.pnl_r,
-      cell: (r) => <Signed value={r.pnl_r} text={rMultiple(r.pnl_r)} size="sm" />,
-    },
-    {
-      key: "hold_hours",
-      header: "Süre",
-      num: true,
-      sort: (r) => r.hold_hours,
-      cell: (r) => duration(r.hold_hours),
-    },
-    {
-      key: "fees",
-      header: "Komisyon",
-      num: true,
-      sort: (r) => r.fees,
-      cell: (r) => money(r.fees),
-    },
-    {
-      key: "slippage_bps",
-      header: "Kayma",
-      num: true,
-      term: "kayma",
-      defaultHidden: true,
-      sort: (r) => r.slippage_bps,
-      cell: (r) => num(r.slippage_bps, 1),
-    },
-    {
-      key: "mfe_mae",
-      header: "MFE / MAE",
-      num: true,
-      term: "mfe_mae",
-      defaultHidden: true,
-      cell: (r) => (
-        <span className="num text-[12px]">
-          {num(r.mfe, 2)} / {num(r.mae, 2)}
-        </span>
-      ),
-    },
-    {
-      key: "bot_id",
-      header: "Bot",
-      num: true,
-      defaultHidden: true,
-      sort: (r) => r.bot_id,
-      cell: (r) => `#${r.bot_id}`,
-    },
-  ];
+function ClosedTrades({ rows, loading }: { rows: Trade[]; loading: boolean }) {
+  const columns = useMemo<GridColumn<Trade>[]>(
+    () => [
+      {
+        id: "symbol",
+        header: "Sembol",
+        width: 130,
+        pin: true,
+        value: (row) => row.symbol,
+        search: (row) => `${row.symbol} ${row.exit_reason}`,
+        cell: (row) => (
+          <span className="sn-num" style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}>
+            {row.symbol}
+          </span>
+        ),
+      },
+      {
+        id: "exit_time",
+        header: "Kapanış",
+        width: 148,
+        value: (row) => new Date(row.exit_time).getTime(),
+        cell: (row) => (
+          <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>
+            {dateTime(row.exit_time)}
+          </span>
+        ),
+      },
+      {
+        id: "pnl_r",
+        header: "Sonuç (R)",
+        width: 128,
+        num: true,
+        hint: "İşlemin sonucu, o işlemde göze alınan riske bölünmüş hâli. +2R, riskin iki katı kazanç demektir.",
+        value: (row) => row.pnl_r,
+        cell: (row) => <NumCell value={row.pnl_r} text={rMultiple(row.pnl_r)} colorize tint={false} />,
+        footer: (list) =>
+          list.length ? (
+            <NumText
+              text={rMultiple(list.reduce((sum, row) => sum + row.pnl_r, 0) / list.length)}
+              size="sm"
+            />
+          ) : null,
+      },
+      {
+        id: "pnl",
+        header: "K/Z",
+        width: 124,
+        num: true,
+        value: (row) => row.pnl,
+        cell: (row) => <NumCell value={row.pnl} text={money(row.pnl)} colorize tint={false} />,
+        footer: (list) => (
+          <NumText text={money(list.reduce((sum, row) => sum + row.pnl, 0))} size="sm" />
+        ),
+      },
+      {
+        id: "exit_reason",
+        header: "Çıkış sebebi",
+        width: 152,
+        hint: "Pozisyonu ne kapattı: stop, hedef, iz süren stop, puan düşüşü ya da kill switch.",
+        value: (row) => row.exit_reason,
+        cell: (row) => <Tag tone={exitTone(row.exit_reason)}>{row.exit_reason}</Tag>,
+      },
+      {
+        id: "hold_hours",
+        header: "Süre",
+        width: 96,
+        num: true,
+        value: (row) => row.hold_hours,
+        cell: (row) => (
+          <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>
+            {duration(row.hold_hours)}
+          </span>
+        ),
+      },
+      {
+        id: "mfe",
+        header: "MFE",
+        width: 108,
+        num: true,
+        hint: "İşlemin gördüğü en iyi nokta. Yüksek MFE ile düşük sonuç, kârın geri verildiğini gösterir.",
+        value: (row) => row.mfe,
+        cell: (row) => <NumCell value={row.mfe} text={num(row.mfe, 2)} size="sm" tint={false} />,
+      },
+      {
+        id: "mae",
+        header: "MAE",
+        width: 108,
+        num: true,
+        hint: "İşlemin gördüğü en kötü nokta. Sürekli yüksek MAE, girişlerin erken olduğunu gösterebilir.",
+        value: (row) => row.mae,
+        cell: (row) => <NumCell value={row.mae} text={num(row.mae, 2)} size="sm" tint={false} />,
+      },
+      {
+        id: "fees",
+        header: "Komisyon",
+        width: 110,
+        num: true,
+        hidden: true,
+        value: (row) => row.fees,
+        cell: (row) => <NumCell value={row.fees} text={money(row.fees)} size="sm" tint={false} />,
+      },
+      {
+        id: "slippage_bps",
+        header: "Kayma",
+        width: 104,
+        num: true,
+        hidden: true,
+        hint: "Beklenen fiyatla gerçekleşen fiyat arasındaki fark. Kağıt motorun modelinden gelir, varsayım içerir.",
+        value: (row) => row.slippage_bps,
+        cell: (row) => (
+          <NumCell value={row.slippage_bps} text={bps(row.slippage_bps)} size="sm" tint={false} />
+        ),
+      },
+    ],
+    [],
+  );
 
   return (
-    <Section padded={false}>
-      <Async
-        query={query}
-        empty={{
-          title: "Henüz kapanmış işlem yok",
-          description:
-            "Bir pozisyon kapandığında sonucu burada görünür — hem para hem risk birimi cinsinden.",
-        }}
-      >
-        {(rows) => (
-          <DataTable
-            rows={rows}
-            columns={columns}
-            rowKey={(r) => r.id}
-            storageKey="pozisyonlar-kapali"
-            searchText={(r) => `${r.symbol} ${r.exit_reason}`}
-            searchPlaceholder="Sembol ya da sebep ara…"
-            defaultSort={{ key: "exit_time", dir: "desc" }}
-            dense
-            footNote={
-              <span>
-                Sistem 30 gün ve 30 işlem dolmadan bir sonucu anlamlı saymaz. Şu an{" "}
-                {rows.length} işlem var.
-              </span>
-            }
-          />
-        )}
-      </Async>
-    </Section>
+    <Panel
+      title="Kapanmış işlemler"
+      description="En yeniden eskiye. R sütunu işlemleri karşılaştırılabilir kılan tek ölçüdür."
+      padded={false}
+    >
+      <DataGrid
+        rows={rows}
+        columns={columns}
+        rowKey={(row) => String(row.id)}
+        storageKey="pozisyonlar-kapali"
+        searchPlaceholder="Sembol ya da çıkış sebebi…"
+        defaultSort={[{ id: "exit_time", desc: true }]}
+        rowAccent={(row) => (row.pnl_r >= 0 ? "var(--sn-up)" : "var(--sn-down)")}
+        emptyTitle={loading ? "Yükleniyor…" : "Kapanmış işlem yok"}
+        emptyHint={
+          loading ? undefined : "Bir pozisyon kapandığında sonucu burada R cinsinden görünür."
+        }
+      />
+    </Panel>
   );
+}
+
+function exitTone(reason: string): "up" | "down" | "warn" | "info" | "neutral" {
+  const key = reason.toUpperCase();
+  if (key.includes("TARGET") || key.includes("HEDEF")) return "up";
+  if (key.includes("STOP")) return "down";
+  if (key.includes("KILL")) return "warn";
+  return "neutral";
 }
 
 /* ------------------------------------------------------------------ */
 /*  Emirler                                                            */
 /* ------------------------------------------------------------------ */
 
-function Orders() {
-  const query = useQuery({
-    queryKey: ["orders"],
-    queryFn: () => api.get<Order[]>("/orders", { limit: 300 }),
-    refetchInterval: 30_000,
-  });
-
-  const rows = query.data ?? [];
-  const rejected = rows.filter((r) => r.status === "REJECTED");
-
-  const columns: Column<Order>[] = [
-    {
-      key: "created_at",
-      header: "Gönderim",
-      width: "150px",
-      sort: (r) => new Date(r.created_at).getTime(),
-      cell: (r) => <span className="num text-[12px]">{dateTime(r.created_at)}</span>,
-    },
-    {
-      key: "symbol",
-      header: "Sembol",
-      width: "120px",
-      sort: (r) => r.symbol,
-      cell: (r) => <span className="font-mono text-[12.5px]">{r.symbol}</span>,
-    },
-    {
-      key: "side",
-      header: "Yön",
-      width: "80px",
-      sort: (r) => r.side,
-      cell: (r) => (
-        <span className={cx("text-[12px]", r.side === "BUY" ? "text-up" : "text-down")}>
-          {r.side === "BUY" ? "Alış" : "Satış"}
-        </span>
-      ),
-    },
-    {
-      key: "status",
-      header: "Durum",
-      width: "130px",
-      sort: (r) => r.status,
-      cell: (r) => <OrderStatusPill status={r.status} />,
-    },
-    {
-      key: "qty",
-      header: "Miktar",
-      num: true,
-      sort: (r) => r.qty,
-      cell: (r) => num(r.qty, 6),
-    },
-    {
-      key: "avg_fill_price",
-      header: "Dolum fiyatı",
-      num: true,
-      sort: (r) => r.avg_fill_price,
-      cell: (r) => price(r.avg_fill_price),
-    },
-    {
-      key: "reject_reason",
-      header: "Ret sebebi",
-      hint: "Emir neden kabul edilmedi. Boş olması emrin geçtiği anlamına gelir.",
-      sort: (r) => r.reject_reason,
-      cell: (r) =>
-        r.reject_reason ? (
-          <span className="text-[12px] text-warn">{rejectReason(r.reject_reason)}</span>
-        ) : (
-          <span className="text-ink-3">—</span>
+function Orders({ rows, loading }: { rows: Order[]; loading: boolean }) {
+  const columns = useMemo<GridColumn<Order>[]>(
+    () => [
+      {
+        id: "created_at",
+        header: "Zaman",
+        width: 148,
+        pin: true,
+        value: (row) => new Date(row.created_at).getTime(),
+        cell: (row) => (
+          <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>
+            {dateTime(row.created_at)}
+          </span>
         ),
-    },
-    {
-      key: "slippage_bps",
-      header: "Kayma",
-      num: true,
-      term: "kayma",
-      defaultHidden: true,
-      sort: (r) => r.slippage_bps,
-      cell: (r) => num(r.slippage_bps, 1),
-    },
-  ];
+      },
+      {
+        id: "symbol",
+        header: "Sembol",
+        width: 126,
+        value: (row) => row.symbol,
+        search: (row) => `${row.symbol} ${row.status} ${row.reject_reason ?? ""}`,
+        cell: (row) => (
+          <span className="sn-num" style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}>
+            {row.symbol}
+          </span>
+        ),
+      },
+      {
+        id: "side",
+        header: "Yön",
+        width: 84,
+        value: (row) => row.side,
+        cell: (row) => (
+          <Tag tone={row.side.toUpperCase() === "BUY" ? "up" : "down"}>{row.side}</Tag>
+        ),
+      },
+      {
+        id: "type",
+        header: "Tür",
+        width: 96,
+        value: (row) => row.type,
+        cell: (row) => <Tag tone="neutral">{row.type}</Tag>,
+      },
+      {
+        id: "status",
+        header: "Durum",
+        width: 116,
+        hint: "Reddedilen emir sessizce kaybolmaz — sebebi yanındaki sütunda yazar.",
+        value: (row) => row.status,
+        cell: (row) => <Tag tone={orderTone(row.status)}>{row.status}</Tag>,
+      },
+      {
+        id: "qty",
+        header: "Miktar",
+        width: 120,
+        num: true,
+        value: (row) => row.qty,
+        cell: (row) => <NumCell value={row.qty} text={num(row.qty, 4)} size="sm" tint={false} />,
+      },
+      {
+        id: "filled_qty",
+        header: "Dolan",
+        width: 128,
+        num: true,
+        hint: "Kısmi dolum: emrin ne kadarı gerçekleşti.",
+        value: (row) => (row.qty > 0 ? row.filled_qty / row.qty : null),
+        cell: (row) => (
+          <span className="inline-flex items-center gap-2">
+            <Bar value={row.qty > 0 ? (row.filled_qty / row.qty) * 100 : 0} width={24} height={3} />
+            <NumCell value={row.filled_qty} text={num(row.filled_qty, 4)} size="sm" tint={false} />
+          </span>
+        ),
+      },
+      {
+        id: "avg_fill_price",
+        header: "Ortalama fiyat",
+        width: 132,
+        num: true,
+        value: (row) => row.avg_fill_price,
+        cell: (row) => (
+          <NumCell value={row.avg_fill_price} text={price(row.avg_fill_price)} tint={false} />
+        ),
+      },
+      {
+        id: "reject_reason",
+        header: "Red sebebi",
+        width: 220,
+        value: (row) => row.reject_reason,
+        cell: (row) =>
+          row.reject_reason ? (
+            <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-down)" }}>
+              {row.reject_reason}
+            </span>
+          ) : (
+            <span style={{ color: "var(--sn-ink-4)" }}>—</span>
+          ),
+      },
+    ],
+    [],
+  );
 
   return (
-    <>
-      {rejected.length > 0 && (
-        <div className="rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-[13px]">
-          <strong className="font-medium text-ink">{rejected.length} emir reddedildi.</strong>{" "}
-          <span className="text-ink-2">
-            Reddedilen emir sessizce kaybolmaz — sebebini aşağıdaki tablodan görebilirsiniz. En
-            sık sebepler nakit yetersizliği, asgari emir büyüklüğünün altında kalma ve risk
-            sınırlarıdır.
-          </span>
-        </div>
-      )}
-
-      <Section padded={false}>
-        <Async
-          query={query}
-          empty={{
-            title: "Emir yok",
-            description: "Botlar pozisyon açıp kapattıkça gönderilen emirler burada listelenir.",
-          }}
-        >
-          {(list) => (
-            <DataTable
-              rows={list}
-              columns={columns}
-              rowKey={(r) => r.id}
-              storageKey="pozisyonlar-emirler"
-              searchText={(r) => `${r.symbol} ${r.status} ${r.reject_reason ?? ""}`}
-              searchPlaceholder="Sembol ya da durum ara…"
-              defaultSort={{ key: "created_at", dir: "desc" }}
-              dense
-            />
-          )}
-        </Async>
-      </Section>
-    </>
+    <Panel
+      title="Emirler"
+      description="Gönderilen her emir — dolmuş, kısmi dolmuş ya da reddedilmiş."
+      padded={false}
+    >
+      <DataGrid
+        rows={rows}
+        columns={columns}
+        rowKey={(row) => String(row.id)}
+        storageKey="pozisyonlar-emirler"
+        searchPlaceholder="Sembol, durum ya da red sebebi…"
+        defaultSort={[{ id: "created_at", desc: true }]}
+        emptyTitle={loading ? "Yükleniyor…" : "Emir yok"}
+        emptyHint={loading ? undefined : "Botlar pozisyon açtığında emirler burada görünür."}
+      />
+    </Panel>
   );
+}
+
+function orderTone(status: string): "up" | "down" | "warn" | "neutral" {
+  const key = status.toUpperCase();
+  if (key === "FILLED") return "up";
+  if (key === "REJECTED" || key === "CANCELED" || key === "CANCELLED") return "down";
+  if (key === "PARTIAL" || key === "PARTIALLY_FILLED" || key === "NEW") return "warn";
+  return "neutral";
 }

@@ -5,25 +5,31 @@
  *
  * Bir strateji doğrudan düzenlenmez: her değişiklik **yeni bir sürüm**
  * doğurur ve eskisi silinmez. Bunun sebebi geçmişe dönük testlerin
- * dayanağını korumaktır — çalışan bir botun kurallarını sessizce değiştirmek,
- * o botun geçmiş sonuçlarını anlamsız kılardı.
+ * dayanağını korumaktır — çalışan bir botun kurallarını sessizce
+ * değiştirmek, o botun geçmiş sonuçlarını anlamsız kılardı.
  */
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Modal, StatusPill } from "@/ui";
 import { api, type Strategy, type StrategyVersion } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { toast } from "@/lib/toast";
-import { Page, Section, Async, Empty } from "@/components/common/page";
-import { Explain } from "@/components/common/explain";
-import { Drawer, DrawerSection } from "@/components/data/drawer";
-import {
-  STRATEGY_GROUPS,
-  readPath,
-  type FieldSpec,
-} from "@/lib/strategy-fields";
+import { STRATEGY_GROUPS, readPath, type FieldSpec } from "@/lib/strategy-fields";
 import { dateTime, num, relative } from "@/lib/format";
+import { Page, GuideSection } from "@/shell/page";
+import {
+  Async,
+  Button,
+  Drawer,
+  DrawerSection,
+  Empty,
+  Explain,
+  FormField,
+  Modal,
+  Panel,
+  Tag,
+  TextInput,
+} from "@/design";
 
 export default function StrategiesPage() {
   const { can } = useAuth();
@@ -40,96 +46,120 @@ export default function StrategiesPage() {
   return (
     <Page
       title="Stratejiler"
-      description="Puan ağırlıkları, giriş eşikleri, boyutlandırma ve çıkış kurallarından oluşan kural kümeleri."
-      intro={{
-        storageKey: "stratejiler",
-        what: "Bir strateji, botun nasıl karar vereceğini belirleyen tüm ayarları taşır: hangi ailenin puana ne kadar katkı vereceği, hangi puandan itibaren giriş yapılacağı, pozisyonun ne kadar büyük olacağı ve ne zaman çıkılacağı.",
-        how: "**Strateji doğrudan düzenlenmez.** Bir ayarı değiştirdiğinizde yeni bir sürüm doğar ve eski sürüm olduğu gibi kalır. Bot her zaman belirli bir sürümü çalıştırır; yeni sürüme geçmesi için botu o sürüme almanız gerekir.\n\n**Dondurulmuş** bir sürüm bir daha değiştirilemez. Geçmişe dönük testlerin dayanağı budur: donuk sürüm, sonucun hangi kurallarla üretildiğinin kanıtıdır.",
-        action: "Bir sürüme tıklayınca tüm alanları açıklamalarıyla birlikte görürsünüz. Kurgu değişikliği yapmak için **İndikatörler** sayfasındaki strateji atölyesini kullanın; oradan kaydettiğinizde yeni sürüm doğar.",
-        terms: ["strateji", "strateji_surum", "puan", "backtest"],
-      }}
+      summary="Puan ağırlıkları, giriş eşikleri, boyutlandırma ve çıkış kurallarından oluşan kural kümeleri."
       actions={
-        can("TRADER") && (
-          <Button size="sm" variant="amber" shape="rect" onClick={() => setCreateOpen(true)}>
+        can("TRADER") ? (
+          <Button size="sm" variant="primary" onClick={() => setCreateOpen(true)}>
             Yeni strateji
           </Button>
-        )
+        ) : undefined
+      }
+      guide={
+        <>
+          <GuideSection title="Ne gösteriyor">
+            <p>
+              Bir strateji, botun nasıl karar vereceğini belirleyen tüm ayarları taşır: hangi
+              ailenin puana ne kadar katkı vereceği, hangi puandan itibaren giriş yapılacağı,
+              pozisyonun ne kadar büyük olacağı ve ne zaman çıkılacağı.
+            </p>
+          </GuideSection>
+          <GuideSection title="Nasıl okunur">
+            <p>
+              <strong>Strateji doğrudan düzenlenmez.</strong> Bir ayarı değiştirdiğinizde yeni bir
+              sürüm doğar ve eski sürüm olduğu gibi kalır. Bot her zaman belirli bir sürümü
+              çalıştırır; yeni sürüme geçmesi için botu o sürüme almanız gerekir.
+            </p>
+            <p>
+              <strong>Dondurulmuş</strong> bir sürüm bir daha değiştirilemez. Geçmişe dönük
+              testlerin dayanağı budur: donuk sürüm, sonucun hangi kurallarla üretildiğinin
+              kanıtıdır.
+            </p>
+          </GuideSection>
+          <GuideSection title="Ne yapabilirim">
+            <p>
+              Bir sürüme tıklayınca tüm alanları açıklamalarıyla birlikte görürsünüz. Kurgu
+              değişikliği yapmak için İndikatörler sayfasındaki strateji atölyesini kullanın;
+              oradan kaydettiğinizde yeni sürüm doğar.
+            </p>
+          </GuideSection>
+        </>
       }
     >
       <Async
         query={query}
         empty={{
           title: "Henüz strateji yok",
-          description:
-            "Bot kurabilmek için önce bir strateji ve en az bir sürüm gerekir. Yeni strateji varsayılan ayarlarla oluşturulur.",
+          hint: "Bot kurabilmek için önce bir strateji ve en az bir sürüm gerekir. Yeni strateji varsayılan ayarlarla oluşturulur.",
           action: can("TRADER") ? (
-            <Button size="sm" variant="amber" shape="rect" onClick={() => setCreateOpen(true)}>
+            <Button size="sm" variant="primary" onClick={() => setCreateOpen(true)}>
               İlk stratejiyi oluştur
             </Button>
           ) : undefined,
         }}
       >
         {(list) => (
-          <div className="space-y-4">
-            {list.map((s) => (
-              <Section
-                key={s.id}
-                title={s.name}
-                description={`${s.versions.length} sürüm · ${relative(s.created_at)} oluşturuldu`}
+          <div className="flex flex-col gap-4">
+            {list.map((strategy) => (
+              <Panel
+                key={strategy.id}
+                title={strategy.name}
+                description={`${strategy.versions.length} sürüm · ${relative(strategy.created_at)} oluşturuldu`}
                 padded={false}
               >
-                {s.versions.length === 0 ? (
+                {strategy.versions.length === 0 ? (
                   <Empty
                     title="Bu stratejinin sürümü yok"
-                    description="Sürüm oluşturulana kadar bu strateji bir bota bağlanamaz."
-                    className="m-4 border-0"
+                    hint="Sürüm oluşturulana kadar bu strateji bir bota bağlanamaz."
                   />
                 ) : (
-                  <ul className="divide-y divide-line">
-                    {[...s.versions]
+                  <ul>
+                    {[...strategy.versions]
                       .sort((a, b) => b.version - a.version)
-                      .map((v) => (
-                        <li key={v.id}>
+                      .map((version) => (
+                        <li key={version.id} style={{ borderTop: "1px solid var(--sn-hairline)" }}>
                           <button
                             type="button"
-                            onClick={() => setSelected({ strategy: s, version: v })}
-                            className="flex w-full items-center gap-3 px-5 py-3 text-left hover:bg-inset"
+                            onClick={() => setSelected({ strategy, version })}
+                            className="sn-focus flex w-full items-center gap-3 px-4 py-3 text-left transition-colors duration-[var(--sn-dur-1)] hover:bg-[var(--sn-sunken)]"
                           >
-                            <span className="num text-[13px] font-medium text-ink">
-                              Sürüm {v.version}
+                            <span
+                              className="sn-num font-medium"
+                              style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}
+                            >
+                              Sürüm {version.version}
                             </span>
-                            {v.frozen ? (
-                              <StatusPill size="sm" tone="amber">
-                                dondurulmuş
-                              </StatusPill>
-                            ) : (
-                              <StatusPill size="sm" tone="gray">
-                                düzenlenebilir
-                              </StatusPill>
-                            )}
-                            <span className="font-mono text-[11.5px] text-ink-3">
-                              {v.definition_hash.slice(0, 12)}
+                            <Tag tone={version.frozen ? "brand" : "neutral"}>
+                              {version.frozen ? "dondurulmuş" : "düzenlenebilir"}
+                            </Tag>
+                            <span
+                              className="sn-num"
+                              style={{ fontSize: "var(--sn-t-micro)", color: "var(--sn-ink-3)" }}
+                            >
+                              {version.definition_hash.slice(0, 12)}
                             </span>
-                            <span className="ml-auto text-[12px] text-ink-3">
-                              {dateTime(v.created_at)}
+                            <span
+                              className="ml-auto"
+                              style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}
+                            >
+                              {dateTime(version.created_at)}
                             </span>
                           </button>
                         </li>
                       ))}
                   </ul>
                 )}
-              </Section>
+              </Panel>
             ))}
           </div>
         )}
       </Async>
 
-      <Section title="Sürümleme neden böyle">
-        <div className="grid gap-5 md:grid-cols-2">
-          <Explain id="strateji_surum" showTitle={false} />
-          <Explain id="backtest" showTitle />
+      <Panel title="Sürümleme neden böyle">
+        <div className="grid gap-4 md:grid-cols-2">
+          <Explain id="strateji_surum" />
+          <Explain id="backtest" />
         </div>
-      </Section>
+      </Panel>
 
       {selected && (
         <VersionDrawer
@@ -139,7 +169,7 @@ export default function StrategiesPage() {
         />
       )}
 
-      {createOpen && <CreateStrategyModal onClose={() => setCreateOpen(false)} />}
+      <CreateStrategyModal open={createOpen} onClose={() => setCreateOpen(false)} />
     </Page>
   );
 }
@@ -168,7 +198,7 @@ function VersionDrawer({
       void qc.invalidateQueries({ queryKey: ["strategies"] });
       onClose();
     },
-    onError: (e: Error) => toast.error("Dondurulamadı", e.message),
+    onError: (error: Error) => toast.error("Dondurulamadı", error.message),
   });
 
   return (
@@ -177,48 +207,50 @@ function VersionDrawer({
       onClose={onClose}
       title={`${strategy.name} · sürüm ${version.version}`}
       subtitle={dateTime(version.created_at)}
-      width="max-w-2xl"
+      width={720}
       badge={
-        version.frozen ? (
-          <StatusPill size="sm" tone="amber">
-            dondurulmuş
-          </StatusPill>
-        ) : (
-          <StatusPill size="sm" tone="gray">
-            düzenlenebilir
-          </StatusPill>
-        )
+        <Tag tone={version.frozen ? "brand" : "neutral"}>
+          {version.frozen ? "dondurulmuş" : "düzenlenebilir"}
+        </Tag>
       }
       footer={
-        <div className="flex items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={() => setShowRaw((v) => !v)}
-            className="text-[12.5px] text-ink-3 hover:text-ink-2"
-          >
+        <>
+          <Button size="sm" variant="quiet" className="mr-auto" onClick={() => setShowRaw((value) => !value)}>
             {showRaw ? "Açıklamalı görünüm" : "Ham tanımı göster"}
-          </button>
+          </Button>
           {can("TRADER") && !version.frozen && (
-            <Button
-              size="sm"
-              variant="outline"
-              shape="rect"
-              disabled={freeze.isPending}
-              onClick={() => freeze.mutate()}
-            >
+            <Button size="sm" variant="neutral" disabled={freeze.isPending} onClick={() => freeze.mutate()}>
               Sürümü dondur
             </Button>
           )}
-        </div>
+        </>
       }
     >
       {showRaw ? (
-        <pre className="thin-scroll overflow-x-auto rounded-lg border border-line bg-inset p-3.5 font-mono text-[11.5px] leading-relaxed text-ink-2">
+        <pre
+          className="sn-scroll sn-num overflow-x-auto rounded-[var(--sn-r-sm)] p-3.5"
+          style={{
+            background: "var(--sn-sunken)",
+            border: "1px solid var(--sn-hairline)",
+            fontSize: "var(--sn-t-caption)",
+            color: "var(--sn-ink-2)",
+            lineHeight: 1.55,
+          }}
+        >
           {JSON.stringify(version.definition, null, 2)}
         </pre>
       ) : (
         <>
-          <p className="mb-4 rounded-lg border border-line bg-elev px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink-2">
+          <p
+            className="mb-4 rounded-[var(--sn-r-sm)] px-3.5 py-2.5"
+            style={{
+              background: "var(--sn-raised)",
+              border: "1px solid var(--sn-hairline)",
+              fontSize: "var(--sn-t-caption)",
+              color: "var(--sn-ink-2)",
+              lineHeight: 1.55,
+            }}
+          >
             Her alanın ne işe yaradığı ve yanlış ayarlanırsa ne olacağı yazılıdır. Bu sürüm{" "}
             {version.frozen
               ? "dondurulmuş — değerleri bir daha değişmez."
@@ -226,17 +258,14 @@ function VersionDrawer({
           </p>
 
           {STRATEGY_GROUPS.map((group) => (
-            <DrawerSection
-              key={group.key}
-              title={group.title}
-              description={group.description}
-            >
-              <div className="divide-y divide-line rounded-lg border border-line">
-                {group.fields.map((field) => (
+            <DrawerSection key={group.key} title={group.title} hint={group.description}>
+              <div className="rounded-[var(--sn-r-sm)]" style={{ border: "1px solid var(--sn-border)" }}>
+                {group.fields.map((field, index) => (
                   <FieldRow
                     key={field.path}
                     field={field}
                     value={readPath(version.definition, field.path)}
+                    first={index === 0}
                   />
                 ))}
               </div>
@@ -244,13 +273,18 @@ function VersionDrawer({
           ))}
 
           <DrawerSection title="Künye">
-            <div className="rounded-lg border border-line px-3.5 py-2.5 text-[12.5px]">
+            <div
+              className="rounded-[var(--sn-r-sm)] px-3.5 py-2.5"
+              style={{ border: "1px solid var(--sn-border)", fontSize: "var(--sn-t-caption)" }}
+            >
               <div className="flex justify-between gap-3 py-1">
-                <span className="text-ink-2">Tanım parmak izi</span>
-                <span className="font-mono text-[11.5px]">{version.definition_hash}</span>
+                <span style={{ color: "var(--sn-ink-2)" }}>Tanım parmak izi</span>
+                <span className="sn-num" style={{ fontSize: "var(--sn-t-micro)" }}>
+                  {version.definition_hash}
+                </span>
               </div>
               <div className="flex justify-between gap-3 py-1">
-                <span className="text-ink-2">Oluşturulma</span>
+                <span style={{ color: "var(--sn-ink-2)" }}>Oluşturulma</span>
                 <span>{dateTime(version.created_at)}</span>
               </div>
             </div>
@@ -261,7 +295,7 @@ function VersionDrawer({
   );
 }
 
-function FieldRow({ field, value }: { field: FieldSpec; value: unknown }) {
+function FieldRow({ field, value, first }: { field: FieldSpec; value: unknown; first: boolean }) {
   const display =
     value === null || value === undefined
       ? "—"
@@ -276,17 +310,42 @@ function FieldRow({ field, value }: { field: FieldSpec; value: unknown }) {
           : String(value);
 
   return (
-    <div className="px-3.5 py-2.5">
+    <div
+      className="px-3.5 py-2.5"
+      style={first ? undefined : { borderTop: "1px solid var(--sn-hairline)" }}
+    >
       <div className="flex items-baseline justify-between gap-4">
-        <span className="text-[12.5px] font-medium text-ink">{field.label}</span>
-        <span className="num text-[13px] text-ink">
+        <span
+          className="font-medium"
+          style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink)" }}
+        >
+          {field.label}
+        </span>
+        <span className="sn-num" style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}>
           {display}
-          {field.unit && <span className="ml-1 text-[11px] text-ink-3">{field.unit}</span>}
+          {field.unit && (
+            <span className="ml-1" style={{ fontSize: "var(--sn-t-micro)", color: "var(--sn-ink-3)" }}>
+              {field.unit}
+            </span>
+          )}
         </span>
       </div>
-      <p className="mt-0.5 text-[11.5px] leading-relaxed text-ink-2">{field.description}</p>
+      <p
+        className="mt-0.5"
+        style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)", lineHeight: 1.5 }}
+      >
+        {field.description}
+      </p>
       {field.warning && (
-        <p className="mt-1 border-l-2 border-warn pl-2 text-[11.5px] leading-relaxed text-ink-3">
+        <p
+          className="mt-1 pl-2"
+          style={{
+            borderLeft: "2px solid var(--sn-warn)",
+            fontSize: "var(--sn-t-caption)",
+            color: "var(--sn-ink-3)",
+            lineHeight: 1.5,
+          }}
+        >
           {field.warning}
         </p>
       )}
@@ -295,10 +354,8 @@ function FieldRow({ field, value }: { field: FieldSpec; value: unknown }) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Yeni strateji                                                      */
-/* ------------------------------------------------------------------ */
 
-function CreateStrategyModal({ onClose }: { onClose: () => void }) {
+function CreateStrategyModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
   const [name, setName] = useState("");
 
@@ -309,53 +366,38 @@ function CreateStrategyModal({ onClose }: { onClose: () => void }) {
       void qc.invalidateQueries({ queryKey: ["strategies"] });
       onClose();
     },
-    onError: (e: Error) => toast.error("Oluşturulamadı", e.message),
+    onError: (error: Error) => toast.error("Oluşturulamadı", error.message),
   });
 
   return (
-    <Modal open onClose={onClose} label="Yeni strateji" width="max-w-md">
-      <div className="p-5">
-        <h2 className="text-[15px] font-semibold text-ink">Yeni strateji</h2>
-        <p className="mt-1 text-[12.5px] leading-relaxed text-ink-2">
-          Strateji varsayılan ayarlarla oluşturulur ve ilk sürümü hazır gelir. Ayarları
-          İndikatörler sayfasındaki atölyeden değiştirebilirsiniz; her değişiklik yeni bir sürüm
-          doğurur.
-        </p>
-
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (name.trim()) create.mutate();
-          }}
-          className="mt-4 space-y-3.5"
-        >
-          <label className="block">
-            <span className="text-[12px] font-medium text-ink-2">Ad</span>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              autoFocus
-              placeholder="Örn. Temel kurgu"
-              className="mt-1 h-9 w-full rounded-lg border border-line bg-inset px-2.5 text-[13px] text-ink placeholder:text-ink-3 focus:border-brand focus:outline-none"
-            />
-          </label>
-
-          <div className="flex justify-end gap-2 pt-1">
-            <Button type="button" size="sm" variant="ghost" shape="rect" onClick={onClose}>
-              Vazgeç
-            </Button>
-            <Button
-              type="submit"
-              size="sm"
-              variant="amber"
-              shape="rect"
-              disabled={!name.trim() || create.isPending}
-            >
-              {create.isPending ? "Oluşturuluyor…" : "Oluştur"}
-            </Button>
-          </div>
-        </form>
-      </div>
+    <Modal
+      open={open}
+      onOpenChange={(next) => !next && onClose()}
+      title="Yeni strateji"
+      description="Strateji varsayılan ayarlarla oluşturulur ve ilk sürümü hazır gelir. Ayarları İndikatörler sayfasındaki atölyeden değiştirebilirsiniz; her değişiklik yeni bir sürüm doğurur."
+      footer={
+        <>
+          <Button variant="quiet" onClick={onClose}>
+            Vazgeç
+          </Button>
+          <Button
+            variant="primary"
+            disabled={!name.trim() || create.isPending}
+            onClick={() => create.mutate()}
+          >
+            {create.isPending ? "Oluşturuluyor…" : "Oluştur"}
+          </Button>
+        </>
+      }
+    >
+      <FormField label="Ad">
+        <TextInput
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          autoFocus
+          placeholder="Örn. Temel kurgu"
+        />
+      </FormField>
     </Modal>
   );
 }

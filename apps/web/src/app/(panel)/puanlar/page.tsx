@@ -11,35 +11,58 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Button, cx } from "@/ui";
 import { api, type Score, type ScoreConfig, type ScoreDetail } from "@/lib/api";
-import { Page, Section, StatGrid, Async, Empty } from "@/components/common/page";
-import { Stat, AmountText } from "@/components/common/amount";
-import { Explain, InfoDot, Term } from "@/components/common/explain";
-import { DataTable, type Column } from "@/components/data/data-table";
-import { Drawer, DrawerSection } from "@/components/data/drawer";
-import { ScoreCard } from "@/components/viz/score-card";
-import { CurveChart } from "@/components/viz/charts";
-import {
-  FAMILY_COLORS,
-  FAMILY_LABELS,
-  FAMILY_TERMS,
-  dateTime,
-  num,
-  relative,
-} from "@/lib/format";
+import { dateTime, num, relative } from "@/lib/format";
+import { Page, GuideSection } from "@/shell/page";
+import { Button, Panel, Picker, Tag, Tip } from "@/design/primitives";
+import { Metric, NumCell, NumText } from "@/design/numeric";
+import { Bar, FamilyStack, RangeDot } from "@/design/viz";
+import { Drawer, DrawerSection, KeyValue } from "@/design/drawer";
+import { FAMILIES } from "@/design/series";
+import { DataGrid } from "@/grid/data-grid";
+import type { GridColumn } from "@/grid/types";
 
-const keyOf = (c: ScoreConfig) => `${c.config_hash}:${c.timeframe}`;
+/** Bir sıralamanın kimliği hash **ve** zaman dilimidir: aynı ağırlıklar
+ *  farklı dilimlerde aynı hash'i üretir, tek başına hash seçimi belirsiz
+ *  bırakır ve React'te aynı anahtarı üç kez doğurur. */
+const keyOf = (config: ScoreConfig) => `${config.config_hash}:${config.timeframe}`;
+
+/**
+ * Seçenek etiketlerinin ORTAK önekini ayıklar.
+ *
+ * Uçtan gelen etiket, o ayarı kullanan botların adlarının birleşimidir:
+ * "Havuz Momentum · taban · Havuz Momentum · seçici". Hepsi aynı strateji
+ * ailesinden olduğu için baştaki parça her seçenekte aynıdır ve ayrımı
+ * taşımaz — ama seçiciyi taşırıp **sonu** kestiriyor, yani ayrımı taşıyan
+ * tek kısmı gizliyordu. Ortak önek atılınca "taban · seçici" ile "trend
+ * ağırlıklı" yan yana okunabilir hâle gelir.
+ *
+ * Ayıklama yalnızca ` · ` sınırlarında yapılır; kelime ortasından kesmek
+ * anlamsız parçalar üretirdi.
+ */
+function stripCommonPrefix(labels: string[]): (label: string) => string {
+  if (labels.length < 2) return (label) => label;
+
+  const parts = labels.map((label) => label.split(" · "));
+  let shared = 0;
+  while (
+    shared < parts[0].length - 1 &&
+    parts.every((part) => part.length > shared + 1 && part[shared] === parts[0][shared])
+  ) {
+    shared += 1;
+  }
+  if (shared === 0) return (label) => label;
+
+  return (label) => {
+    const own = label.split(" · ");
+    return own.slice(shared).join(" · ") || label;
+  };
+}
 
 export default function ScoresPage() {
-  /* Bir sıralamanın kimliği hash + zaman dilimidir; aynı ağırlıklar farklı
-     dilimlerde aynı hash'i üretir ve tek başına hash seçimi belirsiz bırakır. */
   const [configKey, setConfigKey] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
 
-  /* Aynı anda birden çok bot farklı ağırlıklarla puanlar; hepsini tek listede
-     göstermek sıralamayı anlamsız kılar. Panel her seferinde tek bir ayar
-     kümesini gösterir. */
   const configs = useQuery({
     queryKey: ["score-configs"],
     queryFn: () => api.get<ScoreConfig[]>("/scores/configs"),
@@ -50,7 +73,12 @@ export default function ScoresPage() {
     if (!configKey && configs.data?.length) setConfigKey(keyOf(configs.data[0]));
   }, [configs.data, configKey]);
 
-  const active = configs.data?.find((c) => keyOf(c) === configKey);
+  const active = configs.data?.find((config) => keyOf(config) === configKey);
+
+  const shorten = useMemo(
+    () => stripCommonPrefix((configs.data ?? []).map((config) => config.label)),
+    [configs.data],
+  );
 
   const scores = useQuery({
     queryKey: ["scores", configKey],
@@ -64,352 +92,416 @@ export default function ScoresPage() {
     refetchInterval: 60_000,
   });
 
-  // `useMemo` bağımlılığı; her çizimde yeni dizi üretmesin.
   const rows = useMemo(() => scores.data ?? [], [scores.data]);
+
+  /* Sıra numarası listenin kendisinden türetilir; `indexOf` her hücrede
+     listeyi baştan tarardı (O(n²) — 300 satırda fark ediliyor). */
+  const rankOf = useMemo(() => {
+    const map = new Map<string, number>();
+    rows.forEach((row, index) => map.set(row.symbol, index + 1));
+    return map;
+  }, [rows]);
 
   const stats = useMemo(() => {
     if (rows.length === 0) return null;
-    const values = rows.map((r) => r.score);
+    const values = rows.map((row) => row.score);
     const sorted = [...values].sort((a, b) => a - b);
     return {
       count: rows.length,
       top: Math.max(...values),
       median: sorted[Math.floor(sorted.length / 2)],
-      above70: values.filter((v) => v >= 70).length,
+      above70: values.filter((value) => value >= 70).length,
     };
   }, [rows]);
 
-  const columns: Column<Score>[] = [
-    {
-      key: "rank",
-      header: "#",
-      width: "56px",
-      num: true,
-      cell: (r) => rows.indexOf(r) + 1,
-    },
-    {
-      key: "symbol",
-      header: "Sembol",
-      width: "130px",
-      sort: (r) => r.symbol,
-      cell: (r) => <span className="font-mono text-[12.5px] text-ink">{r.symbol}</span>,
-    },
-    {
-      key: "score",
-      header: "Puan",
-      width: "110px",
-      num: true,
-      term: "puan",
-      sort: (r) => r.score,
-      cell: (r) => <ScoreBadge score={r.score} />,
-    },
-    ...Object.keys(FAMILY_LABELS).map<Column<Score>>((family) => ({
-      key: family,
-      header: FAMILY_LABELS[family],
-      num: true,
-      term: FAMILY_TERMS[family],
-      sort: (r) => r.families?.[family] ?? null,
-      cell: (r) => <FamilyCell value={r.families?.[family]} family={family} />,
-    })),
-    {
-      key: "modifiers",
-      header: "Düzeltme",
-      num: true,
-      term: "formasyon",
-      sort: (r) => Object.values(r.modifiers ?? {}).reduce((s, v) => s + v, 0),
-      cell: (r) => {
-        const total = Object.values(r.modifiers ?? {}).reduce((s, v) => s + v, 0);
-        if (total === 0) return <span className="text-ink-3">—</span>;
-        return (
-          <span className={cx("num", total > 0 ? "text-up" : "text-down")}>
-            {total > 0 ? "+" : ""}
-            {num(total, 1)}
-          </span>
-        );
+  const columns = useMemo<GridColumn<Score>[]>(
+    () => [
+      {
+        id: "rank",
+        header: "#",
+        width: 52,
+        num: true,
+        value: (row) => rankOf.get(row.symbol) ?? null,
+        cell: (row) => (
+          <NumText text={String(rankOf.get(row.symbol) ?? "")} size="sm" className="opacity-60" />
+        ),
       },
-    },
-    {
-      key: "bar_time",
-      header: "Bar",
-      width: "150px",
-      defaultHidden: true,
-      term: "karar_bari",
-      sort: (r) => new Date(r.bar_time).getTime(),
-      cell: (r) => <span className="text-[12px] text-ink-3">{dateTime(r.bar_time)}</span>,
-    },
-  ];
+      {
+        id: "symbol",
+        header: "Sembol",
+        width: 128,
+        pin: true,
+        value: (row) => row.symbol,
+        search: (row) => row.symbol,
+        cell: (row) => (
+          <span className="sn-num" style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}>
+            {row.symbol}
+          </span>
+        ),
+      },
+      {
+        id: "score",
+        header: "Puan",
+        width: 124,
+        num: true,
+        hint: "0–100 arası kesitsel not. Coin kendi geçmişiyle değil, aynı andaki diğer havuz coinleriyle karşılaştırılır.",
+        value: (row) => row.score,
+        cell: (row) => (
+          <span className="inline-flex items-center gap-2">
+            <Bar value={row.score} color={scoreColor(row.score)} width={38} />
+            <NumCell value={row.score} text={num(row.score, 1)} />
+          </span>
+        ),
+        footer: (list) =>
+          list.length ? (
+            <NumText
+              text={num(list.reduce((sum, row) => sum + row.score, 0) / list.length, 1)}
+              size="sm"
+            />
+          ) : null,
+      },
+      ...FAMILIES.map<GridColumn<Score>>((family) => ({
+        id: family.id,
+        header: family.label,
+        width: 116,
+        num: true,
+        hint: family.hint,
+        value: (row) => row.families?.[family.id] ?? null,
+        cell: (row) => (
+          <span className="inline-flex items-center gap-2">
+            <Bar value={row.families?.[family.id]} max={30} color={family.color} width={26} height={3} />
+            <NumCell
+              value={row.families?.[family.id]}
+              text={num(row.families?.[family.id], 1)}
+              size="sm"
+            />
+          </span>
+        ),
+      })),
+      {
+        id: "modifiers",
+        header: "Düzeltme",
+        width: 104,
+        num: true,
+        hint: "Formasyon ve mum sinyallerinin taban puana eklediği küçük düzeltme. Aile katkılarına karıştırılmaz.",
+        value: (row) => sumModifiers(row.modifiers),
+        cell: (row) => {
+          const total = sumModifiers(row.modifiers);
+          if (total === 0) return <NumText text="—" size="sm" />;
+          return (
+            <NumCell
+              value={total}
+              text={`${total > 0 ? "+" : ""}${num(total, 1)}`}
+              size="sm"
+              colorize
+            />
+          );
+        },
+      },
+      {
+        id: "bar_time",
+        header: "Karar barı",
+        width: 150,
+        hidden: true,
+        hint: "Bu puanın hesaplandığı mumun kapanış zamanı. Bar kapanmadan o barın verisi karara giremez.",
+        value: (row) => new Date(row.bar_time).getTime(),
+        cell: (row) => (
+          <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}>
+            {dateTime(row.bar_time)}
+          </span>
+        ),
+      },
+    ],
+    [rankOf],
+  );
 
   return (
     <Page
       title="Puanlar"
-      description="Havuzdaki coinlerin 0–100 arası notu. Bir tahmin değil, aynı andaki diğer coinlere göre sıralama."
-      intro={{
-        storageKey: "puanlar",
-        what: "Her karar barı kapandığında havuzdaki tüm coinler aynı ölçütlerle puanlanır. Puan beş aileden gelen katkıların toplamıdır; üstüne formasyon ve mum sinyalleri küçük bir düzeltme ekler.",
-        how: "**80 puan \"yükselecek\" demek değildir.** \"Şu an havuzdaki çoğu coinden daha uygun görünüyor\" demektir. Puan kesitseldir: coin kendi geçmişiyle değil, aynı andaki diğer coinlerle karşılaştırılır.\n\nSütunlardaki aile katkıları puanın nereden geldiğini gösterir. Bir satıra tıklayınca **Puan Kartı** açılır: yığılmış çubuk, ilk üç sebep ve destek/direnç geometrisi.\n\n**Ayar seçici** üstte: birden fazla bot farklı ağırlıklarla puanlıyorsa her biri ayrı bir liste üretir, karıştırılmaz.",
-        action: "Puanlamanın gerçekten işe yarayıp yaramadığını görmek için **Kalibrasyon** sayfasına gidin. Orada puan dilimlerinin ileri getiriyle ilişkisi ölçülür ve cevap \"hayır\" olabilir.",
-        terms: ["puan", "gerekce", "yuzdelik", "config_hash", "karar_bari", "kalibrasyon"],
-      }}
+      summary="Havuzdaki coinlerin 0–100 arası notu. Bir tahmin değil, aynı andaki diğer coinlere göre sıralama."
       actions={
         <Link href="/kalibrasyon">
-          <Button size="sm" variant="ghost" shape="rect">
+          <Button size="sm" variant="neutral">
             Bu puanlar işe yarıyor mu?
           </Button>
         </Link>
       }
+      guide={
+        <>
+          <GuideSection title="Ne gösteriyor">
+            <p>
+              Her karar barı kapandığında havuzdaki tüm coinler aynı ölçütlerle puanlanır. Puan beş
+              aileden gelen katkıların toplamıdır; üstüne formasyon ve mum sinyalleri küçük bir
+              düzeltme ekler.
+            </p>
+          </GuideSection>
+          <GuideSection title="Nasıl okunur">
+            <p>
+              <strong>80 puan “yükselecek” demek değildir.</strong> “Şu an havuzdaki çoğu coinden
+              daha uygun görünüyor” demektir. Puan kesitseldir: coin kendi geçmişiyle değil, aynı
+              andaki diğer coinlerle karşılaştırılır.
+            </p>
+            <p>
+              Aile sütunları puanın nereden geldiğini gösterir. Bir satıra tıklayınca Puan Kartı
+              açılır: yığılmış çubuk, ilk üç sebep ve destek/direnç geometrisi.
+            </p>
+            <p>
+              Birden fazla bot farklı ağırlıklarla puanlıyorsa her biri ayrı bir liste üretir;
+              üstteki seçici hangisine baktığınızı belirler ve listeler karıştırılmaz.
+            </p>
+          </GuideSection>
+          <GuideSection title="Ne yapabilirim">
+            <p>
+              Puanlamanın gerçekten işe yarayıp yaramadığını görmek için Kalibrasyon sayfasına
+              gidin. Orada puan dilimlerinin ileri getiriyle ilişkisi ölçülür ve cevap “hayır”
+              olabilir.
+            </p>
+          </GuideSection>
+        </>
+      }
     >
-      {/* Ayar seçici */}
       {(configs.data?.length ?? 0) > 1 && (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-elev px-4 py-2.5">
-          <span className="flex items-center gap-1 text-[12.5px] text-ink-2">
-            Puanlama ayarı
-            <InfoDot id="config_hash" align="start" />
-          </span>
-          {configs.data!.map((c) => (
-            <button
-              key={keyOf(c)}
-              type="button"
-              onClick={() => setConfigKey(keyOf(c))}
-              className={cx(
-                "rounded-lg border px-2.5 py-1 text-[12px] transition-colors",
-                keyOf(c) === configKey
-                  ? "border-brand bg-brand-soft font-medium text-brand"
-                  : "border-line text-ink-2 hover:border-line-strong hover:text-ink",
-              )}
+        <div className="flex flex-wrap items-center gap-2">
+          <Picker
+            label="Puanlama ayarı"
+            value={configKey}
+            onChange={setConfigKey}
+            width={340}
+            options={(configs.data ?? []).map((config) => ({
+              value: keyOf(config),
+              label: shorten(config.label),
+              meta: `${config.timeframe} · ${config.symbols} coin`,
+            }))}
+          />
+          <Tip content="Aynı anda birden çok bot farklı ağırlıklarla puanlıyor. Her ağırlık kümesi ayrı bir sıralama üretir; hepsini tek listede göstermek aynı sembolü iki farklı puanla iki kez gösterirdi.">
+            <span
+              className="underline decoration-dotted underline-offset-[3px]"
+              style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}
             >
-              {c.label}
-              <span className="ml-1.5 text-[11px] opacity-70">
-                {c.timeframe} · {c.symbols} coin
-              </span>
-            </button>
-          ))}
+              neden birden çok liste var?
+            </span>
+          </Tip>
         </div>
       )}
 
       {stats && (
-        <StatGrid cols={4}>
-          <Stat
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Metric
             label="Puanlanan coin"
-            hint="Bu ayar kümesiyle son barda puanlanan coin sayısı. Havuz boyutuyla aynı olmalıdır."
-            value={<AmountText text={num(stats.count, 0)} size="xl" />}
-            sub={active ? `son bar ${relative(active.bar_time)}` : null}
+            value={stats.count}
+            format={(value) => num(value, 0)}
+            sub={active ? `son bar ${relative(active.bar_time)}` : undefined}
           />
-          <Stat
+          <Metric
             label="En yüksek puan"
-            hint="Listedeki en yüksek not. Tek başına bir şey söylemez — kalibrasyon sayfası bunun anlamlı olup olmadığını ölçer."
-            value={<AmountText text={num(stats.top, 1)} size="xl" />}
+            value={stats.top}
+            format={(value) => num(value, 1)}
+            accent="var(--sn-brand-solid)"
+            sub="tek başına bir şey söylemez — kalibrasyona bakın"
           />
-          <Stat
+          <Metric
             label="Ortanca puan"
-            hint="Listenin tam ortasındaki değer. Ortanca 50 civarındaysa puanlama havuzu dengeli dağıtıyor demektir."
-            value={<AmountText text={num(stats.median, 1)} size="xl" />}
+            value={stats.median}
+            format={(value) => num(value, 1)}
+            sub="50 civarıysa puanlama havuzu dengeli dağıtıyor"
           />
-          <Stat
+          <Metric
             label="70 ve üzeri"
-            hint="Giriş eşiğine yakın aday sayısı. Çok azsa bot işlem açacak aday bulamaz; çok fazlaysa eşik gevşek olabilir."
-            value={<AmountText text={num(stats.above70, 0)} size="xl" />}
-            sub={`${num((stats.above70 / stats.count) * 100, 0)}% listenin`}
+            value={stats.above70}
+            format={(value) => num(value, 0)}
+            sub={`listenin %${num((stats.above70 / stats.count) * 100, 0)}'i · giriş eşiğine yakın aday`}
           />
-        </StatGrid>
+        </div>
       )}
 
-      <Section
+      <Panel
         title="Puan tablosu"
-        description="En yüksekten en düşüğe. Aile sütunları puanın nereden geldiğini gösterir; toplamları taban puanı verir."
+        description="En yüksekten en düşüğe. Aile sütunlarının toplamı taban puanı verir; düzeltme ayrı durur. Satıra tıklayın, Puan Kartı açılsın."
         padded={false}
       >
-        <Async
-          query={scores}
-          empty={{
-            title: "Henüz puan yok",
-            description:
-              "Puanlar karar barı kapandığında hesaplanır. Havuz kurulduysa bir sonraki bar kapanışında burası dolar.",
-          }}
-        >
-          {(list) =>
-            list.length === 0 ? (
-              <Empty
-                title="Henüz puan yok"
-                description="Puanlar karar barı kapandığında hesaplanır."
-                className="m-4 border-0"
-              />
-            ) : (
-              <DataTable
-                rows={list}
-                columns={columns}
-                rowKey={(r) => r.symbol}
-                onRowClick={(r) => setSelected(r.symbol)}
-                storageKey="puanlar"
-                searchText={(r) => r.symbol}
-                searchPlaceholder="Sembol ara…"
-                defaultSort={{ key: "score", dir: "desc" }}
-                dense
-                footNote={
-                  active ? (
-                    <span>
-                      {active.label} ayarıyla · {dateTime(active.bar_time)} barı
-                    </span>
-                  ) : null
-                }
-              />
-            )
+        <DataGrid
+          rows={rows}
+          columns={columns}
+          rowKey={(row) => row.symbol}
+          onRowClick={(row) => setSelected(row.symbol)}
+          storageKey="puanlar"
+          searchPlaceholder="Sembol ara…"
+          defaultSort={[{ id: "score", desc: true }]}
+          maxHeight={620}
+          emptyTitle={scores.isLoading ? "Yükleniyor…" : "Henüz puan yok"}
+          emptyHint={
+            scores.isLoading
+              ? undefined
+              : "Puanlar karar barı kapandığında hesaplanır. Havuz kurulduysa bir sonraki bar kapanışında burası dolar."
           }
-        </Async>
-      </Section>
+        />
+      </Panel>
 
-      <Section title="Puan nedir, nasıl okunur" padded>
-        <div className="grid gap-5 md:grid-cols-2">
-          <Explain id="puan" showTitle={false} />
-          <div className="space-y-3">
-            <div>
-              <h3 className="mb-1.5 text-[13px] font-semibold text-ink">Beş aile</h3>
-              <ul className="space-y-1.5">
-                {Object.keys(FAMILY_LABELS).map((f) => (
-                  <li key={f} className="flex items-start gap-2 text-[12.5px]">
-                    <span
-                      aria-hidden
-                      className="mt-1.5 size-2 shrink-0 rounded-[2px]"
-                      style={{ background: FAMILY_COLORS[f] }}
-                    />
-                    <span>
-                      <Term id={FAMILY_TERMS[f]} className="font-medium text-ink" />
-                      <span className="text-ink-2"> — üstüne gelin, ne ölçtüğü yazıyor.</span>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <Explain id="gerekce" compactStyle />
-          </div>
-        </div>
-      </Section>
-
-      <ScoreDrawer symbol={selected} onClose={() => setSelected(null)} />
+      <ScoreDrawer
+        symbol={selected}
+        config={active}
+        onClose={() => setSelected(null)}
+      />
     </Page>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/*  Puan detayı                                                        */
+/*  Puan Kartı                                                         */
 /* ------------------------------------------------------------------ */
 
-function ScoreDrawer({ symbol, onClose }: { symbol: string | null; onClose: () => void }) {
+function ScoreDrawer({
+  symbol,
+  config,
+  onClose,
+}: {
+  symbol: string | null;
+  config: ScoreConfig | undefined;
+  onClose: () => void;
+}) {
   const detail = useQuery({
-    queryKey: ["score", symbol],
-    queryFn: () => api.get<ScoreDetail>(`/scores/${symbol}`),
-    enabled: Boolean(symbol),
-  });
-
-  const history = useQuery({
-    queryKey: ["score-history", symbol],
+    queryKey: ["score-detail", symbol, config?.config_hash, config?.timeframe],
     queryFn: () =>
-      api.get<{ bar_time: string; score: number }[]>(`/scores/${symbol}/history`, { days: 7 }),
-    enabled: Boolean(symbol),
+      api.get<ScoreDetail>(`/scores/${symbol}`, {
+        config_hash: config!.config_hash,
+        timeframe: config!.timeframe,
+      }),
+    enabled: Boolean(symbol && config),
   });
 
-  if (!symbol) return null;
+  const rationale = detail.data?.rationale;
 
   return (
     <Drawer
-      open
+      open={Boolean(symbol)}
       onClose={onClose}
-      title={<span className="font-mono">{symbol}</span>}
-      subtitle="Puanın gerekçesi"
-      width="max-w-2xl"
+      title={symbol ?? ""}
+      subtitle={config ? `${config.label} · ${config.timeframe}` : undefined}
     >
-      {detail.data?.rationale ? (
+      {detail.isLoading && (
+        <p style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink-3)" }}>Yükleniyor…</p>
+      )}
+
+      {detail.isError && (
+        <p style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-down)" }}>
+          Gerekçe getirilemedi. Puan hesaplanmış ama gerekçesi saklanmamış olabilir.
+        </p>
+      )}
+
+      {detail.data && (
         <>
-          <DrawerSection title="Puan kartı">
-            <ScoreCard rationale={detail.data.rationale} />
-          </DrawerSection>
+          <div className="flex items-baseline gap-3">
+            <NumText text={num(detail.data.score, 1)} size="hero" />
+            <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}>
+              / 100 · {relative(detail.data.bar_time)}
+            </span>
+          </div>
 
           <DrawerSection
-            title="Son 7 gün"
-            description="Puanın zaman içindeki seyri. Sürekli düşen bir puan, pozisyondaysanız çıkış sinyali olabilir."
+            title="Puan nereden geliyor"
+            hint="Beş ailenin katkısı. Toplamları taban puanı verir; düzeltmeler bu yığına dahil değildir."
           >
-            <CurveChart
-              height={160}
-              series={[
-                {
-                  label: "Puan",
-                  color: "var(--brand)",
-                  points: (history.data ?? []).map((h) => ({
-                    at: h.bar_time,
-                    value: h.score,
-                  })),
-                },
-              ]}
-              valueFormat={(v) => num(v, 1)}
-              emptyText="Bu sembol için yeterli puan geçmişi yok."
-            />
+            <FamilyStack families={detail.data.families} height={10} showLegend />
           </DrawerSection>
 
-          <DrawerSection title="Künye">
-            <div className="space-y-1 rounded-lg border border-line px-3.5 py-2.5 text-[12.5px]">
-              <div className="flex justify-between gap-3">
-                <span className="text-ink-2">Bar zamanı</span>
-                <span className="num">{dateTime(detail.data.bar_time)}</span>
+          {rationale?.top_drivers?.length ? (
+            <DrawerSection
+              title="İlk sebepler"
+              hint="Bu puanı en çok yukarı taşıyan üç ölçüt."
+            >
+              <ul className="flex flex-col gap-1.5">
+                {rationale.top_drivers.map((driver) => (
+                  <li
+                    key={driver}
+                    className="flex items-start gap-2"
+                    style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink-2)" }}
+                  >
+                    <span style={{ color: "var(--sn-brand)" }}>·</span>
+                    {driver}
+                  </li>
+                ))}
+              </ul>
+            </DrawerSection>
+          ) : null}
+
+          {sumModifiers(detail.data.modifiers) !== 0 && (
+            <DrawerSection
+              title="Düzeltmeler"
+              hint="Formasyon ve mum sinyalleri. Taban puanı küçük miktarda yukarı ya da aşağı çeker."
+            >
+              <div className="flex flex-wrap gap-1.5">
+                {Object.entries(detail.data.modifiers)
+                  .filter(([, value]) => value !== 0)
+                  .map(([name, value]) => (
+                    <Tag key={name} tone={value > 0 ? "up" : "down"} mono>
+                      {name} {value > 0 ? "+" : ""}
+                      {num(value, 1)}
+                    </Tag>
+                  ))}
               </div>
-              <div className="flex justify-between gap-3">
-                <span className="flex items-center gap-1 text-ink-2">
-                  Ayar parmak izi
-                  <InfoDot id="config_hash" align="start" />
-                </span>
-                <span className="font-mono text-[11.5px]">
-                  {detail.data.config_hash.slice(0, 16)}
-                </span>
+            </DrawerSection>
+          )}
+
+          {rationale?.sr && (
+            <DrawerSection
+              title="Destek / direnç geometrisi"
+              hint="Fiyatın destekle direnç arasındaki yeri. Dirence yapışmış bir fiyatın yukarı alanı azdır."
+            >
+              <RangeDot
+                value={rationale.sr.poc}
+                low={rationale.sr.support}
+                high={rationale.sr.resistance}
+                lowLabel={`destek ${fmtOrDash(rationale.sr.support)}`}
+                highLabel={`direnç ${fmtOrDash(rationale.sr.resistance)}`}
+              />
+              <div className="mt-3">
+                <KeyValue
+                  rows={[
+                    {
+                      label: "Risk/ödül geometrisi",
+                      value: <NumText text={num(rationale.sr.rr_geometry, 2)} size="sm" />,
+                    },
+                    {
+                      label: "Destek gücü",
+                      value: <NumText text={num(rationale.sr.support_strength, 1)} size="sm" />,
+                    },
+                    {
+                      label: "Direnç gücü",
+                      value: <NumText text={num(rationale.sr.resistance_strength, 1)} size="sm" />,
+                    },
+                    {
+                      label: "ATR",
+                      value: <NumText text={num(rationale.sr.atr, 4)} size="sm" />,
+                    },
+                  ]}
+                />
               </div>
-            </div>
-          </DrawerSection>
+            </DrawerSection>
+          )}
         </>
-      ) : detail.isLoading ? (
-        <p className="text-[13px] text-ink-3">Yükleniyor…</p>
-      ) : (
-        <p className="text-[13px] text-ink-3">
-          Bu sembol için gerekçe bulunamadı. Puan hesaplanmış ama gerekçesi kaydedilmemişse bu
-          bir kayıt hatasıdır — Loglar sayfasına bakın.
-        </p>
       )}
     </Drawer>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/*  Küçük parçalar                                                     */
-/* ------------------------------------------------------------------ */
 
-/**
- * Puanı sayı + doluluk çubuğu olarak basar.
- *
- * Çubuk kimliği renkle değil doluluk oranıyla taşır; puanın kendisi zaten
- * yanında yazılı, yani bilgi renge bağlı değil.
- */
-function ScoreBadge({ score }: { score: number }) {
-  return (
-    <span className="inline-flex items-center justify-end gap-2">
-      <span className="h-1.5 w-10 overflow-hidden rounded-full bg-inset">
-        <span
-          className="block h-full rounded-full bg-brand"
-          style={{ width: `${Math.max(0, Math.min(100, score))}%` }}
-        />
-      </span>
-      <AmountText text={num(score, 1)} size="sm" />
-    </span>
-  );
+function sumModifiers(modifiers: Record<string, number> | undefined): number {
+  return Object.values(modifiers ?? {}).reduce((sum, value) => sum + value, 0);
 }
 
-function FamilyCell({ value, family }: { value: number | undefined; family: string }) {
-  if (value === undefined || !Number.isFinite(value)) {
-    return <span className="text-ink-3">—</span>;
-  }
-  return (
-    <span className="inline-flex items-center justify-end gap-1.5">
-      <span
-        aria-hidden
-        className="size-1.5 shrink-0 rounded-[1px] opacity-70"
-        style={{ background: FAMILY_COLORS[family] }}
-      />
-      <span className="num">{num(value, 1)}</span>
-    </span>
-  );
+function fmtOrDash(value: number | null): string {
+  return value === null ? "—" : num(value, 4);
+}
+
+/**
+ * Puanın rengi.
+ *
+ * Yeşil/kırmızı **kullanılmaz**: puan bir yön değil bir sıralamadır ve
+ * yüksek puan "kazanç" anlamına gelmez. Yoğunluk amber ailesinde değişir.
+ */
+function scoreColor(score: number): string {
+  if (score >= 70) return "var(--sn-brand-solid)";
+  if (score >= 50) return "var(--sn-border-strong)";
+  return "var(--sn-border)";
 }
