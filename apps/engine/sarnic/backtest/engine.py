@@ -14,6 +14,7 @@ damgası taşır.
 from __future__ import annotations
 
 import math
+from bisect import bisect_right
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
@@ -163,21 +164,32 @@ class UniverseTimeline:
     """Snapshot'lardan point-in-time havuz. Yoksa yaklaşık evren kurar."""
 
     def __init__(self, snapshots: list[UniverseSnapshot], fallback: list[str]) -> None:
-        self.snapshots = sorted(snapshots, key=lambda s: s.taken_at)
+        ordered = sorted(snapshots, key=lambda s: s.taken_at)
+        self.snapshots = ordered
         self.fallback = fallback
         self.approximate = not snapshots
 
+        # Sembol listeleri **bir kez** çıkarılır ve zaman damgaları ikili
+        # aramaya hazır ayrı bir diziye alınır. Eskiden `at()` her bar için
+        # tüm snapshot'ları baştan tarıyor ve eşleşen HER snapshot'ın sembol
+        # listesini yeniden kuruyordu — yalnızca sonuncusu kullanıldığı hâlde.
+        # 2.880 barlık bir koşuda 221 snapshot ile bu, yüz milyonlarca gereksiz
+        # sözlük okuması demekti ve snapshot arşivi her gün büyüyor.
+        self._times = [s.taken_at for s in ordered]
+        self._symbols = [[entry["symbol"] for entry in s.symbols] for s in ordered]
+
     def at(self, moment: datetime) -> list[str]:
-        chosen: list[str] | None = None
-        for snap in self.snapshots:
-            if snap.taken_at <= moment:
-                chosen = [s["symbol"] for s in snap.symbols]
-            else:
-                break
-        if chosen is None:
+        """`moment` anında geçerli havuz.
+
+        Dönen liste **paylaşılır** (`fallback` gibi); çağıran değiştirmez.
+        Motor yalnızca üzerinde dolaşıyor.
+        """
+        # `moment`'ten sonraki ilk snapshot'ın indeksi; bir öncesi geçerlidir.
+        index = bisect_right(self._times, moment)
+        if index == 0:
             self.approximate = True
             return self.fallback
-        return chosen
+        return self._symbols[index - 1]
 
     def note(self) -> str:
         if self.approximate:
@@ -497,35 +509,6 @@ class BacktestEngine:
                 cuts[tf] = 0 if df.empty else int(df["open_time"].searchsorted(stamp, side="right"))
             if cuts.get(self.timeframe, 0) >= 220:
                 out[symbol] = cuts
-        return out
-
-    def _slice(
-        self, data: dict[str, dict[str, pd.DataFrame]], symbols: list[str], bar: datetime
-    ) -> dict[str, dict[str, pd.DataFrame]]:
-        """`bar` anına kadar (dahil) **kapanmış** barlar.
-
-        `open_time <= bar` filtresi look-ahead korumasıdır: `bar` barının kendisi
-        kapanmış kabul edilir (karar bar kapanışında verilir), sonrasındaki hiçbir
-        veri görünmez.
-        """
-        out: dict[str, dict[str, pd.DataFrame]] = {}
-        for symbol in symbols:
-            frames = data.get(symbol)
-            if not frames:
-                continue
-            sliced: dict[str, pd.DataFrame] = {}
-            usable = False
-            for tf, df in frames.items():
-                if df.empty:
-                    sliced[tf] = df
-                    continue
-                cut = df["open_time"].searchsorted(pd.Timestamp(bar), side="right")
-                window = df.iloc[max(0, cut - BARS_NEEDED.get(tf, 400)) : cut]
-                sliced[tf] = window.reset_index(drop=True)
-                if tf == self.timeframe and len(window) >= 220:
-                    usable = True
-            if usable:
-                out[symbol] = sliced
         return out
 
     def _check_intrabar_stops(

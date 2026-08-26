@@ -274,6 +274,42 @@ def test_universe_timeline_without_snapshots_is_approximate():
     assert "hayatta kalma yanlılığı" in timeline.note()
 
 
+def test_universe_timeline_picks_latest_snapshot_at_or_before():
+    """Çok snapshot'lı zaman çizgisinde doğru olan seçilir.
+
+    `at()` ikili aramaya geçti; iki snapshot'lık testler sınır hatalarını
+    yakalamıyordu. Burada beş snapshot var ve tam damga, arası ve sonrası
+    ayrı ayrı sınanıyor.
+    """
+    snaps = [FakeSnapshot(START + timedelta(days=i), [f"S{i}"]) for i in range(5)]
+    timeline = UniverseTimeline(snaps, fallback=["X"])
+
+    # Tam damganın kendisi o snapshot'ı verir (`<=`).
+    assert timeline.at(START + timedelta(days=2)) == ["S2"]
+    # Arada kalan an bir öncekini verir.
+    assert timeline.at(START + timedelta(days=2, hours=13)) == ["S2"]
+    # Sonuncudan sonrası sonuncuyu verir.
+    assert timeline.at(START + timedelta(days=99)) == ["S4"]
+    # İlkinden öncesi yaklaşık evrene düşer.
+    assert timeline.at(START - timedelta(seconds=1)) == ["X"]
+    assert timeline.approximate
+
+
+def test_universe_timeline_accepts_unsorted_snapshots():
+    """Girdi sırasız gelirse de doğru çalışır — `at()` sıralı diziye dayanıyor."""
+    timeline = UniverseTimeline(
+        [
+            FakeSnapshot(START + timedelta(days=2), ["C"]),
+            FakeSnapshot(START, ["A"]),
+            FakeSnapshot(START + timedelta(days=1), ["B"]),
+        ],
+        fallback=["X"],
+    )
+    assert timeline.at(START + timedelta(hours=1)) == ["A"]
+    assert timeline.at(START + timedelta(days=1, hours=1)) == ["B"]
+    assert timeline.at(START + timedelta(days=5)) == ["C"]
+
+
 def test_universe_timeline_with_snapshots_notes_point_in_time():
     timeline = UniverseTimeline([FakeSnapshot(START, ["A"])], fallback=[])
     timeline.at(START + timedelta(hours=1))
