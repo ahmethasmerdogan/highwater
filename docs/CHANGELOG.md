@@ -16,6 +16,101 @@ cevap veren tek şey odur.
 
 ---
 
+## [Arayüz] 2. nesil tasarım sistemi — taşıma tamamlandı — 2026-08-24
+
+**Yapıldı:** Kalan 15 sayfa (+ giriş ekranı) yeni dile taşındı; **18 sayfanın hepsi** artık 2.
+nesil sistemi kullanıyor. 1. nesil katman — `ui/` (HashUI türevi bileşen kitaplığı + `hashui.css`),
+`components/` (common, data, shell, viz, terminal) ve `globals.css`'teki öneksiz token bloğu —
+**tek seferde silindi: 8.239 satır.** Artık `@/ui` ya da `@/components` diye bir şey yok.
+
+Taşıma sırasında tasarım sistemine eklenenler: sözlük katmanı (`Term`, `InfoDot`, `Explain`,
+`RichText`, `Field`), durum katmanı (`Async`, `ErrorBox`, `Alert`, `LoadingRows`), rozetler
+(`BotStatePill`, `ExitReasonPill`, `OrderStatusPill`, `RolePill`), form denetimleri
+(`FormField`, `TextInput`, `TextArea`, `Select`, `Toggle`), `Modal` + `Confirm`, bildirim
+sistemi (`ToastProvider`), tema sağlayıcısı, `Chip`, `Picker`, `TextMetric`, `SimpleTable`,
+ve grafik ailesi (`AreaCurve`, `DecileChart`, `Sparkline`, `ChartLegend`, `PriceChart`,
+`ScoreCard`).
+
+`next.config.ts`'e eklenen `NEXT_DIST_DIR` sayesinde tüm iş boyunca panel **hiç düşmedi**:
+önizleme derlemeleri ayrı dizine alındı, canlı `.next` yalnızca en sonda bir kez değişti.
+
+Yol üstünde düzeltilenler: `SimpleTable` artık `<tr>` çocukları yerine sütun tanımı alıyor
+(hizalama ve sayı disiplini tek yerden geliyordu ama her çağrı yerinde elle yazılıyordu);
+`Explain`'in `showTitle` bayrağı kalktı — başlık her zaman var, çünkü başlıksız bir açıklama
+kutusu neyin açıklaması olduğunu söylemiyordu; bot listesindeki satır içi eylem düğmeleri
+zeminsizdi ve metin sütunundan ayırt edilemiyordu.
+
+**Bilinçli olarak yapılmadı:**
+- Yazı tipi seçici (HashUI'dan devralınan üç seçenek) geri getirilmedi. Tipografi ölçeği tek
+  bir aileye göre ayarlandı; başka bir aileyle yeniden doğrulanmadan seçenek sunmak, ayarlanmış
+  satır yüksekliklerini bozmak demekti.
+- Terminal panelleri `DataGrid` değil `SimpleTable` kullanıyor. Bir terminal panelinde araç
+  çubuğu, sütun seçici ve yoğunluk düğmeleri panelin yarısını yerdi.
+- Mobil hâlâ ayrıca denenmedi; kabuk kayan menüye dönüyor ama sayfalar dar ekranda ölçülmedi.
+
+**Kabul kriteri:** ✅ `tsc --noEmit` ve `eslint src` sıfır hata sıfır uyarı; üretim derlemesi
+geçiyor; **18 sayfanın tamamı** gerçek tarayıcıda açıldı ve konsol hatasızdı; açık ve koyu tema
+ayrı ayrı bakıldı. Bot tarafına yine dokunulmadı — yalnızca `sarnic-web` yeniden başlatıldı,
+altı bot `PAPER_RUNNING` kaldı.
+
+**Açık kalan:** Mobil doğrulama.
+
+---
+
+## [Arayüz] Panelin 2. nesil tasarım sistemi — 2026-08-24
+
+**Yapıldı:** Panelin görsel dili sıfırdan yeniden kuruldu. Eski bileşenlerin üstüne yazılmadı;
+yeni sistem kendi katmanı olarak eklendi ve sayfalar tek tek taşınıyor.
+
+Taşınan disiplin (değişmedi): anlamsal renk kuralları — yeşil yalnız yukarı, kırmızı yalnız
+aşağı, amber marka/seçili, turuncu uyarı, mavi nötr bilgi — renk körlüğü için doğrulanmış beş
+renkli seri paleti ve sırası, ve bozulmaz kural 6 (`tabular-nums` monospace sayı).
+
+Sıfırdan yazılan: token katmanı (`design/tokens.css`, `--sn-*` önekli; dört kademeli yüzey
+rampası, adlandırılmış tipografi ölçeği, üç kademeli yoğunluk ızgarası, hareket token'ları),
+bileşen kitaplığı (`design/`), kabuk (`shell/`: raya daraltılabilir yan menü, canlı durum
+şeridine dönüşen üst çubuk, komut paleti), ve `@tanstack/react-table` üstünde yeni veri
+ızgarası (`grid/`: çok sütunlu sıralama, sürüklenebilir sütun genişliği, sola sabitleme,
+sütun görünürlüğü + düzen kalıcılığı, 150 satır üstünde sanallaştırma, alt toplam satırı).
+
+**Sayılar artık sayarak değişiyor.** `design/motion.ts` içindeki `useAnimatedNumber`, değişen
+değeri 480 ms'de hedefe taşır; ölçüldü, 60 ms örneklemede 8 kare kesintisiz ara değer üretiyor.
+Tablo hücreleri saymaz — 400 hücrenin aynı anda sayması ızgarayı okunmaz kılardı — onun yerine
+`useChangeTint` değişimi tek seferlik zemin rengiyle işaretler. İkisi de `prefers-reduced-motion`
+altında anında oturur.
+
+Taşınan sayfalar: **Panel, Puanlar, Pozisyonlar.** Her sayfanın tepesindeki açılır "Bu sayfa ne
+işe yarar?" kutusu kaldırıldı; yerine her zaman görünen tek cümlelik özet + başlıktaki "Nasıl
+okunur" düğmesi geldi. Bilgi kaybolmadı, veriyle yer değiştirmeyi bıraktı.
+
+Yol üstünde düzeltilenler: üst çubuktaki avatara **tek tıkla oturum kapanıyordu** (artık menü);
+ızgarada sabitlenen sütun, kendisinden önceki sabitlenmemiş sütunun üstüne biniyordu; kıyas
+hükmü panelde iki kez yazılıyordu; eğri grafiğinin nokta araması O(n²) idi (Map'e alındı).
+
+`next.config.ts`'e `NEXT_DIST_DIR` eklendi: arayüz üzerinde çalışırken önizleme derlemesi ayrı
+bir dizine alınabiliyor, böylece ayakta duran panel yarı derlenmiş çıktıdan servis edilmiyor.
+
+**Bilinçli olarak yapılmadı:**
+- Kalan 15 sayfa henüz taşınmadı. Eski `ui/` + `components/` katmanı ve `globals.css`'teki eski
+  token'lar bu yüzden duruyor; ikisi yan yana çalışıyor ve son sayfa da taşınınca eski katman
+  tek seferde silinecek. Taşınmamış sayfalar yeni kabuğun içinde eski gövdeleriyle görünüyor.
+- Palet değiştirilmedi. Renk körlüğü ve kontrast doğrulaması ölçülmüş bir çıktıydı; yeniden
+  seçmek o doğrulamayı sıfırdan yapmayı gerektirirdi ve talep görsel dil yenilemesiydi.
+- `ui/Motion.tsx` (411 satır, tamamı ölü kod — hiçbir yerden ithal edilmiyordu) silinmedi;
+  eski katmanla birlikte gidecek.
+- Sanallaştırma yalnızca 150 satır üstünde açılıyor. Küçük listede kazanç yok, kayıp var:
+  tarayıcının kendi araması (Ctrl+F) çalışmaz hâle geliyor.
+
+**Kabul kriteri:** ✅ `tsc --noEmit` ve `eslint` temiz; üretim derlemesi geçiyor; altı sayfa
+gerçek tarayıcıda açıldı, konsol hatasız; açık ve koyu tema ayrı ayrı bakıldı; sayma
+animasyonu DOM'dan ölçülerek doğrulandı. Bot tarafına dokunulmadı — yalnızca `sarnic-web`
+yeniden başlatıldı, altı bot `PAPER_RUNNING` kaldı.
+
+**Açık kalan:** Kalan 15 sayfanın taşınması. Bir de mobil: yeni kabuk mobilde kayan menüye
+dönüyor ama sayfalar dar ekranda ayrıca denenmedi.
+
+---
+
 ## [Ölçüm] Kalibrasyon besleyicisi hiç zamanlanmamıştı — 2026-08-21
 
 **Yapıldı:** Sistemi denetlerken en pahalı sessiz bozulmayı buldum: `backfill_observations`
