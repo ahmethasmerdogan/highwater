@@ -23,6 +23,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   api,
+  type Benchmark,
   type Bot,
   type BotMetrics,
   type PortfolioEquity,
@@ -104,6 +105,17 @@ export default function ChallengePage() {
       (bot.state === "PAPER_RUNNING" || bot.state === "DEGRADED") &&
       bot.timeframe === meydan?.timeframe,
   );
+
+  /* Aynı-andan yarış: tüm eğriler meydan okumanın FONLANMA anına yeniden
+     tabanlanır (uçtaki ?since=). Bunsuz kontroller 11 gün önde başlıyor ve
+     karşılaştırma anlamsızlaşıyordu. */
+  const yarris = useQuery({
+    queryKey: ["benchmark-since", meydan?.created_at],
+    queryFn: () =>
+      api.get<Benchmark>("/portfolio/benchmark", { since: meydan!.created_at }),
+    enabled: meydan !== null,
+    refetchInterval: 300_000,
+  });
 
   /* Hedef yolu grafiği: botun gerçek özsermayesi + hedefe giden gereken
      bileşik patika. İkisinin arasındaki dikey mesafe "ne kadar geridesin"in
@@ -389,6 +401,16 @@ export default function ChallengePage() {
         </Panel>
       )}
 
+      {/* ---- Aynı andan yarış ---------------------------------------- */}
+      {meydan && yarris.data && (
+        <Panel
+          title="Aynı andan yarış"
+          description="Meydan okuma, çalışan kontroller ve havuz sepeti — hepsi meydan okumanın fonlandığı ana yeniden tabanlanmış (100 = başlangıç). Hepsi birlikte yükseliyorsa yükselen şey piyasadır, sistem değil."
+        >
+          <YarisGrafigi data={yarris.data} meydanId={meydan.id} kontroller={kontroller} />
+        </Panel>
+      )}
+
       {/* ---- Kontrol grubu ------------------------------------------- */}
       <Panel
         title="Kontrol grubuyla karşılaştırma"
@@ -497,6 +519,76 @@ function HedefYolu({
       valueFormat={(v) => money(v)}
       labelFormat={(at) => dateTime(at)}
     />
+  );
+}
+
+function YarisGrafigi({
+  data,
+  meydanId,
+  kontroller,
+}: {
+  data: Benchmark;
+  meydanId: number;
+  kontroller: Bot[];
+}) {
+  const kontrolIdler = useMemo(() => new Set(kontroller.map((b) => b.id)), [kontroller]);
+  const seriler = useMemo<CurveSeries[]>(() => {
+    const out: CurveSeries[] = [];
+    for (const bot of data.bots) {
+      if (bot.curve.length < 2) continue;
+      if (bot.bot_id === meydanId) {
+        out.push({
+          label: "Meydan okuma",
+          color: "var(--sn-series-3)",
+          points: bot.curve.map((p) => ({ at: p.at, value: p.value * 100 })),
+        });
+      } else if (kontrolIdler.has(bot.bot_id)) {
+        out.push({
+          label: bot.name.replace("Havuz Momentum · ", "kontrol: "),
+          color: "var(--sn-ink-4)",
+          points: bot.curve.map((p) => ({ at: p.at, value: p.value * 100 })),
+        });
+      }
+    }
+    if (data.benchmark.length > 1) {
+      /* Sepet kendi penceresinin başına normalize gelir; since penceresinde
+         yeniden tabanla. */
+      const kesit = data.benchmark;
+      const taban = kesit[0]?.value || 1;
+      out.push({
+        label: `Havuz sepeti · ${data.universe_size ?? "?"} sembol`,
+        color: "var(--sn-series-2)",
+        dashed: true,
+        points: kesit.map((p) => ({ at: p.at, value: (p.value / taban) * 100 })),
+      });
+    }
+    return out;
+  }, [data, meydanId, kontrolIdler]);
+
+  if (seriler.length === 0) {
+    return (
+      <p style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink-3)" }}>
+        Yarış eğrisi için henüz yeterli nokta yok.
+      </p>
+    );
+  }
+  return (
+    <>
+      {data.verdict && (
+        <p
+          className="mb-2"
+          style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-warn)" }}
+        >
+          {data.verdict}
+        </p>
+      )}
+      <CurveChart
+        series={seriler}
+        height={220}
+        valueFormat={(v) => num(v, 1)}
+        labelFormat={(at) => dateTime(at)}
+      />
+    </>
   );
 }
 
