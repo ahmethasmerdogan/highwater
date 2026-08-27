@@ -204,6 +204,8 @@ export interface UniverseSymbol {
   volatility_ann_pct: number | null;
   range_3d_pct: number | null;
   protected: boolean;
+  /** Bu turda ölçüm alınamadı; üye bir tur tamponla korunuyor (motor bayrağı). */
+  placeholder?: boolean;
 }
 
 export interface FunnelStep {
@@ -212,6 +214,15 @@ export interface FunnelStep {
   kept: number;
   dropped: number;
   examples: string[];
+}
+
+export interface SnapshotSummary {
+  id: number;
+  taken_at: string;
+  reason: string;
+  size: number;
+  added: string[];
+  removed: string[];
 }
 
 export interface SnapshotDetail {

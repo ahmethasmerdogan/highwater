@@ -10,7 +10,7 @@
 import Link from "next/link";
 import { use, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type Bot, type Position, type Trade } from "@/lib/api";
+import { api, type Bot, type Position, type Strategy, type Trade } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { toast } from "@/lib/toast";
 import { botEylemleri, EYLEM_ETIKET } from "@/lib/bot-actions";
@@ -80,6 +80,32 @@ const SEVERITY_TONE: Record<Severity, Tone> = {
   info: "neutral",
 };
 
+/**
+ * Yürürlükteki kritik ayarlar — sürüm kimliği değil, davranışı belirleyen
+ * sayılar. Tanım JSON'undan okunur; motorla alan adları birebir.
+ */
+function kritikAyarlar(definition: Record<string, unknown>): [string, string][] {
+  const oku = (path: string): unknown =>
+    path.split(".").reduce<unknown>((acc, key) => {
+      if (acc && typeof acc === "object") return (acc as Record<string, unknown>)[key];
+      return undefined;
+    }, definition);
+  const sayi = (v: unknown, digits = 2): string | null =>
+    typeof v === "number" && Number.isFinite(v) ? num(v, digits) : null;
+  const yuzde = (v: unknown): string | null =>
+    typeof v === "number" && Number.isFinite(v) ? `%${num(v * 100, 1)}` : null;
+
+  const rows: [string, string | null][] = [
+    ["kapı", sayi(oku("entry.min_score"), 1)],
+    ["slot", sayi(oku("entry.max_positions"), 0)],
+    ["risk", yuzde(oku("sizing.risk_pct"))],
+    ["stop", sayi(oku("exit.stop_atr_multiple"), 1) ? `${num(oku("exit.stop_atr_multiple") as number, 1)} ATR` : null],
+    ["başabaş", sayi(oku("exit.breakeven_r"), 1) ? `${num(oku("exit.breakeven_r") as number, 1)}R` : null],
+    ["iz süren", sayi(oku("exit.trail_atr"), 1) ? `${num(oku("exit.trail_atr") as number, 1)} ATR` : null],
+  ];
+  return rows.filter((entry): entry is [string, string] => entry[1] !== null);
+}
+
 export default function BotDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const botId = Number(id);
@@ -98,6 +124,21 @@ export default function BotDetailPage({ params }: { params: Promise<{ id: string
     queryFn: () => api.get<BotMetricsResponse>(`/bots/${botId}/metrics`),
     refetchInterval: 60_000,
   });
+  /* Hangi ayarların yürürlükte olduğu panelden görünmüyordu: özet yalnızca
+     ham sürüm kimliği yazıyordu. /strategies tanımın tamamını zaten
+     döndürüyor — eşleştirme istemcide, yeni uç yok. */
+  const strategies = useQuery({
+    queryKey: ["strategies"],
+    queryFn: () => api.get<Strategy[]>("/strategies"),
+    staleTime: 300_000,
+  });
+  const surum = useMemo(() => {
+    for (const st of strategies.data ?? []) {
+      const v = st.versions.find((one) => one.id === bot.data?.strategy_version_id);
+      if (v) return { strateji: st, surum: v };
+    }
+    return null;
+  }, [strategies.data, bot.data?.strategy_version_id]);
 
   const action = useMutation({
     mutationFn: (verb: string) => api.post(`/bots/${botId}/${verb}`),
@@ -120,7 +161,11 @@ export default function BotDetailPage({ params }: { params: Promise<{ id: string
       title={data?.name ?? `Bot #${botId}`}
       summary={
         data
-          ? `${data.timeframe} karar barı · ${money(data.capital)} USD başlangıç sermayesi · strateji sürümü #${data.strategy_version_id}`
+          ? `${data.timeframe} karar barı · ${money(data.capital)} USD başlangıç sermayesi · ${
+              surum
+                ? `${surum.strateji.name} v${surum.surum.version}`
+                : `strateji sürümü #${data.strategy_version_id}`
+            }`
           : "Bot bilgileri yükleniyor."
       }
       actions={
@@ -172,6 +217,33 @@ export default function BotDetailPage({ params }: { params: Promise<{ id: string
           >
             Bu bot sunucuda çalışır; sayfayı kapatmak onu durdurmaz.
           </span>
+        </div>
+      )}
+
+      {surum && (
+        <div
+          className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-[var(--sn-r-md)] px-4 py-2.5"
+          style={{ background: "var(--sn-panel)", border: "1px solid var(--sn-hairline)" }}
+        >
+          <Link
+            href="/stratejiler"
+            className="hover:underline"
+            style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-brand)" }}
+          >
+            {surum.strateji.name} v{surum.surum.version} →
+          </Link>
+          {kritikAyarlar(surum.surum.definition).map(([etiket, deger]) => (
+            <span
+              key={etiket}
+              className="inline-flex items-baseline gap-1"
+              style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}
+            >
+              {etiket}
+              <span className="sn-num" style={{ color: "var(--sn-ink)" }}>
+                {deger}
+              </span>
+            </span>
+          ))}
         </div>
       )}
 

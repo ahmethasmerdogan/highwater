@@ -247,6 +247,16 @@ function SymbolPanels({ symbol, tf }: { symbol: string; tf: string }) {
           >
             Grafik yükleniyor…
           </div>
+        ) : candles.isError ? (
+          /* API hatası "veri yok" değildir — sembolü suçlamadan söyle. */
+          <Empty
+            title="Grafik getirilemedi"
+            hint={
+              candles.error instanceof Error
+                ? candles.error.message
+                : "API'ye ulaşılamıyor — veri yokluğu değil, bağlantı sorunu."
+            }
+          />
         ) : (candles.data ?? []).length === 0 ? (
           <Empty
             title="Bu sembol için veri yok"
@@ -595,7 +605,27 @@ function EditableField({
       className="rounded-[var(--sn-r-sm)] px-3 py-2.5"
       style={{ border: "1px solid var(--sn-border)" }}
     >
-      {field.kind === "boolean" ? (
+      {field.kind === "tiers" ? (
+        /* Kademe listesi bu formda düzenlenmez: sayı kutusuna zorlamak
+           [[80,0.75]] yapısını bozardı. Görünür ama salt okunur. */
+        <>
+          <FormField label={field.label}>
+            <span className="sn-num" style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}>
+              {Array.isArray(value)
+                ? (value as [number, number][])
+                    .map(([esik, carpan]) => `${esik}→×${carpan}`)
+                    .join(" · ")
+                : "—"}
+            </span>
+          </FormField>
+          <p
+            className="mt-1.5"
+            style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)", lineHeight: 1.5 }}
+          >
+            {field.description} Bu listeyi düzenlemek için strateji tanımını JSON olarak kaydedin.
+          </p>
+        </>
+      ) : field.kind === "boolean" ? (
         <Toggle
           checked={Boolean(value)}
           onChange={onChange}

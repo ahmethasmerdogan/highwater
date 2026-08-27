@@ -101,6 +101,10 @@ class Candidate:
     range_3d_pct: float | None = None
     delist_announced: bool = False
     rank: int = 0
+    #: Bu turda ölçüm alınamadı; üye SOFT_DROP_GRACE tamponuyla korunuyor.
+    #: Panel bu bayrağı okur — rank == hysteresis_band çıkarımı yapmak
+    #: istemcide iş mantığı olurdu (yasak).
+    placeholder: bool = False
 
     @property
     def tick_ratio_pct(self) -> float:
@@ -428,4 +432,5 @@ def _placeholder(symbol: str, cfg: UniverseConfig) -> Candidate:
     """
     cand = Candidate(symbol=symbol)
     cand.rank = cfg.hysteresis_band
+    cand.placeholder = True
     return cand

@@ -655,6 +655,13 @@ export function rejectReason(code: string | null | undefined): string {
  *
  * Uydurma yapmaz — karşılığı yoksa kodu insan gözüne yakışır biçimde basar.
  */
+/** Puan düzeltme anahtarları — motor İngilizce yazar, panel Türkçe basar. */
+export const MODIFIER_LABELS: Record<string, string> = {
+  pattern: "Formasyon",
+  candle: "Mum",
+  crowding: "Kalabalıklaşma",
+};
+
 export function readableCode(code: string): string {
   const text = code.replace(/[._]+/g, " ").trim();
   return text.charAt(0).toUpperCase() + text.slice(1);

@@ -10,6 +10,7 @@ from sarnic.api.deps import CurrentUser, SessionDep
 from sarnic.core.enums import TIMEFRAME_MINUTES
 from sarnic.data.store import load_frame
 from sarnic.features.patterns import compute_patterns
+from sarnic.features.pipeline import BARS_NEEDED
 from sarnic.features.sr import compute_sr
 
 router = APIRouter(prefix="/symbols", tags=["symbols"])
@@ -42,7 +43,10 @@ async def ohlcv(
 
 @router.get("/{symbol}/sr")
 async def sr_levels(symbol: str, session: SessionDep, user: CurrentUser, tf: str = "1h") -> dict:
-    df = await load_frame(session, symbol.upper(), tf, limit=1000)
+    # Karar yolu BARS_NEEDED kadar bar kullanır (features/pipeline.py).
+    # 1000 bar yüklemek aynı ekranda puanlamayla çelişen İKİNCİ bir S/R
+    # takımı üretiyordu — pencere farkı seviye farkıdır.
+    df = await load_frame(session, symbol.upper(), tf, limit=BARS_NEEDED.get(tf, 400))
     if df.empty:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"{symbol} için veri yok.")
     result = compute_sr(df, symbol.upper(), tf)
@@ -63,7 +67,7 @@ async def sr_levels(symbol: str, session: SessionDep, user: CurrentUser, tf: str
 
 @router.get("/{symbol}/patterns")
 async def patterns(symbol: str, session: SessionDep, user: CurrentUser, tf: str = "1h") -> dict:
-    df = await load_frame(session, symbol.upper(), tf, limit=1000)
+    df = await load_frame(session, symbol.upper(), tf, limit=BARS_NEEDED.get(tf, 400))
     if df.empty:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"{symbol} için veri yok.")
     result = compute_patterns(df, symbol.upper(), tf)

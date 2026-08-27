@@ -6,6 +6,7 @@ döndürür ve yorumu yumuşatmaz (§5.5).
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -13,7 +14,7 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from sarnic.api.deps import CurrentUser, SessionDep
+from sarnic.api.deps import CurrentUser, RedisDep, SessionDep
 from sarnic.api.schemas import ScoreDetail, ScoreOut
 from sarnic.bots.supervisor import RUNNING_STATES
 from sarnic.core.clock import utcnow
@@ -248,6 +249,28 @@ async def score_detail(
     )
 
 
+@router.get("/scores/by-id/{score_id}")
+async def score_by_id(score_id: int, session: SessionDep, user: CurrentUser) -> ScoreDetail:
+    """Belirli bir puan kaydı — pozisyonun GİRİŞ gerekçesi için.
+
+    `positions.rationale_id` bu tabloya işaret eder ama id ile erişen uç
+    yoktu; panel çekmecesi "giriş gerekçesi" vaat edip gösteremiyordu.
+    Sembolün BUGÜNKÜ puanını basmak yalan olurdu — giriş anındaki gerekir.
+    """
+    row = (await session.execute(select(Score).where(Score.id == score_id))).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Puan kaydı bulunamadı.")
+    return ScoreDetail(
+        symbol=row.symbol,
+        bar_time=row.bar_time,
+        score=float(row.score),
+        families=row.families,
+        modifiers=row.modifiers,
+        rationale=row.rationale,
+        config_hash=row.config_hash,
+    )
+
+
 @router.get("/scores/{symbol}/history")
 async def score_history(
     symbol: str,
@@ -282,11 +305,22 @@ async def score_history(
 @router.get("/calibration")
 async def calibration(
     session: SessionDep,
+    redis: RedisDep,
     user: CurrentUser,
     horizon: str = "24h",
     days: int = 180,
 ) -> dict:
-    """Desil grafiği, Spearman ve aile bazında IC (§5.5)."""
+    """Desil grafiği, Spearman ve aile bazında IC (§5.5).
+
+    Sonuç 10 dakika Redis'te tutulur: gözlemler saatte bir yazılır ama panel
+    5 dakikada bir yeniliyor ve önbelleksiz hâli 14,3 saniye sürüyordu —
+    bot işçileriyle aynı 4 çekirdeği yiyerek.
+    """
+    cache_key = f"sarnic:cache:calibration:{horizon}:{days}"
+    cached = await redis.get(cache_key)
+    if cached:
+        return json.loads(cached)
+
     column = {
         "4h": ScoreObservation.fwd_return_4h,
         "24h": ScoreObservation.fwd_return_24h,
@@ -314,12 +348,14 @@ async def calibration(
     # `_insufficient_message`'in ürettiğiyle çelişiyordu (§9.9'da düzeltilen
     # hatanın aynısı ikinci bir yerde duruyormuş).
     if not rows:
-        return build_report(
+        bos = build_report(
             horizon=horizon,
             times=[],
             scores=np.array([], dtype=float),
             returns=np.array([], dtype=float),
         ).as_dict()
+        await redis.set(cache_key, json.dumps(bos), ex=600)
+        return bos
 
     times: list[datetime] = [r[0] for r in rows]
     scores = np.array([float(r[1]) for r in rows], dtype=float)
@@ -337,7 +373,9 @@ async def calibration(
         family_values=family_values,
         gate=await _entry_gate(session),
     )
-    return report.as_dict()
+    payload = report.as_dict()
+    await redis.set(cache_key, json.dumps(payload), ex=600)
+    return payload
 
 
 async def _entry_gate(session: AsyncSession) -> float:

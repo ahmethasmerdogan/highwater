@@ -264,6 +264,17 @@ def combine_curves(curves: list[list[dict]]) -> list[dict]:
     karşılaştırma dize üzerinde yapılır; sabit ofsetli ISO-8601 damgalarında
     sözlük sırası kronolojik sırayla aynıdır. (`datetime` de kabul edilir.)
     """
+
+    # Damga biçimi tek olmalı: Pydantic "Z", elle isoformat() "+00:00"
+    # üretir ve iki biçim tek eğride karışırsa DİZE sıralaması sessizce
+    # bozulur ("Z" > "+"). Normalize et — sıralama varsayımı ancak böyle
+    # güvenli.
+    def _norm(at: str) -> str:
+        return at.replace("Z", "+00:00") if isinstance(at, str) else at
+
+    for curve in curves:
+        for point in curve:
+            point["at"] = _norm(point["at"])
     moments = sorted({point["at"] for curve in curves for point in curve})
     if not moments:
         return []

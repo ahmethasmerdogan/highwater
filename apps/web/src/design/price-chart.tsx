@@ -15,7 +15,7 @@
  * Renkleri yerinde güncellemek ayrıca kullanıcının yakınlaştırmasını korur.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ColorType,
   createChart,
@@ -171,21 +171,37 @@ export function PriceChart({
     }
   }, [candles]);
 
+  /* `createPriceLine` otomatik ölçeklemeye katılmaz: seviye görünen fiyat
+     aralığının dışındaysa SESSİZCE çizilmez ve panel "amber POC çizgisi"
+     derken çizgi yoktur. Dışarıda kalanları köşede açıkça söyle. */
+  const [disarida, setDisarida] = useState<string[]>([]);
+
   useEffect(() => {
     const series = seriesRef.current;
     if (!series) return;
 
+    const lows = candles.map((c) => c.low).filter(Number.isFinite);
+    const highs = candles.map((c) => c.high).filter(Number.isFinite);
+    const lo = lows.length ? Math.min(...lows) : null;
+    const hi = highs.length ? Math.max(...highs) : null;
+
     const lines: ReturnType<ISeriesApi<"Candlestick">["createPriceLine"]>[] = [];
-    const add = (price: number | null | undefined, title: string, color: string) => {
-      if (price === null || price === undefined || !Number.isFinite(price)) return;
+    const kayip: string[] = [];
+    const add = (value: number | null | undefined, title: string, color: string) => {
+      if (value === null || value === undefined || !Number.isFinite(value)) return;
+      if (lo !== null && hi !== null && (value < lo || value > hi)) {
+        kayip.push(`${title} ${price(value)} ${value > hi ? "↑ aralığın üstünde" : "↓ aralığın altında"}`);
+        return;
+      }
       lines.push(
-        series.createPriceLine({ price, color, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title }),
+        series.createPriceLine({ price: value, color, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title }),
       );
     };
 
     add(sr?.resistance, "direnç", cssVar("--sn-down", "#d6304a"));
     add(sr?.support, "destek", cssVar("--sn-up", "#17a56b"));
     add(sr?.poc, "POC", cssVar("--sn-brand-solid", "#f0b90b"));
+    setDisarida(kayip);
 
     return () => {
       lines.forEach((line) => {
@@ -196,13 +212,24 @@ export function PriceChart({
         }
       });
     };
-  }, [sr, candles.length, resolved]);
+  }, [sr, candles, resolved]);
 
   return (
-    <div
-      ref={containerRef}
-      className={fill ? "h-full w-full" : "w-full"}
-      style={fill ? undefined : { height }}
-    />
+    <div className={fill ? "relative h-full w-full" : "relative w-full"} style={fill ? undefined : { height }}>
+      <div ref={containerRef} className="h-full w-full" />
+      {disarida.length > 0 && (
+        <div
+          className="sn-num absolute top-1.5 left-1.5 rounded-[var(--sn-r-xs)] px-1.5 py-0.5"
+          style={{
+            fontSize: "var(--sn-t-micro)",
+            color: "var(--sn-ink-3)",
+            background: "var(--sn-panel)",
+            border: "1px solid var(--sn-hairline)",
+          }}
+        >
+          {disarida.join(" · ")}
+        </div>
+      )}
+    </div>
   );
 }

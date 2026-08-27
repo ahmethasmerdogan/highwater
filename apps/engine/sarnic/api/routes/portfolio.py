@@ -28,13 +28,17 @@ async def positions(
     user: CurrentUser,
     bot_id: int | None = None,
     status_filter: str = "OPEN",
+    limit: int = 500,
 ) -> list[PositionOut]:
     stmt = select(Position)
     if bot_id is not None:
         stmt = stmt.where(Position.bot_id == bot_id)
     if status_filter in ("OPEN", "CLOSED"):
         stmt = stmt.where(Position.status == status_filter)
-    rows = (await session.execute(stmt.order_by(Position.entry_time.desc()).limit(500))).scalars()
+    # Kardeşleri /trades ve /orders limit alıyor; burası sessizce 500'de
+    # kesiyordu. Üst sınır sabit: tek istekle tabloyu boşaltmak yok.
+    limit = max(1, min(limit, 2000))
+    rows = (await session.execute(stmt.order_by(Position.entry_time.desc()).limit(limit))).scalars()
 
     tickers = await read_tickers(redis)
     out: list[PositionOut] = []
@@ -143,7 +147,7 @@ async def equity(session: SessionDep, user: CurrentUser, bot_id: int | None = No
 
 
 @router.get("/portfolio/benchmark")
-async def benchmark(session: SessionDep, user: CurrentUser) -> dict:
+async def benchmark(session: SessionDep, user: CurrentUser, since: datetime | None = None) -> dict:
     """Botlar, aynı havuzun eşit ağırlıklı sepetini yenebiliyor mu? (§5.5)
 
     Faz 0a'nın 3. testi buydu ve sistem o testte kaybetmişti; canlı panel ise
@@ -156,6 +160,14 @@ async def benchmark(session: SessionDep, user: CurrentUser) -> dict:
     """
     bots = (await session.execute(select(Bot.id, Bot.name).order_by(Bot.id))).all()
     curves = {bid: await equity_curve(session, bid) for bid, _ in bots}
+
+    # `since`: tüm eğriler aynı ana yeniden tabanlanır. Bunsuz her bot kendi
+    # İLK noktasından normalize edilir — 15 Ağustos'ta başlayan kontrollerle
+    # 26 Ağustos'ta fonlanan meydan okuma aynı grafiğe konunca kontrollere
+    # 11 günlük avans veriliyordu.
+    if since is not None:
+        since_iso = since.isoformat()
+        curves = {bid: [p for p in curve if p["at"] >= since_iso] for bid, curve in curves.items()}
     points = [p for curve in curves.values() for p in curve]
     if not points:
         return {"start": None, "end": None, "benchmark": [], "bots": [], "note": NO_DATA_NOTE}

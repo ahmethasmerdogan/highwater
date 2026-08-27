@@ -10,7 +10,7 @@
  * oradan gelir. Değiştirirken iki tarafı birlikte değiştir.
  */
 
-export type FieldKind = "number" | "percent" | "integer" | "boolean" | "text";
+export type FieldKind = "number" | "percent" | "integer" | "boolean" | "text" | "tiers";
 
 export interface FieldSpec {
   /** Tanım içindeki yol: `exit.trail_atr` gibi. */
@@ -192,6 +192,67 @@ export const STRATEGY_GROUPS: FieldGroup[] = [
         step: 0.05,
         description:
           "Yıllıklandırılmış hedef oynaklık. Oynak coinler bu hedefe göre küçültülür, sakin olanlar büyütülür.",
+      },
+      {
+        path: "sizing.tiers",
+        label: "Puan kademeleri",
+        kind: "tiers",
+        description:
+          "Puana göre boyut çarpanı: [eşik, çarpan] çiftleri. 85 puanlık aday 92 puanlıktan daha küçük pozisyon alır — güven boyuta yansır.",
+      },
+      {
+        path: "sizing.max_position_pct",
+        label: "Tek pozisyon tavanı",
+        kind: "percent",
+        description:
+          "Bir pozisyonun özsermayedeki azami payı. Risk hesabı ne derse desin bu tavan aşılamaz (property testi var).",
+      },
+      {
+        path: "sizing.max_exposure_pct",
+        label: "Toplam maruziyet tavanı",
+        kind: "percent",
+        description: "Tüm açık pozisyonların toplamı özsermayenin bu payını aşamaz; kalanı nakit bekler.",
+      },
+      {
+        path: "sizing.max_stop_pct",
+        label: "Azami stop mesafesi",
+        kind: "percent",
+        description:
+          "Stop girişten bu orandan uzaksa pozisyon açılmaz — oynaklık o kadar yüksekse boyut anlamsızlaşır.",
+      },
+    ],
+  },
+  {
+    key: "risk",
+    title: "Risk sınırları (devre kesiciler)",
+    description:
+      "Bu eşiklerden biri aşıldığında bot yeni giriş açmayı durdurur. Kesiciler kapıyı kapatır; açık pozisyonlar kendi stoplarıyla yönetilmeye devam eder.",
+    fields: [
+      {
+        path: "risk.daily_loss",
+        label: "Günlük kayıp kesicisi",
+        kind: "percent",
+        description: "Gün içi kayıp özsermayenin bu payını aşarsa girişler gün sonuna kadar durur.",
+      },
+      {
+        path: "risk.weekly_loss",
+        label: "Haftalık kayıp kesicisi",
+        kind: "percent",
+        description: "Haftalık kayıp eşiği. Tetiklenirse hafta bitene kadar yeni giriş yok.",
+      },
+      {
+        path: "risk.max_drawdown",
+        label: "Azami düşüş kesicisi",
+        kind: "percent",
+        description:
+          "Tepeden düşüş bu eşiği aşarsa bot durur ve sahibinin kararını bekler. Sistemin son emniyet kemeri.",
+      },
+      {
+        path: "risk.consecutive_losses",
+        label: "Üst üste kayıp sınırı",
+        kind: "integer",
+        description:
+          "Arka arkaya bu kadar kayıptan sonra girişler bir süre durur — seri kayıp genellikle rejim değişimidir.",
       },
     ],
   },

@@ -52,6 +52,14 @@ import { SimpleTable, type SimpleColumn } from "@/grid/simple-table";
 import type { GridColumn } from "@/grid/types";
 
 /** Ölçüt adlarının Türkçe karşılığı ve açıklaması. */
+const SENARYO_ETIKET: Record<string, string> = {
+  base: "Gerçek maliyet",
+  "1.5x": "1,5 kat maliyet",
+  "2x": "2 kat maliyet",
+  stress_1_5x: "1,5 kat maliyet",
+  stress_2x: "2 kat maliyet",
+};
+
 const METRIC_INFO: Record<string, { label: string; hint: string; format: "pct" | "num" | "money" }> = {
   total_return: {
     label: "Toplam getiri",
@@ -382,13 +390,13 @@ function BacktestList({ rows, onSelect }: { rows: Backtest[]; onSelect: (id: num
       },
       {
         id: "approximate",
-        header: "Evren",
+        header: "Havuz",
         width: 176,
         hint: "Dönemin havuz fotoğrafı yoksa havuz yeniden kurulur; sonuç iyimser sapabilir.",
         value: (row) => (row.approximate_universe ? 1 : 0),
         cell: (row) =>
           row.approximate_universe ? (
-            <Tag tone="warn">yaklaşık evren</Tag>
+            <Tag tone="warn">yaklaşık havuz</Tag>
           ) : (
             <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}>
               gerçek fotoğraf
@@ -561,16 +569,18 @@ function ReportBody({
               active={index === scenario}
               onClick={() => onScenario(index)}
             >
-              {entry.cost_scenario}
+              {SENARYO_ETIKET[entry.cost_scenario] ?? entry.cost_scenario}
             </Chip>
           ))}
         </div>
       )}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {/* `slice(0, 8)` her zaman son iki ölçütü (expectancy_r, total_fees)
+            düşürüyordu; filtre `null` gelenleri de sayıyordu. Izgara zaten
+            4 sütuna sarıyor — kesme yok, yalnızca gerçek sayılar. */}
         {Object.entries(METRIC_INFO)
-          .filter(([key]) => result.metrics[key] !== undefined)
-          .slice(0, 8)
+          .filter(([key]) => typeof result.metrics[key] === "number")
           .map(([key, info]) => {
             const raw = result.metrics[key];
             const value = typeof raw === "number" ? raw : null;

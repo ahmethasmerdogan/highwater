@@ -20,6 +20,11 @@ export interface FilterInfo {
 }
 
 export const UNIVERSE_FILTERS: Record<string, FilterInfo> = {
+  KorumaVeHisterezis: {
+    label: "Koruma ve histerezis",
+    what: "Zincirin DIŞINDAN eklenen üyeler: açık pozisyonu olanlar, banda tutunanlar ve bu turda ölçülemeyip bir tur korunanlar.",
+    why: "Havuzun kenarında gezinen sembollerin her turda girip çıkması snapshot ve puan kesitini gürültüye boğuyordu; koruma bir ödül değil, gürültü tamponudur.",
+  },
   MarketFilter: {
     label: "Piyasa filtresi",
     what: "Yalnızca USDT çiftlerini ve işlemde olan sembolleri bırakır.",

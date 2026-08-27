@@ -17,6 +17,7 @@ import {
   type ScoreDetail,
   type SnapshotDetail,
   type UniverseSymbol,
+  type SnapshotSummary,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { toast } from "@/lib/toast";
@@ -41,6 +42,7 @@ import {
   TextInput,
   TextMetric,
 } from "@/design";
+import { CurveChart, type CurveSeries } from "@/design/chart";
 import { ScoreCard } from "@/design/score-card";
 import { DataGrid } from "@/grid/data-grid";
 import type { GridColumn } from "@/grid/types";
@@ -157,6 +159,7 @@ export default function UniversePage() {
             </div>
 
             <Funnel snap={snap} />
+            <Turnover />
             <SymbolTable snap={snap} onSelect={setSelected} />
             {can() && <Blacklist />}
             <SymbolDrawer symbol={selected} onClose={() => setSelected(null)} />
@@ -164,6 +167,52 @@ export default function UniversePage() {
         )}
       </Async>
     </Page>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Havuz devri                                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Snapshot geçmişinden havuzun boyutu ve giren/çıkan sayısı.
+ *
+ * Havuz her yenilemede DB'ye yazılır (bozulmaz kural 3) ama panel bu
+ * geçmişi hiç göstermiyordu. Devir hızı bir sağlık ölçüsüdür: her turda
+ * onlarca sembol değişiyorsa filtreler gürültüyü ölçüyor demektir.
+ */
+function Turnover() {
+  const q = useQuery({
+    queryKey: ["universe-snapshots"],
+    queryFn: () => api.get<SnapshotSummary[]>("/universe/snapshots", { limit: 100 }),
+    refetchInterval: 300_000,
+  });
+  const seriler = useMemo<CurveSeries[]>(() => {
+    const rows = [...(q.data ?? [])].sort((a, b) => (a.taken_at < b.taken_at ? -1 : 1));
+    if (rows.length < 2) return [];
+    return [
+      {
+        label: "Havuz boyutu",
+        color: "var(--sn-series-1)",
+        points: rows.map((r) => ({ at: r.taken_at, value: r.size })),
+      },
+      {
+        label: "Giren + çıkan",
+        color: "var(--sn-series-2)",
+        dashed: true,
+        points: rows.map((r) => ({ at: r.taken_at, value: r.added.length + r.removed.length })),
+      },
+    ];
+  }, [q.data]);
+
+  if (q.isError || seriler.length === 0) return null;
+  return (
+    <Panel
+      title="Havuz devri"
+      description="Her nokta bir snapshot. Kesikli çizgi o yenilemede giren+çıkan sembol sayısı — sıfıra yakın seyretmesi havuzun oturduğunu gösterir."
+    >
+      <CurveChart series={seriler} height={180} valueFormat={(v) => num(v, 0)} />
+    </Panel>
   );
 }
 
@@ -232,9 +281,19 @@ function Funnel({ snap }: { snap: SnapshotDetail }) {
                 </span>
                 <span
                   className="sn-num w-20 shrink-0 text-right"
-                  style={{ color: step.dropped > 0 ? "var(--sn-down)" : "var(--sn-ink-3)" }}
+                  style={{
+                    color:
+                      step.dropped > 0
+                        ? "var(--sn-down)"
+                        : step.dropped < 0
+                          ? "var(--sn-up)"
+                          : "var(--sn-ink-3)",
+                  }}
                 >
-                  {step.dropped > 0 ? `−${step.dropped}` : "—"}
+                  {/* Negatif "elenen" = zincir DIŞINDAN eklenen üyeler
+                      (histerezis + koruma + yer tutucu). Motor bu adımı
+                      açıkça yazar; huninin sonu artık metrikle tutuyor. */}
+                  {step.dropped > 0 ? `−${step.dropped}` : step.dropped < 0 ? `+${-step.dropped}` : "—"}
                 </span>
               </div>
 
@@ -295,7 +354,7 @@ function SymbolTable({
         pin: true,
         hint: "Hacme göre sıra. 1 en yüksek günlük hacme sahip coin.",
         value: (row) => row.rank,
-        cell: (row) => <NumText text={String(row.rank)} size="sm" />,
+        cell: (row) => <NumText text={row.placeholder ? "—" : String(row.rank)} size="sm" />,
       },
       {
         id: "symbol",
@@ -310,6 +369,11 @@ function SymbolTable({
               {row.symbol}
             </span>
             {row.protected && <Tag tone="brand">korumalı</Tag>}
+            {row.placeholder && (
+              <Tag tone="warn">
+                ölçüm alınamadı
+              </Tag>
+            )}
           </span>
         ),
       },
@@ -319,7 +383,9 @@ function SymbolTable({
         width: 120,
         num: true,
         value: (row) => row.price,
-        cell: (row) => <NumText text={price(row.price)} size="sm" />,
+        cell: (row) => (
+          <NumText text={row.placeholder ? "—" : price(row.price)} size="sm" />
+        ),
       },
       {
         id: "quote_volume",
@@ -379,7 +445,12 @@ function SymbolTable({
         hint: "Listelenmesinden bu yana geçen gün. Yeni coinlerde göstergelerin hesaplanacağı geçmiş yoktur.",
         value: (row) => row.age_days,
         cell: (row) => (
-          <NumText text={row.age_days === null ? "—" : `${num(row.age_days, 0)} gün`} size="sm" />
+          <NumText
+            text={
+              row.placeholder || row.age_days === null ? "—" : `${num(row.age_days, 0)} gün`
+            }
+            size="sm"
+          />
         ),
       },
     ],

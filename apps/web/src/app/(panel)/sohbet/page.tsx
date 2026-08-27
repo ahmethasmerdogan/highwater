@@ -16,6 +16,7 @@ import { toast } from "@/lib/toast";
 import { dateTime, time } from "@/lib/format";
 import { Page } from "@/shell/page";
 import { Button, Empty, FormField, Modal, TextInput } from "@/design";
+import { ErrorBox } from "@/design/state";
 import { cx } from "@/design/cx";
 
 export default function ChatPage() {
@@ -83,7 +84,13 @@ export default function ChatPage() {
         </Button>
       }
     >
-      {(rooms.data ?? []).length === 0 ? (
+      {rooms.isError ? (
+        /* Boş liste ile ulaşılamayan API aynı şey değil: biri "oda yok",
+           öteki "bilmiyoruz" der. */
+        <ErrorBox
+          message={rooms.error instanceof Error ? rooms.error.message : "Odalar getirilemedi."}
+        />
+      ) : (rooms.data ?? []).length === 0 ? (
         <div
           className="rounded-[var(--sn-r-md)]"
           style={{ background: "var(--sn-panel)", border: "1px solid var(--sn-hairline)" }}

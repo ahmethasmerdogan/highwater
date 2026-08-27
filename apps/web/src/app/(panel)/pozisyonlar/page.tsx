@@ -12,7 +12,16 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, type CostSummary, type Order, type Position, type Trade } from "@/lib/api";
+import Link from "next/link";
+import {
+  api,
+  type Bot,
+  type CostSummary,
+  type Order,
+  type Position,
+  type ScoreDetail,
+  type Trade,
+} from "@/lib/api";
 import {
   bps,
   dateTime,
@@ -26,10 +35,12 @@ import {
 } from "@/lib/format";
 import { Page, GuideSection } from "@/shell/page";
 import { Panel, Segmented, Tag, Tip } from "@/design/primitives";
+import { ExitReasonPill, OrderStatusPill } from "@/design/pills";
 import { ErrorBox } from "@/design/state";
 import { Delta, Metric, NumCell, NumText } from "@/design/numeric";
 import { Bar, RangeDot } from "@/design/viz";
 import { Drawer, DrawerSection, KeyValue } from "@/design/drawer";
+import { ScoreCard } from "@/design/score-card";
 import { DataGrid } from "@/grid/data-grid";
 import type { GridColumn } from "@/grid/types";
 
@@ -64,6 +75,14 @@ export default function PositionsPage() {
     queryFn: () => api.get<Order[]>("/orders", { limit: 300 }),
     refetchInterval: 60_000,
   });
+  /* Bot sütunu ham id yerine ad basar; durmuş botun açık pozisyonu ayrıca
+     işaretlenir. Uç zaten var, eşleştirme istemcide. */
+  const bots = useQuery({
+    queryKey: ["bots"],
+    queryFn: () => api.get<Bot[]>("/bots"),
+    refetchInterval: 60_000,
+  });
+  const botlar = useMemo(() => new Map((bots.data ?? []).map((b) => [b.id, b])), [bots.data]);
 
   return (
     <Page
@@ -114,7 +133,7 @@ export default function PositionsPage() {
         ]}
       />
 
-      {tab === "acik" && <OpenPositions rows={open.data ?? []} query={open} />}
+      {tab === "acik" && <OpenPositions rows={open.data ?? []} query={open} botlar={botlar} />}
       {tab === "kapali" && <ClosedTrades rows={trades.data ?? []} query={trades} />}
       {tab === "emirler" && <Orders rows={orders.data ?? []} query={orders} />}
     </Page>
@@ -198,7 +217,15 @@ function CostPanel() {
 /*  Açık pozisyonlar                                                   */
 /* ------------------------------------------------------------------ */
 
-function OpenPositions({ rows, query }: { rows: Position[]; query: SorguDurumu }) {
+function OpenPositions({
+  rows,
+  query,
+  botlar,
+}: {
+  rows: Position[];
+  query: SorguDurumu;
+  botlar: Map<number, Bot>;
+}) {
   const [selected, setSelected] = useState<Position | null>(null);
 
   const columns = useMemo<GridColumn<Position>[]>(
@@ -334,14 +361,28 @@ function OpenPositions({ rows, query }: { rows: Position[]; query: SorguDurumu }
       {
         id: "bot_id",
         header: "Bot",
-        width: 76,
-        num: true,
-        hidden: true,
-        value: (row) => row.bot_id,
-        cell: (row) => <NumText text={String(row.bot_id)} size="sm" />,
+        width: 168,
+        value: (row) => botlar.get(row.bot_id)?.name ?? row.bot_id,
+        search: (row) => botlar.get(row.bot_id)?.name ?? String(row.bot_id),
+        cell: (row) => {
+          const bot = botlar.get(row.bot_id);
+          const durmus = bot && bot.state !== "PAPER_RUNNING" && bot.state !== "DEGRADED";
+          return (
+            <span className="inline-flex max-w-full items-center gap-1.5">
+              <span
+                className="truncate"
+                style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}
+                title={bot?.name ?? `Bot ${row.bot_id}`}
+              >
+                {bot?.name ?? `Bot ${row.bot_id}`}
+              </span>
+              {durmus && <Tag tone="warn">bot durdu</Tag>}
+            </span>
+          );
+        },
       },
     ],
-    [],
+    [botlar],
   );
 
   if (query.isError) {
@@ -356,7 +397,7 @@ function OpenPositions({ rows, query }: { rows: Position[]; query: SorguDurumu }
     <>
       <Panel
         title="Açık pozisyonlar"
-        description="Piyasada duran her pozisyon. Satıra tıklayın: giriş gerekçesi ve stop geçmişi açılır."
+        description="Piyasada duran her pozisyon. Satıra tıklayın: sayılar ve girişteki puan kartı açılır."
         padded={false}
       >
         <DataGrid
@@ -387,7 +428,11 @@ function OpenPositions({ rows, query }: { rows: Position[]; query: SorguDurumu }
         open={Boolean(selected)}
         onClose={() => setSelected(null)}
         title={selected?.symbol ?? ""}
-        subtitle={selected ? `Bot ${selected.bot_id} · ${dateTime(selected.entry_time)}` : undefined}
+        subtitle={
+          selected
+            ? `${botlar.get(selected.bot_id)?.name ?? `Bot ${selected.bot_id}`} · ${dateTime(selected.entry_time)}`
+            : undefined
+        }
       >
         {selected && (
           <>
@@ -441,10 +486,61 @@ function OpenPositions({ rows, query }: { rows: Position[]; query: SorguDurumu }
                 ]}
               />
             </DrawerSection>
+
+            <GirisGerekcesi rationaleId={selected.rationale_id} symbol={selected.symbol} />
           </>
         )}
       </Drawer>
     </>
+  );
+}
+
+/**
+ * Girişteki puan kartı — pozisyon açılırkenki gerekçe.
+ *
+ * Sembolün BUGÜNKÜ puanını basmak yalan olurdu; `rationale_id` giriş
+ * anındaki `scores` satırına işaret eder ve `/scores/by-id` onu döndürür.
+ */
+function GirisGerekcesi({ rationaleId, symbol }: { rationaleId: number | null; symbol: string }) {
+  const q = useQuery({
+    queryKey: ["score-by-id", rationaleId],
+    queryFn: () => api.get<ScoreDetail>(`/scores/by-id/${rationaleId}`),
+    enabled: rationaleId !== null,
+  });
+  if (rationaleId === null) {
+    return (
+      <DrawerSection title="Giriş gerekçesi">
+        <p style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}>
+          Bu pozisyon için gerekçe kaydı yok (eski bir giriş olabilir).
+        </p>
+      </DrawerSection>
+    );
+  }
+  return (
+    <DrawerSection
+      title="Giriş gerekçesi"
+      hint="Pozisyon açıldığı andaki puan kartı — bugünkü puan değil."
+    >
+      {q.isError ? (
+        <p style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}>
+          Gerekçe getirilemedi.
+        </p>
+      ) : q.data ? (
+        <>
+          <ScoreCard rationale={q.data.rationale} compact />
+          <div className="mt-2">
+            <Link
+              href={`/puanlar?symbol=${symbol}`}
+              style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-brand)" }}
+            >
+              Puanlar sayfasında aç →
+            </Link>
+          </div>
+        </>
+      ) : (
+        <p style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}>Yükleniyor…</p>
+      )}
+    </DrawerSection>
   );
 }
 
@@ -526,7 +622,7 @@ function ClosedTrades({ rows, query }: { rows: Trade[]; query: SorguDurumu }) {
         width: 152,
         hint: "Pozisyonu ne kapattı: stop, hedef, iz süren stop, puan düşüşü ya da kill switch.",
         value: (row) => row.exit_reason,
-        cell: (row) => <Tag tone={exitTone(row.exit_reason)}>{row.exit_reason}</Tag>,
+        cell: (row) => <ExitReasonPill reason={row.exit_reason} />,
       },
       {
         id: "hold_hours",
@@ -616,14 +712,6 @@ function ClosedTrades({ rows, query }: { rows: Trade[]; query: SorguDurumu }) {
   );
 }
 
-function exitTone(reason: string): "up" | "down" | "warn" | "info" | "neutral" {
-  const key = reason.toUpperCase();
-  if (key.includes("TARGET") || key.includes("HEDEF")) return "up";
-  if (key.includes("STOP")) return "down";
-  if (key.includes("KILL")) return "warn";
-  return "neutral";
-}
-
 /* ------------------------------------------------------------------ */
 /*  Emirler                                                            */
 /* ------------------------------------------------------------------ */
@@ -661,7 +749,9 @@ function Orders({ rows, query }: { rows: Order[]; query: SorguDurumu }) {
         width: 84,
         value: (row) => row.side,
         cell: (row) => (
-          <Tag tone={row.side.toUpperCase() === "BUY" ? "up" : "down"}>{row.side}</Tag>
+          <Tag tone={row.side.toUpperCase() === "BUY" ? "up" : "down"}>
+            {row.side.toUpperCase() === "BUY" ? "Alış" : "Satış"}
+          </Tag>
         ),
       },
       {
@@ -669,7 +759,9 @@ function Orders({ rows, query }: { rows: Order[]; query: SorguDurumu }) {
         header: "Tür",
         width: 96,
         value: (row) => row.type,
-        cell: (row) => <Tag tone="neutral">{row.type}</Tag>,
+        cell: (row) => (
+          <Tag tone="neutral">{row.type.toUpperCase() === "MARKET" ? "Piyasa" : "Limit"}</Tag>
+        ),
       },
       {
         id: "status",
@@ -677,7 +769,7 @@ function Orders({ rows, query }: { rows: Order[]; query: SorguDurumu }) {
         width: 116,
         hint: "Reddedilen emir sessizce kaybolmaz — sebebi yanındaki sütunda yazar.",
         value: (row) => row.status,
-        cell: (row) => <Tag tone={orderTone(row.status)}>{row.status}</Tag>,
+        cell: (row) => <OrderStatusPill status={row.status} />,
       },
       {
         id: "qty",
@@ -759,10 +851,4 @@ function Orders({ rows, query }: { rows: Order[]; query: SorguDurumu }) {
   );
 }
 
-function orderTone(status: string): "up" | "down" | "warn" | "neutral" {
-  const key = status.toUpperCase();
-  if (key === "FILLED") return "up";
-  if (key === "REJECTED" || key === "CANCELED" || key === "CANCELLED") return "down";
-  if (key === "PARTIAL" || key === "PARTIALLY_FILLED" || key === "NEW") return "warn";
-  return "neutral";
-}
+

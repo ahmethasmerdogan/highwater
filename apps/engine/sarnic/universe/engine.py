@@ -28,6 +28,7 @@ from sarnic.data.store import load_frames
 from sarnic.db.models import Blacklist, Position, SpreadSample, SymbolInfo, UniverseSnapshot
 from sarnic.universe.filters import (
     Candidate,
+    FunnelStep,
     UniverseConfig,
     apply_hysteresis,
     run_chain,
@@ -252,6 +253,21 @@ class UniverseEngine:
         added = sorted(current - previous)
         removed = sorted(previous - current)
 
+        # Huninin son adımı "kaldı N" derken metrik N+15 diyordu: histerezis,
+        # koruma ve yer tutucular zincir DIŞINDA ekleniyor ve panel bu farkı
+        # açıklayamıyordu. Fark sıfır değilse huniye açık bir adım yaz.
+        korunan = len(final) - len(result.selected)
+        if korunan != 0 and result.funnel:
+            son = result.funnel[-1]
+            result.funnel.append(
+                FunnelStep(
+                    index=son.index + 1,
+                    name="KorumaVeHisterezis",
+                    kept=len(final),
+                    dropped=-korunan,
+                )
+            )
+
         if (
             skip_if_unchanged
             and last is not None
@@ -287,6 +303,7 @@ class UniverseEngine:
                     "volatility_ann_pct": c.volatility_ann_pct,
                     "range_3d_pct": c.range_3d_pct,
                     "protected": c.symbol in protected,
+                    "placeholder": c.placeholder,
                 }
                 for c in final
             ],

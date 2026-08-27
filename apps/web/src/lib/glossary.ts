@@ -466,7 +466,7 @@ export const GLOSSARY: Record<string, TermEntry> = {
       "Havuz fotoğrafı bulunmayan dönemler için havuzun tahmin edilmesi. Sonuç iyimser sapabilir.",
     long:
       "Fotoğrafı olmayan bir dönem test edildiğinde sistem havuzu yeniden kurmak zorunda kalır ve bunu bugünkü bilgiyle yapma riski taşır. Bu durumda rapor açıkça damgalanır — sessizce geçilmez.",
-    see: ["snapshot", "backtest"],
+    see: ["havuz", "snapshot", "backtest"],
   },
   kirmizi_bayrak: {
     label: "Kırmızı bayrak",

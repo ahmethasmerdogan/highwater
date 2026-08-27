@@ -13,10 +13,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type Score, type ScoreConfig, type ScoreDetail } from "@/lib/api";
 import { dateTime, num, relative } from "@/lib/format";
+import { MODIFIER_LABELS, readableCode } from "@/lib/humanize";
 import { Page, GuideSection } from "@/shell/page";
 import { Button, Panel, Picker, Tag, Tip } from "@/design/primitives";
 import { Metric, NumCell, NumText } from "@/design/numeric";
 import { Bar, FamilyStack, RangeDot } from "@/design/viz";
+import { CurveChart } from "@/design/chart";
 import { Drawer, DrawerSection, KeyValue } from "@/design/drawer";
 import { FAMILIES } from "@/design/series";
 import { DataGrid } from "@/grid/data-grid";
@@ -203,7 +205,7 @@ export default function ScoresPage() {
         header: "Karar barı",
         width: 150,
         hidden: true,
-        hint: "Bu puanın hesaplandığı mumun kapanış zamanı. Bar kapanmadan o barın verisi karara giremez.",
+        hint: "Puanlanan mumun AÇILIŞ zamanı (motor open_time yazar). Puan, bu mum kapandıktan sonra hesaplandı — bar kapanmadan o barın verisi karara giremez.",
         value: (row) => new Date(row.bar_time).getTime(),
         cell: (row) => (
           <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}>
@@ -371,6 +373,19 @@ function ScoreDrawer({
 
   const rationale = detail.data?.rationale;
 
+  /* 7 günlük puan geçmişi — /scores/{s}/history hazırdı, hiç çağrılmıyordu.
+     Tek sayının seyri yoktur; eğri "bu puan yeni mi yükseldi?" sorusuna
+     cevap verir. */
+  const history = useQuery({
+    queryKey: ["score-history", symbol, config?.config_hash],
+    queryFn: () =>
+      api.get<{ bar_time: string; score: number }[]>(`/scores/${symbol}/history`, {
+        days: 7,
+        config_hash: config!.config_hash,
+      }),
+    enabled: Boolean(symbol && config),
+  });
+
   return (
     <Drawer
       open={Boolean(symbol)}
@@ -396,6 +411,24 @@ function ScoreDrawer({
               / 100 · {relative(detail.data.bar_time)}
             </span>
           </div>
+
+          {history.data && history.data.length > 1 && (
+            <DrawerSection title="Son 7 gün" hint="Aynı konfigürasyonun puan geçmişi.">
+              <CurveChart
+                series={[
+                  {
+                    label: "Puan",
+                    color: "var(--sn-brand-solid)",
+                    points: history.data.map((h) => ({ at: h.bar_time, value: h.score })),
+                  },
+                ]}
+                height={140}
+                legend={false}
+                valueFormat={(v) => num(v, 1)}
+                labelFormat={(at) => dateTime(at)}
+              />
+            </DrawerSection>
+          )}
 
           <DrawerSection
             title="Puan nereden geliyor"
@@ -434,7 +467,7 @@ function ScoreDrawer({
                   .filter(([, value]) => value !== 0)
                   .map(([name, value]) => (
                     <Tag key={name} tone={value > 0 ? "up" : "down"} mono>
-                      {name} {value > 0 ? "+" : ""}
+                      {MODIFIER_LABELS[name] ?? readableCode(name)} {value > 0 ? "+" : ""}
                       {num(value, 1)}
                     </Tag>
                   ))}

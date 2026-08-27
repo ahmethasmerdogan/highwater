@@ -29,6 +29,7 @@ import { useLive } from "@/lib/ws";
 import { Page, GuideSection } from "@/shell/page";
 import { Button, Dot, Empty, Panel, Tag } from "@/design/primitives";
 import { ErrorBox, LoadingRows } from "@/design/state";
+import { InfoDot } from "@/design/explain";
 import { Delta, Metric, NumCell, NumText } from "@/design/numeric";
 import { CurveChart, type CurveSeries } from "@/design/chart";
 import { Bar } from "@/design/viz";
@@ -139,7 +140,10 @@ export default function DashboardPage() {
 
     if (benchmark?.benchmark?.length) {
       out.push({
-        label: "Havuz sepeti (al ve tut)",
+        /* Sepet, penceresinin BAŞLANGIÇ havuzundan kurulur (point-in-time,
+           hayatta kalma yanlılığı yok) — o gün 15 sembol vardı, bugün 115.
+           Bunu söylememek "bugünkü havuzun sepeti" sanılmasına yol açıyordu. */
+        label: `Havuz sepeti · ${benchmark.universe_size ?? "?"} sembol (başlangıç havuzu, al ve tut)`,
         color: "var(--sn-series-2)",
         dashed: true,
         points: benchmark.benchmark.map((point) => ({ at: point.at, value: point.value })),
@@ -150,14 +154,24 @@ export default function DashboardPage() {
   }, [equity, benchmark]);
 
   /* Dikkat çeken son olaylar — bilgi düzeyindekiler panele çıkmaz. */
-  const alerts = useMemo(
-    () =>
-      events
-        .map((event) => ({ event, human: humanizeEvent(event.kind, event.level, event.payload) }))
-        .filter((entry) => entry.human.severity === "warn" || entry.human.severity === "error")
-        .slice(0, 6),
-    [events],
-  );
+  const alerts = useMemo(() => {
+    /* Aynı devre kesici uyarısı altı kez üst üste basılıyordu. Aynı
+       kind+bot için tekille ve "× N" sayacı taşı; en yeni kayıt kalır. */
+    const uyarilar = events
+      .map((event) => ({ event, human: humanizeEvent(event.kind, event.level, event.payload) }))
+      .filter((entry) => entry.human.severity === "warn" || entry.human.severity === "error");
+    const gruplu = new Map<string, { event: (typeof uyarilar)[number]["event"]; human: (typeof uyarilar)[number]["human"]; count: number }>();
+    for (const entry of uyarilar) {
+      const key = `${entry.event.kind}:${entry.event.bot_id ?? ""}`;
+      const mevcut = gruplu.get(key);
+      if (mevcut) {
+        mevcut.count += 1;
+      } else {
+        gruplu.set(key, { ...entry, count: 1 });
+      }
+    }
+    return Array.from(gruplu.values()).slice(0, 6);
+  }, [events]);
 
   const stalePrices = live?.stale_symbols ?? [];
   const exposurePct = live && live.equity > 0 ? live.exposure / live.equity : null;
@@ -206,6 +220,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Metric
           label="Özsermaye"
+          info={<InfoDot text="Nakit + açık pozisyonların anlık değeri. Sistemin şu anki toplam parası." />}
           value={live?.equity}
           format={(value) => money(value)}
           accent="var(--sn-brand-solid)"
@@ -218,6 +233,7 @@ export default function DashboardPage() {
         />
         <Metric
           label="Bugün gerçekleşen"
+          info={<InfoDot text="Bugün KAPANAN işlemlerin net toplamı — cebe girdi, artık fiyatla değişmez." />}
           value={live?.realized_today}
           format={(value) => money(value)}
           accent={
@@ -231,6 +247,7 @@ export default function DashboardPage() {
         />
         <Metric
           label="Gerçekleşmemiş"
+          info={<InfoDot text="Açık pozisyonların anlık kâr/zararı. Pozisyon kapanana kadar her barla değişir — cebe girmiş sayılmaz." />}
           value={live?.unrealized_pnl}
           format={(value) => money(value)}
           accent={
@@ -244,6 +261,7 @@ export default function DashboardPage() {
         />
         <Metric
           label="Maruziyet"
+          info={<InfoDot id="maruziyet" />}
           value={exposurePct}
           format={(value) => (value === null || value === undefined ? "—" : pct(value, 2))}
           sub={
@@ -297,7 +315,10 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <BotSummary live={live} />
-        <AlertList alerts={alerts} />
+        <AlertList
+          alerts={alerts}
+          botAdlari={new Map((live?.bots ?? []).map((bot) => [bot.bot_id, bot.name]))}
+        />
       </div>
 
       <OpenPositions rows={positions} query={positionsQuery} />
@@ -342,6 +363,13 @@ function SystemBanner({ status, stalePrices }: { status: SystemStatus; stalePric
       text: `${stalePrices.length} sembolün güncel fiyatı bilinmiyor (${stalePrices
         .slice(0, 3)
         .join(", ")}${stalePrices.length > 3 ? "…" : ""}). Gerçekleşmemiş kâr/zarar eksik hesaplanmış olabilir.`,
+    });
+  }
+  if (status.alarms > 0) {
+    /* Uç bu alanı hep gönderiyordu; panel hiç okumuyordu. */
+    problems.push({
+      tone: "warn",
+      text: `${status.alarms} devre kesici alarmı etkin — ayrıntı Loglar sayfasında.`,
     });
   }
 
@@ -418,7 +446,17 @@ function BotSummary({ live }: { live: LivePnl | undefined }) {
               className="flex items-center gap-3 px-4 py-2.5"
               style={{ borderTop: "1px solid var(--sn-hairline)" }}
             >
-              <Dot tone={bot.state === "PAPER_RUNNING" ? "up" : "warn"} />
+              <Dot
+                tone={
+                  bot.state === "PAPER_RUNNING"
+                    ? "up"
+                    : bot.state === "ERROR" || bot.state === "DEGRADED"
+                      ? "down"
+                      : bot.state === "STOPPED" || bot.state === "DRAFT"
+                        ? "neutral"
+                        : "warn"
+                }
+              />
               <Link
                 href={`/botlar/${bot.bot_id}`}
                 className="min-w-0 flex-1 truncate hover:underline"
@@ -449,8 +487,14 @@ function BotSummary({ live }: { live: LivePnl | undefined }) {
 
 function AlertList({
   alerts,
+  botAdlari,
 }: {
-  alerts: { event: { at: string; payload: Record<string, unknown> }; human: { title: string; detail?: string; severity: Severity } }[];
+  alerts: {
+    event: { at: string; payload: Record<string, unknown>; bot_id: number | null };
+    human: { title: string; detail?: string; severity: Severity };
+    count: number;
+  }[];
+  botAdlari: Map<number, string>;
 }) {
   return (
     <Panel
@@ -472,7 +516,7 @@ function AlertList({
         />
       ) : (
         <ul>
-          {alerts.map(({ event, human }, index) => (
+          {alerts.map(({ event, human, count }, index) => (
             <li
               key={`${event.at}-${index}`}
               className="flex gap-3 px-4 py-2.5"
@@ -482,8 +526,25 @@ function AlertList({
                 <Dot tone={human.severity === "error" ? "down" : "warn"} />
               </span>
               <div className="min-w-0 flex-1">
-                <div style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}>
-                  {human.title}
+                <div
+                  className="flex items-center gap-2"
+                  style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}
+                >
+                  <span className="min-w-0 truncate">{human.title}</span>
+                  {count > 1 && (
+                    <Tag tone="neutral" mono>
+                      × {count}
+                    </Tag>
+                  )}
+                  {event.bot_id !== null && (
+                    <Link
+                      href={`/botlar/${event.bot_id}`}
+                      className="shrink-0 hover:underline"
+                      style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-brand)" }}
+                    >
+                      {botAdlari.get(event.bot_id) ?? `Bot ${event.bot_id}`}
+                    </Link>
+                  )}
                 </div>
                 <div
                   className="truncate"

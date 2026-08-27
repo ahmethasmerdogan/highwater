@@ -299,15 +299,21 @@ function FieldRow({ field, value, first }: { field: FieldSpec; value: unknown; f
   const display =
     value === null || value === undefined
       ? "—"
-      : typeof value === "boolean"
-        ? value
-          ? "Açık"
-          : "Kapalı"
-        : typeof value === "number"
-          ? field.kind === "percent"
-            ? `%${num(value * 100, 2)}`
-            : num(value, Number.isInteger(value) ? 0 : 3)
-          : String(value);
+      : field.kind === "tiers" && Array.isArray(value)
+        ? /* [[80,0.75],[85,1]] → "80→×0,75 · 85→×1" — String(value) bunu
+             "80,0.75,85,1" diye basıyordu. */
+          (value as [number, number][])
+            .map(([esik, carpan]) => `${num(esik, 1)}→×${num(carpan, 2)}`)
+            .join(" · ")
+        : typeof value === "boolean"
+          ? value
+            ? "Açık"
+            : "Kapalı"
+          : typeof value === "number"
+            ? field.kind === "percent"
+              ? `%${num(value * 100, 2)}`
+              : num(value, Number.isInteger(value) ? 0 : 3)
+            : String(value);
 
   return (
     <div

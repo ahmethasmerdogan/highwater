@@ -17,6 +17,8 @@ import { useEffect, useState } from "react";
 import { cx } from "@/design/cx";
 import { Dot, Tip } from "@/design/primitives";
 import { ICaret } from "@/design/icons";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useLive } from "@/lib/ws";
 import { NAV } from "./nav";
@@ -28,6 +30,15 @@ export function Sidebar() {
   const { can } = useAuth();
   const { state } = useLive();
   const [rail, setRail] = useState(false);
+  /* Devre kesici ve veri-bayatlama uyarıları bildirim kanalından geliyor;
+     uç hazırdı, rozet hiç bağlanmamıştı (bildirimler sayfası zaten
+     ["unread-count"] anahtarını geçersiz kılıyor — sözleşme buydu). */
+  const { data: unreadData } = useQuery({
+    queryKey: ["unread-count"],
+    queryFn: () => api.get<{ unread: number }>("/notifications/unread-count"),
+    refetchInterval: 60_000,
+  });
+  const unread = unreadData?.unread ?? 0;
 
   /* Boyama sonrası okunur: sunucu ve istemcinin ilk karesi ayrışmasın. */
   useEffect(() => {
@@ -121,6 +132,22 @@ export function Sidebar() {
                     )}
                     <Icon size={16} />
                     {!rail && <span className="truncate">{item.label}</span>}
+                    {item.href === "/bildirimler" && unread > 0 && (
+                      <span
+                        className={cx(
+                          "sn-num inline-flex min-w-[18px] items-center justify-center rounded-full px-1",
+                          rail ? "absolute top-0.5 right-0.5" : "ml-auto",
+                        )}
+                        style={{
+                          height: 16,
+                          fontSize: "var(--sn-t-micro)",
+                          background: "var(--sn-brand-solid)",
+                          color: "var(--sn-on-brand)",
+                        }}
+                      >
+                        {unread > 99 ? "99+" : unread}
+                      </span>
+                    )}
                   </Link>
                 );
                 return rail ? (

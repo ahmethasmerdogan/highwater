@@ -21,8 +21,16 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, type Bot, type SystemLoad, type Trade } from "@/lib/api";
-import { money, num, pct, pctSigned, relative } from "@/lib/format";
+import {
+  api,
+  type Bot,
+  type BotMetrics,
+  type PortfolioEquity,
+  type PortfolioMetrics,
+  type SystemLoad,
+} from "@/lib/api";
+import { CurveChart, type CurveSeries } from "@/design/chart";
+import { dateTime, money, num, pct, pctSigned, relative } from "@/lib/format";
 import { Page, GuideSection } from "@/shell/page";
 import {
   Alert,
@@ -71,9 +79,12 @@ export default function ChallengePage() {
     refetchInterval: 15_000,
   });
 
-  const trades = useQuery({
-    queryKey: ["trades", "hepsi"],
-    queryFn: () => api.get<Trade[]>("/trades", { limit: 1000 }),
+  /* Finansal ölçüler motorda hesaplanır (tek karar yolu): /portfolio/metrics
+     bot başına işlem sayısı, ortalama R, net K/Z ve komisyonu hazır verir.
+     Önceden sayfa 1000 işlemi çekip tarayıcıda topluyordu. */
+  const metrics = useQuery({
+    queryKey: ["portfolio-metrics"],
+    queryFn: () => api.get<PortfolioMetrics>("/portfolio/metrics"),
     refetchInterval: 60_000,
   });
 
@@ -84,23 +95,34 @@ export default function ChallengePage() {
   });
 
   const meydan = (bots.data ?? []).find((bot) => bot.name.startsWith(BOT_ADI)) ?? null;
-  const kontroller = (bots.data ?? []).filter((bot) => !bot.name.startsWith(BOT_ADI));
+  /* Kontrol grubu = ÇALIŞAN 1h botları. Durmuş arşiv botlarını ve farklı
+     karar dilimlerini aynı tabloya koymak, farklı pencerelerin tüm-zaman
+     ortalamalarını yarıştırmaktı (bkz. tablo altındaki dürüstlük notu). */
+  const kontroller = (bots.data ?? []).filter(
+    (bot) =>
+      !bot.name.startsWith(BOT_ADI) &&
+      (bot.state === "PAPER_RUNNING" || bot.state === "DEGRADED") &&
+      bot.timeframe === meydan?.timeframe,
+  );
+
+  /* Hedef yolu grafiği: botun gerçek özsermayesi + hedefe giden gereken
+     bileşik patika. İkisinin arasındaki dikey mesafe "ne kadar geridesin"in
+     kendisidir. */
+  const equityCurve = useQuery({
+    queryKey: ["equity", meydan?.id],
+    queryFn: () => api.get<PortfolioEquity>("/portfolio/equity", { bot_id: meydan?.id }),
+    enabled: meydan !== null,
+    refetchInterval: 60_000,
+  });
 
   /* Bot başına özet: kaç işlem, ortalama R, toplam k/z, komisyon.
      Ortalama R tek karşılaştırılabilir ölçüdür — farklı sermayeli botların
      TL kârını yan yana koymak, büyük sermayeliyi otomatik kazandırır. */
   const perBot = useMemo(() => {
-    const map = new Map<number, { islem: number; toplamR: number; kz: number; komisyon: number }>();
-    for (const trade of trades.data ?? []) {
-      const row = map.get(trade.bot_id) ?? { islem: 0, toplamR: 0, kz: 0, komisyon: 0 };
-      row.islem += 1;
-      row.toplamR += trade.pnl_r;
-      row.kz += trade.pnl;
-      row.komisyon += trade.fees;
-      map.set(trade.bot_id, row);
-    }
+    const map = new Map<number, BotMetrics>();
+    for (const row of metrics.data?.bots ?? []) map.set(row.bot_id, row);
     return map;
-  }, [trades.data]);
+  }, [metrics.data]);
 
   const equity = meydan?.equity ?? null;
   const ilerleme =
@@ -314,16 +336,18 @@ export default function ChallengePage() {
             />
             <Metric
               label="Getiri"
-              value={equity === null ? null : equity / BASLANGIC_USDT - 1}
+              value={
+                equity === null || meydan.capital <= 0 ? null : equity / meydan.capital - 1
+              }
               format={(value) => pctSigned(value)}
               accent={
                 equity === null
                   ? undefined
-                  : equity >= BASLANGIC_USDT
+                  : equity >= meydan.capital
                     ? "var(--sn-up)"
                     : "var(--sn-down)"
               }
-              sub="beş kat için +%400 gerekiyor"
+              sub="taban: botun cüzdanı — alttaki tabloyla aynı"
             />
             <Metric
               label="Açık pozisyon"
@@ -341,10 +365,34 @@ export default function ChallengePage() {
         </>
       )}
 
+      {/* ---- Hedef yolu ---------------------------------------------- */}
+      {meydan && (
+        <Panel
+          title="Hedef yolu"
+          description="Düz çizgi botun gerçek özsermayesi; kesikli çizgi bugünden değil BAŞLANGIÇTAN hedefe giden gereken bileşik patika. Aradaki dikey mesafe, ne kadar geride olduğunun kendisi."
+        >
+          <HedefYolu
+            curve={equityCurve.data?.bots.find((b) => b.bot_id === meydan.id)?.curve ?? []}
+            baslangic={baslangic}
+            kapital={meydan.capital}
+          />
+          {(perBot.get(meydan.id)?.trades ?? 0) === 0 && (
+            <p
+              className="mt-2"
+              style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)", lineHeight: 1.5 }}
+            >
+              Henüz hiç pozisyon kapanmadı — yukarıdaki getirinin tamamı{" "}
+              {meydan.open_positions} açık pozisyonun <strong>gerçekleşmemiş</strong> değeri.
+              Cebe girmiş tek kuruş yok.
+            </p>
+          )}
+        </Panel>
+      )}
+
       {/* ---- Kontrol grubu ------------------------------------------- */}
       <Panel
         title="Kontrol grubuyla karşılaştırma"
-        description="Bütün botlar aynı havuzu aynı barlarda görür. Meydan okuma botu bunları geçemiyorsa, yaptığım değişiklikler değer katmıyor demektir."
+        description="Yalnızca ÇALIŞAN ve aynı karar dilimindeki botlar. Dikkat: kontrollerin geçmişi daha uzun — İşlem/R sütunları tüm zamanları kapsar, aynı pencerenin yarışı değildir."
         padded={false}
       >
         <Async
@@ -392,13 +440,70 @@ function ProgressBar({ ratio }: { ratio: number | null }) {
 
 /* ------------------------------------------------------------------ */
 
-type BotOzet = Map<number, { islem: number; toplamR: number; kz: number; komisyon: number }>;
+/**
+ * Özsermaye eğrisi + gereken bileşik patika, TAM 30 günlük eksende.
+ *
+ * Eksen bugüne kadar değil sürenin sonuna kadar gider: kalan boşluğun
+ * kendisi bilgidir. 416'dan 2.080'e giden bir eksende bugünkü nokta
+ * neredeyse tabanda durur — gerçek de bu.
+ */
+function HedefYolu({
+  curve,
+  baslangic,
+  kapital,
+}: {
+  curve: { at: string; equity: number }[];
+  baslangic: Date | null;
+  kapital: number;
+}) {
+  const seriler = useMemo<CurveSeries[]>(() => {
+    if (!baslangic || kapital <= 0) return [];
+    const t0 = baslangic.getTime();
+    const bitis = t0 + SURE_GUN * 86_400_000;
+    const patika: { at: string; value: number }[] = [];
+    for (let t = t0; t <= bitis; t += 6 * 3_600_000) {
+      const oran = (t - t0) / (SURE_GUN * 86_400_000);
+      patika.push({
+        at: new Date(t).toISOString(),
+        value: kapital * Math.pow(HEDEF_USDT / kapital, oran),
+      });
+    }
+    return [
+      {
+        label: "Gerçek özsermaye",
+        color: "var(--sn-series-3)",
+        points: curve.map((p) => ({ at: p.at, value: p.equity })),
+      },
+      {
+        label: "Gereken patika (hedefe bileşik)",
+        color: "var(--sn-ink-3)",
+        dashed: true,
+        points: patika,
+      },
+    ];
+  }, [curve, baslangic, kapital]);
+
+  if (seriler.length === 0 || curve.length === 0) {
+    return (
+      <p style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink-3)" }}>
+        Özsermaye eğrisi henüz boş — ilk bar kapanışını bekliyor.
+      </p>
+    );
+  }
+  return (
+    <CurveChart
+      series={seriler}
+      height={240}
+      valueFormat={(v) => money(v)}
+      labelFormat={(at) => dateTime(at)}
+    />
+  );
+}
+
+type BotOzet = Map<number, BotMetrics>;
 
 function botColumns(perBot: BotOzet, meydanId: number): SimpleColumn<Bot>[] {
-  const ortR = (bot: Bot) => {
-    const row = perBot.get(bot.id);
-    return row && row.islem > 0 ? row.toplamR / row.islem : null;
-  };
+  const ortR = (bot: Bot) => perBot.get(bot.id)?.avg_r ?? null;
 
   return [
     {
@@ -428,7 +533,7 @@ function botColumns(perBot: BotOzet, meydanId: number): SimpleColumn<Bot>[] {
     {
       header: "İşlem",
       num: true,
-      cell: (row) => <NumText text={num(perBot.get(row.id)?.islem ?? 0, 0)} size="sm" />,
+      cell: (row) => <NumText text={num(perBot.get(row.id)?.trades ?? 0, 0)} size="sm" />,
     },
     {
       header: "Ortalama R",
@@ -447,7 +552,7 @@ function botColumns(perBot: BotOzet, meydanId: number): SimpleColumn<Bot>[] {
       header: "Toplam K/Z",
       num: true,
       cell: (row) => (
-        <Delta value={perBot.get(row.id)?.kz ?? null} format={(v) => money(v)} size="sm" />
+        <Delta value={perBot.get(row.id)?.total_pnl ?? null} format={(v) => money(v)} size="sm" />
       ),
     },
     {
@@ -466,7 +571,7 @@ function botColumns(perBot: BotOzet, meydanId: number): SimpleColumn<Bot>[] {
     {
       header: "Komisyon",
       num: true,
-      cell: (row) => <NumText text={money(perBot.get(row.id)?.komisyon ?? 0)} size="sm" />,
+      cell: (row) => <NumText text={money(perBot.get(row.id)?.total_fees ?? 0)} size="sm" />,
     },
   ];
 }
@@ -495,21 +600,31 @@ function SystemLoadPanel({
   meydanId: number;
 }) {
   const basinc = load?.pressure ?? null;
-  const yuksek = basinc !== null && basinc >= 1.0;
+  /* Alarm KALICI yüke bakar: load_1 üç ortalamanın en gürültülüsüdür —
+     anlık bir backtest koşusu yanlış bir "bot durdur" önerisi üretiyordu. */
+  const kalici =
+    load && load.load_5 !== null && load.cores > 0 ? load.load_5 / load.cores : null;
+  const yuksek = kalici !== null && kalici >= 1.0;
 
   /* Aday: meydan okuma botu hariç, en az bir işlem yapmış, en düşük ortalama R.
      İşlem yapmamış bot sıralamaya girmez — ortalama R'si yoktur, "kötü" değil
      "ölçülmemiş"tir ve ikisini karıştırmak yanlış botu durdurur. */
-  const aday = bots
-    .filter((bot) => bot.id !== meydanId)
+  /* Yalnızca ÇALIŞAN botlar: durmuş bot çekirdek tüketmez, onu "durdurma
+     adayı" diye önermek yanlış karar üretir. (Beş STOPPED arşiv botu bu
+     listeye giriyordu.) */
+  const calisanlar = bots.filter(
+    (bot) =>
+      bot.id !== meydanId && (bot.state === "PAPER_RUNNING" || bot.state === "DEGRADED"),
+  );
+  const aday = calisanlar
     .map((bot) => {
       const row = perBot.get(bot.id);
-      return { bot, ortR: row && row.islem > 0 ? row.toplamR / row.islem : null, islem: row?.islem ?? 0 };
+      return { bot, ortR: row?.avg_r ?? null, islem: row?.trades ?? 0 };
     })
     .filter((entry) => entry.ortR !== null)
     .sort((a, b) => (a.ortR as number) - (b.ortR as number))[0];
 
-  const olculmemis = bots.filter((bot) => (perBot.get(bot.id)?.islem ?? 0) === 0 && bot.id !== meydanId);
+  const olculmemis = calisanlar.filter((bot) => (perBot.get(bot.id)?.trades ?? 0) === 0);
 
   return (
     <Panel
@@ -530,9 +645,27 @@ function SystemLoadPanel({
               accent={yuksek ? "var(--sn-down)" : "var(--sn-up)"}
               sub={`${load.cores} çekirdek · 1,00 = hepsi dolu`}
             />
-            <Metric label="Yük · 1 dk" value={load.load_1} format={(v) => num(v, 2)} sub="anlık" />
-            <Metric label="Yük · 5 dk" value={load.load_5} format={(v) => num(v, 2)} sub="kısa vadeli eğilim" />
-            <Metric label="Yük · 15 dk" value={load.load_15} format={(v) => num(v, 2)} sub="kalıcı yük" />
+            {/* Üçü de çekirdeğe bölünür — ilk kart 0,33 gösterirken bunların
+                ham 1,33 göstermesi "yük dolu" diye okunuyordu. */}
+            <Metric
+              label="Baskı · 1 dk"
+              value={load.load_1 !== null ? load.load_1 / load.cores : null}
+              format={(v) => num(v, 2)}
+              sub="anlık — en gürültülü"
+            />
+            <Metric
+              label="Baskı · 5 dk"
+              value={load.load_5 !== null ? load.load_5 / load.cores : null}
+              format={(v) => num(v, 2)}
+              accent={yuksek ? "var(--sn-down)" : undefined}
+              sub="alarm eşiği bu ortalamaya bakar"
+            />
+            <Metric
+              label="Baskı · 15 dk"
+              value={load.load_15 !== null ? load.load_15 / load.cores : null}
+              format={(v) => num(v, 2)}
+              sub="kalıcı yük"
+            />
           </div>
 
           <div className="mt-3">

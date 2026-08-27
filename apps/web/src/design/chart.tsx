@@ -58,6 +58,7 @@ export function CurveChart({
   height = 260,
   normalize = false,
   valueFormat = (value: number) => num(value, 2),
+  labelFormat = (at: string) => dateOnly(at),
   emptyText = "Çizilecek veri yok.",
   legend = true,
 }: {
@@ -65,6 +66,8 @@ export function CurveChart({
   height?: number;
   normalize?: boolean;
   valueFormat?: (value: number) => string;
+  /* Saatlik eğrilerde tooltip saat de göstermeli; gün bazlılarda tarih yeter. */
+  labelFormat?: (at: string) => string;
   emptyText?: string;
   /* Kalibrasyon sayfası kendi `ChartLegend`'ini basıyor; ikisi birden
      aynı etiketleri alt alta yazıyordu. */
@@ -161,7 +164,7 @@ export function CurveChart({
                   className="rounded-[var(--sn-r-sm)] px-2.5 py-2"
                   style={{ background: "var(--sn-overlay)", boxShadow: "var(--sn-shadow-pop)" }}
                 >
-                  <div className="sn-num" style={{ fontSize: "var(--sn-t-micro)", color: "var(--sn-ink-3)" }}>{dateOnly(String(label))}</div>
+                  <div className="sn-num" style={{ fontSize: "var(--sn-t-micro)", color: "var(--sn-ink-3)" }}>{labelFormat(String(label))}</div>
                   {payload.map((entry) => (
                     <div key={String(entry.dataKey)} className="mt-1 flex items-center gap-2">
                       <span

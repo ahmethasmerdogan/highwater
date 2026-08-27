@@ -269,6 +269,9 @@ async def get_backtest(backtest_id: int, session: SessionDep, user: CurrentUser)
         "strategy_version_id": backtest.strategy_version_id,
         "status": backtest.status,
         "error": backtest.error,
+        # Liste ucu ve panel tipi (api.ts BacktestDetail) bunu vaat ediyordu;
+        # el yazımı arayüzü tsc yakalayamıyor — iki uç aynı şemayı döndürmeli.
+        "created_at": backtest.created_at.isoformat() if backtest.created_at else None,
         "approximate_universe": backtest.approximate_universe,
         "params": backtest.params,
         "started_at": backtest.started_at.isoformat() if backtest.started_at else None,
