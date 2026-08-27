@@ -11,7 +11,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type Bot, type Strategy } from "@/lib/api";
+import { api, type Bot, type Strategy , type PortfolioEquity } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { toast } from "@/lib/toast";
 import { money, num, pctSigned, relative } from "@/lib/format";
@@ -30,6 +30,7 @@ import {
   Select,
   TextInput,
 } from "@/design";
+import { Sparkline } from "@/design/chart";
 import { DataGrid } from "@/grid/data-grid";
 import type { GridColumn } from "@/grid/types";
 
@@ -60,6 +61,24 @@ export default function BotsPage() {
     },
     onError: (error: Error) => toast.error("İşlem yapılamadı", error.message),
   });
+
+  /* Satır başına mini özsermaye eğrisi — tek istekle tüm botlar.
+     Sayının yanında seyri: 416 yazan iki bottan hangisi düşerek geldi? */
+  const curves = useQuery({
+    queryKey: ["equity", "hepsi"],
+    queryFn: () => api.get<PortfolioEquity>("/portfolio/equity"),
+    refetchInterval: 120_000,
+  });
+  const egriler = useMemo(() => {
+    const map = new Map<number, number[]>();
+    for (const bot of curves.data?.bots ?? []) {
+      map.set(
+        bot.bot_id,
+        bot.curve.slice(-40).map((point) => point.equity),
+      );
+    }
+    return map;
+  }, [curves.data]);
 
   const bots = query.data ?? [];
   const running = bots.filter((bot) => bot.state === "PAPER_RUNNING").length;
@@ -123,7 +142,21 @@ export default function BotsPage() {
         num: true,
         hint: "Nakit artı açık pozisyonların güncel karşılığı.",
         value: (row) => row.equity,
-        cell: (row) => <NumText text={money(row.equity)} size="sm" />,
+        cell: (row) => (
+          <span className="inline-flex items-center justify-end gap-2">
+            <Sparkline
+              points={egriler.get(row.id) ?? []}
+              width={54}
+              height={16}
+              color={
+                (egriler.get(row.id)?.at(-1) ?? 0) >= (egriler.get(row.id)?.[0] ?? 0)
+                  ? "var(--sn-up)"
+                  : "var(--sn-down)"
+              }
+            />
+            <NumText text={money(row.equity)} size="sm" />
+          </span>
+        ),
         footer: (list) => (
           <NumText text={money(list.reduce((sum, row) => sum + (row.equity ?? 0), 0))} size="sm" />
         ),
@@ -197,7 +230,7 @@ export default function BotsPage() {
           ) : null,
       },
     ],
-    [can, action],
+    [can, action, egriler],
   );
 
   return (

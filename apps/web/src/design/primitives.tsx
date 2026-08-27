@@ -404,7 +404,7 @@ export function Picker<T extends string>({
         <DropdownMenu.Content
           align="start"
           sideOffset={6}
-          className="sn-fade-up z-[90] max-h-[60vh] overflow-y-auto rounded-[var(--sn-r-md)] p-1.5"
+          className="sn-layer z-[90] max-h-[60vh] overflow-y-auto rounded-[var(--sn-r-md)] p-1.5"
           style={{ background: "var(--sn-overlay)", boxShadow: "var(--sn-shadow-pop)", minWidth: width }}
         >
           {options.map((option) => {
@@ -509,7 +509,7 @@ export function Tip({ content, children }: { content: ReactNode; children: React
           side="top"
           sideOffset={6}
           collisionPadding={10}
-          className="sn-fade-up z-[90] max-w-[36ch] rounded-[var(--sn-r-sm)] px-2.5 py-1.5"
+          className="sn-layer z-[90] max-w-[36ch] rounded-[var(--sn-r-sm)] px-2.5 py-1.5"
           style={{
             background: "var(--sn-overlay)",
             color: "var(--sn-ink-2)",

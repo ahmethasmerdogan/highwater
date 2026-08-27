@@ -13,7 +13,7 @@
  * basıldı. Alan adları burada tek yerde eşlenir (`StreamRow`).
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type AuditEntry, type DataQualityEntry } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -167,6 +167,11 @@ function EventStream() {
 
   const { events: liveEvents, state: wsState } = useLive();
 
+  /* Akışa YENİ düşen satır bir kez amberle yanar. İlk render'daki geçmiş
+     "yeni" sayılmaz — sayfa açılışında 500 satır birden yanmasın. */
+  const goruldu = useRef<Set<string>>(new Set());
+  const ilkRender = useRef(true);
+
   const query = useQuery({
     queryKey: ["logs"],
     queryFn: () => api.get<BotEventRow[]>("/logs", { limit: 500 }),
@@ -208,6 +213,10 @@ function EventStream() {
       (a, b) => new Date(b.at).getTime() - new Date(a.at).getTime(),
     );
   }, [query.data, liveEvents]);
+
+  useEffect(() => {
+    ilkRender.current = false;
+  }, []);
 
   const filtered = useMemo(
     () =>
@@ -419,6 +428,11 @@ function EventStream() {
                 columns={columns}
                 rowKey={(row) => row.id}
                 onRowClick={setSelected}
+                rowFlash={(row) => {
+                  if (goruldu.current.has(row.id)) return false;
+                  goruldu.current.add(row.id);
+                  return !ilkRender.current && row.live;
+                }}
                 storageKey="loglar-akis"
                 searchPlaceholder="Olay, sembol ya da mesaj ara…"
                 defaultSort={[{ id: "at", desc: true }]}

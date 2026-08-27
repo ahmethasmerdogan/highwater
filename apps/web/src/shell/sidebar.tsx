@@ -11,7 +11,7 @@
  * işaret (yalnız renk) ray kipinde etiket olmadığı için yetersiz kalır.
  */
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { cx } from "@/design/cx";
@@ -23,6 +23,25 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useLive } from "@/lib/ws";
 import { NAV } from "./nav";
+
+/**
+ * Rota geçişi sürerken bağlantının ucunda küçük amber nabız.
+ *
+ * Ağır bir sayfaya tıklanınca hiçbir şey olmuyormuş gibi duran yarım
+ * saniye, arayüzün en ucuz güvensizlik anıdır — Next'in `useLinkStatus`'u
+ * tam bunun için var. Bileşen Link'in İÇİNDE yaşamak zorunda.
+ */
+function PendingPulse() {
+  const { pending } = useLinkStatus();
+  if (!pending) return null;
+  return (
+    <span
+      aria-hidden
+      className="sn-pulse-dot ml-auto inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+      style={{ background: "var(--sn-brand-solid)" }}
+    />
+  );
+}
 
 const KEY = "sarnic.sidebar.rail";
 
@@ -115,6 +134,7 @@ export function Sidebar() {
                     )}
                     <Icon size={16} />
                     {!rail && <span className="truncate">{item.label}</span>}
+                    {!rail && <PendingPulse />}
                     {item.href === "/bildirimler" && unread > 0 && (
                       <span
                         className={cx(

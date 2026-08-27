@@ -258,6 +258,46 @@
 }
 .sn-toast-out { animation: sn-toast-out 200ms var(--sn-ease) both; }
 
+/* Katman (kip, menü, balon) giriş/çıkışı — Radix `data-state` bekler:
+   kapanış animasyonu tanımlıysa Radix DOM'u animasyon bitene kadar tutar.
+   Önceden yalnız giriş vardı; kapanış POF'tu. Tailwind v4 hizalama
+   `translate` özelliğini kullandığı için keyframe'deki `transform` ile
+   çakışmaz. */
+@keyframes sn-layer-in {
+  from { opacity: 0; transform: translateY(5px) scale(0.985); }
+}
+@keyframes sn-layer-out {
+  to { opacity: 0; transform: translateY(5px) scale(0.985); }
+}
+.sn-layer[data-state="open"] { animation: sn-layer-in var(--sn-dur-2) var(--sn-ease-out) both; }
+.sn-layer[data-state="closed"] { animation: sn-layer-out 150ms var(--sn-ease) both; }
+
+@keyframes sn-veil-in { from { opacity: 0; } }
+@keyframes sn-veil-out { to { opacity: 0; } }
+.sn-veil[data-state="open"] { animation: sn-veil-in var(--sn-dur-2) var(--sn-ease-out) both; }
+.sn-veil[data-state="closed"] { animation: sn-veil-out 150ms var(--sn-ease) both; }
+
+/* Çekmece çıkışı — girişin (sn-slide-in) aynası. */
+@keyframes sn-slide-out {
+  to { opacity: 0; transform: translateX(12px); }
+}
+.sn-slide-out { animation: sn-slide-out 200ms var(--sn-ease) both; }
+
+/* Tek seferlik durum vurgusu: bot durumu değişti, satır yeni geldi.
+   Zemin bir kez amberle yanıp söner — dikkat çeker, bağırmaz. */
+@keyframes sn-flash {
+  0% { background-color: var(--sn-brand-bg); }
+  100% { background-color: transparent; }
+}
+.sn-flash { animation: sn-flash 900ms var(--sn-ease-out) both; }
+
+/* Rota bekliyor: kenar çubuğunda küçük nabız. */
+@keyframes sn-pulse-dot {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+.sn-pulse-dot { animation: sn-pulse-dot 900ms var(--sn-ease) infinite; }
+
 @keyframes sn-slide-in {
   from { opacity: 0; transform: translateX(12px); }
   to { opacity: 1; transform: none; }

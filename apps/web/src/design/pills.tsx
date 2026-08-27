@@ -12,6 +12,7 @@
  * (çalışıyor, iz süren stopla kâr kilitlenmiş) çıkar.
  */
 
+import { useEffect, useRef, useState } from "react";
 import {
   BOT_STATE_HINT,
   BOT_STATE_LABEL,
@@ -24,7 +25,29 @@ import {
 import { InfoDot } from "./explain";
 import { Tag, type Tone } from "./primitives";
 
+/**
+ * Dizge değişince BİR KEZ vurgu sınıfı verir.
+ *
+ * `motion.ts`'e konmadı — orada iki SAYISAL kanca yeter; bu dizge
+ * karşılaştırır. İlk render vurgulanmaz: sayfa açılışı bir "değişim"
+ * değildir.
+ */
+function useChangeFlash(key: string): boolean {
+  const prev = useRef<string | null>(null);
+  const [flash, setFlash] = useState(false);
+  useEffect(() => {
+    const once = prev.current;
+    prev.current = key;
+    if (once === null || once === key) return;
+    setFlash(true);
+    const timer = window.setTimeout(() => setFlash(false), 950);
+    return () => window.clearTimeout(timer);
+  }, [key]);
+  return flash;
+}
+
 export function BotStatePill({ state, hint = true }: { state: string; hint?: boolean }) {
+  const flash = useChangeFlash(state);
   const tone: Tone =
     state === "PAPER_RUNNING"
       ? "up"
@@ -37,7 +60,7 @@ export function BotStatePill({ state, hint = true }: { state: string; hint?: boo
             : "neutral";
 
   return (
-    <span className="inline-flex items-center gap-1">
+    <span className={`inline-flex items-center gap-1 rounded-[var(--sn-r-xs)] ${flash ? "sn-flash" : ""}`}>
       <Tag tone={tone}>{BOT_STATE_LABEL[state] ?? state}</Tag>
       {hint && BOT_STATE_HINT[state] && <InfoDot text={BOT_STATE_HINT[state]} />}
     </span>

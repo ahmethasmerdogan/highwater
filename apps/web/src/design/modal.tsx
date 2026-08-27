@@ -35,11 +35,11 @@ export function Modal({
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay
-          className="sn-fade-up fixed inset-0 z-[95]"
+          className="sn-veil fixed inset-0 z-[95]"
           style={{ background: "rgba(6, 8, 11, 0.55)" }}
         />
         <Dialog.Content
-          className="sn-fade-up fixed top-1/2 left-1/2 z-[96] max-h-[86vh] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-[var(--sn-r-lg)]"
+          className="sn-layer fixed top-1/2 left-1/2 z-[96] max-h-[86vh] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-[var(--sn-r-lg)]"
           style={{
             width: `min(${width}px, calc(100vw - 24px))`,
             background: "var(--sn-panel)",

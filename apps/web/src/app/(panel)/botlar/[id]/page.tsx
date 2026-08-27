@@ -249,6 +249,7 @@ export default function BotDetailPage({ params }: { params: Promise<{ id: string
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Metric
+          animateOnMount
           label="Özsermaye"
           value={data?.equity}
           format={(value) => money(value)}
@@ -256,6 +257,7 @@ export default function BotDetailPage({ params }: { params: Promise<{ id: string
           sub={data ? `başlangıç ${money(data.capital)} · nakit ${money(data.cash)}` : undefined}
         />
         <Metric
+          animateOnMount
           label="Toplam getiri"
           value={totalReturn}
           format={(value) => pctSigned(value)}
@@ -265,6 +267,7 @@ export default function BotDetailPage({ params }: { params: Promise<{ id: string
           sub="başlangıç sermayesine göre"
         />
         <Metric
+          animateOnMount
           label="İşlem sayısı"
           value={stats?.trades ?? 0}
           format={(value) => num(value, 0)}
@@ -276,6 +279,7 @@ export default function BotDetailPage({ params }: { params: Promise<{ id: string
           }
         />
         <Metric
+          animateOnMount
           label="İşlem başına beklenti"
           value={stats?.expectancy_r}
           format={(value) => rMultiple(value)}

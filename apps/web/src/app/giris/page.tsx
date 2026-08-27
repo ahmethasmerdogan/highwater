@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { demoCredentials, devCredentials, totpNow } from "@/lib/dev-auth";
+import { Reveal } from "uicean";
 import { LogoTile } from "@/design/logo";
 import { Alert, Button, FormField, Tag, TextInput, TooltipHost } from "@/design";
 
@@ -125,7 +126,8 @@ export default function LoginPage() {
         className="sn-root flex min-h-screen items-center justify-center p-4"
         style={{ background: "var(--sn-bg)" }}
       >
-        <div className="w-full max-w-sm">
+        <Reveal className="w-full max-w-sm">
+        <div className="w-full">
           <div className="mb-5 flex items-center gap-2.5">
             <LogoTile size={32} />
             <div className="min-w-0">
@@ -326,6 +328,7 @@ export default function LoginPage() {
             zorunludur.
           </p>
         </div>
+        </Reveal>
       </div>
     </TooltipHost>
   );

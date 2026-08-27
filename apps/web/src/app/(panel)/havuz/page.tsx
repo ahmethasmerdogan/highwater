@@ -152,6 +152,7 @@ export default function UniversePage() {
           <>
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <Metric
+                animateOnMount
                 label="Havuzdaki coin"
                 value={snap.size}
                 format={(value) => num(value, 0)}
@@ -159,6 +160,7 @@ export default function UniversePage() {
                 sub={`son yenileme ${relative(snap.taken_at)}`}
               />
               <Metric
+                animateOnMount
                 label="Eklenen"
                 value={snap.added.length}
                 format={(value) => num(value, 0)}
@@ -166,6 +168,7 @@ export default function UniversePage() {
                 sub={snap.added.slice(0, 4).join(", ") || "—"}
               />
               <Metric
+                animateOnMount
                 label="Çıkan"
                 value={snap.removed.length}
                 format={(value) => num(value, 0)}

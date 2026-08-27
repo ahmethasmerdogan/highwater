@@ -11,7 +11,7 @@
  * iki satırı arka arkaya karşılaştırmak mümkün olur.
  */
 
-import { useRef, useEffect, type ReactNode } from "react";
+import { useState, useRef, useEffect, type ReactNode } from "react";
 import { IClose } from "./icons";
 import { IconButton } from "./primitives";
 
@@ -53,7 +53,39 @@ export function Drawer({
     if (open) rootRef.current?.focus();
   }, [open]);
 
-  if (!open) return null;
+  /* Çıkış animasyonu: `open` düşünce çekmece POF diye kaybolmaz — girişin
+     aynası olan kayışla gider, 200 ms sonra DOM'dan düşer. İçerik kapanış
+     boyunca son hâliyle donuk kalır (children saklanır). */
+  const [gorunur, setGorunur] = useState(open);
+  const [kapaniyor, setKapaniyor] = useState(false);
+  const sonIcerik = useRef<ReactNode>(children);
+  const sonBaslik = useRef<ReactNode>(title);
+  const sonAltBaslik = useRef<ReactNode>(subtitle);
+  const sonRozet = useRef<ReactNode>(badge);
+  const sonAltSerit = useRef<ReactNode>(footer);
+  if (open) {
+    sonIcerik.current = children;
+    sonBaslik.current = title;
+    sonAltBaslik.current = subtitle;
+    sonRozet.current = badge;
+    sonAltSerit.current = footer;
+  }
+  useEffect(() => {
+    if (open) {
+      setGorunur(true);
+      setKapaniyor(false);
+      return;
+    }
+    if (!gorunur) return;
+    setKapaniyor(true);
+    const timer = window.setTimeout(() => {
+      setGorunur(false);
+      setKapaniyor(false);
+    }, 200);
+    return () => window.clearTimeout(timer);
+  }, [open, gorunur]);
+
+  if (!gorunur) return null;
 
   return (
     <aside
@@ -61,8 +93,8 @@ export function Drawer({
       tabIndex={-1}
       role="dialog"
       aria-modal="true"
-      aria-label={typeof title === "string" ? title : "Ayrıntı"}
-      className="sn-slide-in fixed top-0 right-0 z-[80] flex h-screen flex-col"
+      aria-label={typeof sonBaslik.current === "string" ? sonBaslik.current : "Ayrıntı"}
+      className={`${kapaniyor ? "sn-slide-out" : "sn-slide-in"} fixed top-0 right-0 z-[80] flex h-screen flex-col`}
       style={{
         width: `min(${width}px, 100vw)`,
         background: "var(--sn-panel)",
@@ -80,13 +112,13 @@ export function Drawer({
               className="truncate font-medium"
               style={{ fontSize: "var(--sn-t-body-lg)", color: "var(--sn-ink)" }}
             >
-              {title}
+              {sonBaslik.current}
             </span>
-            {badge}
+            {sonRozet.current}
           </div>
-          {subtitle && (
+          {sonAltBaslik.current && (
             <div className="truncate" style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}>
-              {subtitle}
+              {sonAltBaslik.current}
             </div>
           )}
         </div>
@@ -94,14 +126,14 @@ export function Drawer({
           <IClose size={15} />
         </IconButton>
       </header>
-      <div className="sn-scroll flex-1 overflow-y-auto p-4">{children}</div>
+      <div className="sn-scroll flex-1 overflow-y-auto p-4">{sonIcerik.current}</div>
 
-      {footer && (
+      {sonAltSerit.current && (
         <div
           className="flex shrink-0 justify-end gap-2 px-4 py-3"
           style={{ borderTop: "1px solid var(--sn-hairline)", background: "var(--sn-raised)" }}
         >
-          {footer}
+          {sonAltSerit.current}
         </div>
       )}
     </aside>

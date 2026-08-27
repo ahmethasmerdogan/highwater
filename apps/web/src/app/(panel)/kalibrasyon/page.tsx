@@ -511,6 +511,7 @@ function GateEdge({ cal }: { cal: Calibration }) {
     >
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Metric
+          animateOnMount
           label="Kapının üstü"
           value={cal.gate_return}
           format={(value) => pct(value, 2)}
@@ -518,6 +519,7 @@ function GateEdge({ cal }: { cal: Calibration }) {
           sub={`${num(cal.gate_n, 0)} bar`}
         />
         <Metric
+          animateOnMount
           label="Havuz"
           value={cal.pool_return}
           format={(value) => pct(value, 2)}
@@ -525,6 +527,7 @@ function GateEdge({ cal }: { cal: Calibration }) {
           sub="aynı barlar — karşılaştırma tabanı"
         />
         <Metric
+          animateOnMount
           label="Fark"
           value={edge}
           format={(value) => pctSigned(value, 2)}

@@ -89,6 +89,7 @@ export function DataGrid<T>({
   defaultSort,
   /** Satırın vurgulanması gerekiyor mu (örn. açık pozisyon)? */
   rowAccent,
+  rowFlash,
   footNote,
 }: {
   rows: T[];
@@ -105,6 +106,9 @@ export function DataGrid<T>({
   maxHeight?: number;
   defaultSort?: { id: string; desc: boolean }[];
   rowAccent?: (row: T) => string | null;
+  /** true dönen satır BİR KEZ amber vurguyla yanar — canlı akışa yeni
+      düşen kaydı işaretlemek için (sn-flash). */
+  rowFlash?: (row: T) => boolean;
   /** Izgaranın altındaki künye satırı — verinin nereden geldiği. */
   footNote?: React.ReactNode;
 }) {
@@ -418,6 +422,7 @@ export function DataGrid<T>({
               {padTop > 0 && <tr style={{ height: padTop }} />}
               {(virtualRows ? virtualRows.map((v) => modelRows[v.index]) : modelRows).map((row) => {
                 const accent = rowAccent?.(row.original) ?? null;
+                const flash = rowFlash?.(row.original) ?? false;
                 return (
                   <tr
                     key={rowKey(row.original)}
@@ -435,7 +440,7 @@ export function DataGrid<T>({
                           }
                         : undefined
                     }
-                    className={cx("group", onRowClick && "cursor-pointer")}
+                    className={cx("group", onRowClick && "cursor-pointer", flash && "sn-flash")}
                   >
                     {row.getVisibleCells().map((cell, index) => {
                       const column = byId.get(cell.column.id);

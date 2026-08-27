@@ -305,6 +305,7 @@ export default function ChallengePage() {
               }
             />
             <Metric
+              animateOnMount
               label="Gereken günlük"
               value={gerekenGunluk}
               format={(value) => (value === null || value === undefined ? "—" : pct(value, 2))}
@@ -316,6 +317,7 @@ export default function ChallengePage() {
               }
             />
             <Metric
+              animateOnMount
               label="Gerçekleşen günlük"
               value={gerceklesenGunluk}
               format={(value) => (value === null || value === undefined ? "—" : pct(value, 2))}
@@ -361,6 +363,7 @@ export default function ChallengePage() {
 
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Metric
+              animateOnMount
               label="Özsermaye"
               value={equity}
               format={(value) => money(value)}
@@ -368,6 +371,7 @@ export default function ChallengePage() {
               sub={`başlangıç ${money(BASLANGIC_USDT)} USDT`}
             />
             <Metric
+              animateOnMount
               label="Getiri"
               value={
                 equity === null || meydan.capital <= 0 ? null : equity / meydan.capital - 1
@@ -383,6 +387,7 @@ export default function ChallengePage() {
               sub="taban: botun cüzdanı — alttaki tabloyla aynı"
             />
             <Metric
+              animateOnMount
               label="Açık pozisyon"
               value={meydan.open_positions}
               format={(value) => num(value, 0)}

@@ -303,7 +303,7 @@ function Profile() {
         <DropdownMenu.Content
           align="end"
           sideOffset={6}
-          className="sn-fade-up z-[90] w-[212px] rounded-[var(--sn-r-md)] p-1.5"
+          className="sn-layer z-[90] w-[212px] rounded-[var(--sn-r-md)] p-1.5"
           style={{ background: "var(--sn-overlay)", boxShadow: "var(--sn-shadow-pop)" }}
         >
           <div className="px-2 py-1.5">

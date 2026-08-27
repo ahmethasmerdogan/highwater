@@ -328,8 +328,17 @@ export default function TerminalPage() {
     [applyTemplate],
   );
 
-  /* `/` komut satırına odaklanır — klavye öncelikli kullanım. */
+  /* `/` komut satırına odaklanır; F-tuşları panel açar — Bloomberg'in
+     fonksiyon tuşu dili. F1/F5/F11 tarayıcınındır, onlara dokunulmaz. */
   useEffect(() => {
+    const fkeys: Record<string, [PanelKind, string]> = {
+      F2: ["positions", "Pozisyonlar"],
+      F3: ["orders", "Emirler"],
+      F4: ["pool", "Havuz"],
+      F6: ["logs", "Log akışı"],
+      F7: ["calibration", "Kalibrasyon"],
+      F8: ["scores", "Puanlar"],
+    };
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       const typing =
@@ -339,11 +348,17 @@ export default function TerminalPage() {
       if (e.key === "/" && !typing) {
         e.preventDefault();
         inputRef.current?.focus();
+        return;
+      }
+      const eslesme = fkeys[e.key];
+      if (eslesme) {
+        e.preventDefault();
+        addPanel(eslesme[0], eslesme[1]);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [addPanel]);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -538,26 +553,28 @@ export default function TerminalPage() {
         >
           {(
             [
-              ["POS", "positions", "Pozisyonlar"],
-              ["ORD", "orders", "Emirler"],
-              ["POOL", "pool", "Havuz"],
-              ["LOG", "logs", "Log akışı"],
-              ["CAL", "calibration", "Kalibrasyon"],
+              ["F2", "POS", "positions", "Pozisyonlar"],
+              ["F3", "ORD", "orders", "Emirler"],
+              ["F4", "POOL", "pool", "Havuz"],
+              ["F6", "LOG", "logs", "Log akışı"],
+              ["F7", "CAL", "calibration", "Kalibrasyon"],
+              ["F8", "PUAN", "scores", "Puanlar"],
             ] as const
-          ).map(([kod, kind, title]) => (
+          ).map(([fkey, kod, kind, title]) => (
             <button
               key={kod}
               type="button"
               onClick={() => addPanel(kind, title)}
-              className="sn-num rounded-[3px] px-1.5 py-0.5 transition-colors duration-[var(--sn-dur-1)]"
+              className="sn-num inline-flex items-center gap-1 rounded-[3px] px-1.5 py-0.5 transition-colors duration-[var(--sn-dur-1)] hover:bg-[var(--sn-sunken)]"
               style={{
                 background: "var(--sn-raised)",
                 border: "1px solid var(--sn-border)",
                 color: "var(--sn-brand)",
                 cursor: "pointer",
               }}
-              title={`${title} panelini aç`}
+              title={`${title} panelini aç (${fkey})`}
             >
+              <span style={{ color: "var(--sn-ink-3)" }}>{fkey}</span>
               {kod}
             </button>
           ))}
