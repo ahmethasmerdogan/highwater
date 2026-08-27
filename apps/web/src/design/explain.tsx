@@ -62,8 +62,11 @@ export function Term({
 
   return (
     <Tip content={<Balloon title={entry.label} body={entry.short} />}>
+      {/* tabIndex: Radix `asChild` span'e odak vermez; balon klavyeden
+          açılamıyordu. Span kalır (metin akışını düğme bozar), odak eklenir. */}
       <span
-        className={cx("underline decoration-dotted underline-offset-[3px]", className)}
+        tabIndex={0}
+        className={cx("sn-focus underline decoration-dotted underline-offset-[3px]", className)}
         style={{ textDecorationColor: "var(--sn-ink-4)", cursor: "help" }}
       >
         {text}
@@ -95,9 +98,14 @@ export function InfoDot({
 
   return (
     <Tip content={<Balloon title={title ?? entry?.label} body={body} />}>
-      <span className={cx("inline-flex shrink-0", className)} style={{ color: "var(--sn-ink-4)" }}>
+      <button
+        type="button"
+        aria-label={`Açıklama: ${title ?? entry?.label ?? "bilgi"}`}
+        className={cx("sn-focus inline-flex shrink-0 border-0 bg-transparent p-0", className)}
+        style={{ color: "var(--sn-ink-4)", cursor: "help" }}
+      >
         <IInfo size={13} />
-      </span>
+      </button>
     </Tip>
   );
 }

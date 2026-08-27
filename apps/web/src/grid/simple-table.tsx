@@ -13,6 +13,7 @@
 
 import type { ReactNode } from "react";
 import { cx } from "@/design/cx";
+import { ROW_HEIGHT } from "@/grid/types";
 import { InfoDot } from "@/design/explain";
 
 export interface SimpleColumn<T> {
@@ -49,7 +50,7 @@ export function SimpleTable<T>({
               key={column.header}
               className="sn-label px-3"
               style={{
-                height: 30,
+                height: ROW_HEIGHT.compact,
                 width: column.width,
                 textAlign: column.num ? "right" : "left",
                 borderBottom: "1px solid var(--sn-hairline)",
@@ -74,9 +75,13 @@ export function SimpleTable<T>({
             {columns.map((column) => (
               <td
                 key={column.header}
-                className="px-3 whitespace-nowrap transition-colors duration-[var(--sn-dur-1)] group-hover:bg-[var(--sn-sunken)]"
+                className={cx(
+                  "px-3 whitespace-nowrap transition-colors duration-[var(--sn-dur-1)] group-hover:bg-[var(--sn-sunken)]",
+                  /* Bozulmaz kural 6: sayı sütunu tabular-nums alır. */
+                  column.num && "sn-num",
+                )}
                 style={{
-                  height: dense ? 30 : 36,
+                  height: dense ? ROW_HEIGHT.compact : ROW_HEIGHT.default,
                   textAlign: column.num ? "right" : "left",
                   borderBottom: "1px solid var(--sn-hairline)",
                   fontSize: dense ? "var(--sn-t-caption)" : "var(--sn-t-body)",

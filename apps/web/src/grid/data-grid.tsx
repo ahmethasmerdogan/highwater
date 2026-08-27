@@ -337,12 +337,20 @@ export function DataGrid<T>({
                             ? { position: "sticky", left: pinned, zIndex: 21 }
                             : null),
                         }}
+                        aria-sort={
+                          sorted === "asc" ? "ascending" : sorted === "desc" ? "descending" : undefined
+                        }
                       >
-                        <span
+                        {/* Gerçek <button>: span klavyeden sıralanamıyordu.
+                            Görsel fark yok — düğme sıfırlanmış. */}
+                        <button
+                          type="button"
+                          disabled={!header.column.getCanSort()}
                           className={cx(
-                            "inline-flex items-center gap-1",
+                            "inline-flex items-center gap-1 border-0 bg-transparent p-0 font-[inherit] text-[inherit] uppercase",
                             header.column.getCanSort() && "cursor-pointer",
                           )}
+                          style={{ color: "inherit", letterSpacing: "inherit" }}
                           onClick={header.column.getToggleSortingHandler()}
                           title={header.column.getCanSort() ? "Sırala · Shift ile ikincil sıralama" : undefined}
                         >
@@ -359,7 +367,7 @@ export function DataGrid<T>({
                             (header.column.columnDef.header as string)
                           )}
                           {sorted && (
-                            <span style={{ color: "var(--sn-brand)" }}>
+                            <span aria-hidden style={{ color: "var(--sn-brand)" }}>
                               {sorted === "asc" ? "▲" : "▼"}
                               {sorting.length > 1 && (
                                 <span className="sn-num" style={{ fontSize: 9 }}>
@@ -368,7 +376,7 @@ export function DataGrid<T>({
                               )}
                             </span>
                           )}
-                        </span>
+                        </button>
                         {header.column.getCanResize() && (
                           <span
                             onMouseDown={header.getResizeHandler()}
@@ -395,6 +403,19 @@ export function DataGrid<T>({
                   <tr
                     key={rowKey(row.original)}
                     onClick={onRowClick ? () => onRowClick(row.original) : undefined}
+                    /* Klavye eşleniği: tıklanabilir satır Tab ile bulunur,
+                       Enter/Space ile açılır. Odak halkası .sn-root'tan gelir. */
+                    tabIndex={onRowClick ? 0 : undefined}
+                    onKeyDown={
+                      onRowClick
+                        ? (event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              onRowClick(row.original);
+                            }
+                          }
+                        : undefined
+                    }
                     className={cx("group", onRowClick && "cursor-pointer")}
                   >
                     {row.getVisibleCells().map((cell, index) => {
@@ -406,7 +427,10 @@ export function DataGrid<T>({
                           className={cx(
                             "px-3 whitespace-nowrap transition-colors duration-[var(--sn-dur-1)]",
                             "group-hover:bg-[var(--sn-sunken)]",
-                            column?.num && "text-right",
+                            /* Bozulmaz kural 6 sözleşmenin kendisinde: `num`
+                               işaretli sütun sağa yaslanır VE tabular-nums
+                               alır. Sayfaların ayrıca NumText sarması gerekmez. */
+                            column?.num && "text-right sn-num",
                           )}
                           style={{
                             height: rowHeight,

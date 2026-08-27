@@ -120,6 +120,10 @@ export function Confirm({
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+      /* Odak "Vazgeç" düğmesindeyken Enter onayı ÇALIŞTIRIYORDU — klavye
+         kullanıcısı tam tersini yapmak isterken onaylıyordu. Düğme
+         üzerindeyken Enter'ı düğmenin kendisine bırak. */
+      if (target?.closest("button")) return;
       if (event.key === "Enter" && !busy) onConfirm();
     };
     window.addEventListener("keydown", onKey);

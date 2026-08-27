@@ -11,7 +11,7 @@
  * iki satırı arka arkaya karşılaştırmak mümkün olur.
  */
 
-import { useEffect, type ReactNode } from "react";
+import { useRef, useEffect, type ReactNode } from "react";
 import { IClose } from "./icons";
 import { IconButton } from "./primitives";
 
@@ -46,11 +46,21 @@ export function Drawer({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
+  /* Açılışta odak çekmeceye taşınır; yoksa klavye odağı arkadaki tabloda
+     kalıyor ve ekran okuyucu çekmecenin açıldığını duymuyordu. */
+  const rootRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (open) rootRef.current?.focus();
+  }, [open]);
+
   if (!open) return null;
 
   return (
     <aside
+      ref={rootRef}
+      tabIndex={-1}
       role="dialog"
+      aria-modal="true"
       aria-label={typeof title === "string" ? title : "Ayrıntı"}
       className="sn-slide-in fixed top-0 right-0 z-[80] flex h-screen flex-col"
       style={{

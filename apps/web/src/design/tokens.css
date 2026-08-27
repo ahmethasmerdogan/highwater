@@ -24,6 +24,11 @@
  * ===================================================================== */
 
 :root {
+  /* Tarayıcıya sayfanın şemasını söyle: yerel denetimler (kaydırma çubuğu,
+     tarih seçici, select menüsü) temaya uysun. `.dark` sınıfı tek başına
+     bunu yapmaz — koyu temada beyaz açılıyorlardı. */
+  color-scheme: light;
+
   /* ---- Yüzey rampası ---------------------------------------------- */
   --sn-bg: #f5f7f9;          /* sayfa zemini */
   --sn-panel: #ffffff;       /* birincil içerik yüzeyi */
@@ -39,7 +44,7 @@
   /* ---- Mürekkep ---------------------------------------------------- */
   --sn-ink: #171b21;         /* birincil metin */
   --sn-ink-2: #545d6a;       /* ikincil */
-  --sn-ink-3: #838d9b;       /* etiket, başlık üstü */
+  --sn-ink-3: #6b7480;       /* etiket, başlık üstü — 4,5:1 için koyulaştırıldı */
   --sn-ink-4: #a7b0bc;       /* devre dışı, yer tutucu */
 
   /* ---- Marka ------------------------------------------------------- */
@@ -51,17 +56,24 @@
   --sn-brand-2: #7d5a00;     /* aynı ailenin daha koyu tonu */
   --sn-brand-bg: rgba(240, 185, 11, 0.14);
   --sn-brand-line: rgba(240, 185, 11, 0.42);
+  /* Odak halkası: amber dolgu açık zeminde 1,68:1 — halka görünmüyordu.
+     Halka için ailenin okunur koyusu; koyu temada dolgu zaten yeter. */
+  --sn-focus-ring: #7d5a00;
 
   /* ---- Yön ve durum ------------------------------------------------ */
-  --sn-up: #17a56b;
+  /* #17a56b beyaz panelde 3,17:1 kalıyordu — kayıp kırmızısı 4,79:1 ile
+     geçerken kazanç kayıptan zor okunuyordu. Koyu temanın yeşiline dokunma:
+     orada sorun yok. */
+  --sn-up: #0f7a4e;
   --sn-up-bg: rgba(23, 165, 107, 0.12);
   --sn-down: #d6304a;
   --sn-down-bg: rgba(214, 48, 74, 0.12);
+  --sn-on-down: #ffffff;     /* kırmızı dolgunun üstündeki metin */
   --sn-warn: #b25e09;
   --sn-warn-bg: rgba(178, 94, 9, 0.12);
   --sn-info: #1f6fd0;
   --sn-info-bg: rgba(31, 111, 208, 0.12);
-  --sn-idle: #d4d9e0;        /* nötr nokta: durum yok */
+  --sn-idle: #8e99a6;        /* nötr nokta: durum yok — 1.4.11 için ≥3:1 */
 
   /* ---- Grafik serisi ----------------------------------------------- */
   /* Sıra keyfi değil: trend → momentum → akış → volatilite → s/r.
@@ -84,6 +96,8 @@
 }
 
 .dark {
+  color-scheme: dark;
+
   --sn-bg: #0a0c0f;
   --sn-panel: #12151a;
   --sn-raised: #171b21;
@@ -96,7 +110,7 @@
 
   --sn-ink: #e9ecf1;
   --sn-ink-2: #98a1ae;
-  --sn-ink-3: #6c7684;
+  --sn-ink-3: #7d8896;
   --sn-ink-4: #4d5663;
 
   /* Koyu zeminde amber zaten okunur; dolgu ve metin aynı renk olabilir. */
@@ -106,11 +120,14 @@
   --sn-brand-2: #fcd535;
   --sn-brand-bg: rgba(240, 185, 11, 0.13);
   --sn-brand-line: rgba(240, 185, 11, 0.36);
+  --sn-focus-ring: #f0b90b;
 
   --sn-up: #0ecb81;
   --sn-up-bg: rgba(14, 203, 129, 0.14);
   --sn-down: #f6465d;
   --sn-down-bg: rgba(246, 70, 93, 0.14);
+  /* Beyaz metin #f6465d üstünde 3,53:1 kalıyordu; koyu mürekkep 5,1:1. */
+  --sn-on-down: #14171a;
   --sn-warn: #f0a020;
   --sn-warn-bg: rgba(240, 160, 32, 0.14);
   --sn-info: #4ea8de;
@@ -143,10 +160,9 @@
   --sn-r-lg: 12px;
   --sn-r-xl: 16px;
 
-  /* Yoğunluk — üç kademe. Izgara 4px tabanlıdır. */
-  --sn-row-compact: 28px;
-  --sn-row: 34px;
-  --sn-row-relaxed: 42px;
+  /* Satır yüksekliğinin tek kaynağı grid/types.ts:ROW_HEIGHT'tır.
+     Buradaki --sn-row-* kopyaları hiç okunmuyordu; iki kaynak birbirinden
+     saparak yaşıyordu. Silindi. */
 
   /* Tipografi ölçeği. Roller adlandırıldı; ham px sayfalarda geçmez. */
   --sn-t-micro: 10.5px;   /* rozet içi, eksen etiketi */
@@ -208,7 +224,7 @@
 @layer base {
   .sn-focus:focus-visible,
   .sn-root :focus-visible {
-    outline: 2px solid var(--sn-brand-solid);
+    outline: 2px solid var(--sn-focus-ring);
     outline-offset: 1px;
     border-radius: var(--sn-r-xs);
   }
@@ -257,12 +273,17 @@
 /* Hareketi azalt: animasyon kapanır, sayı anında hedefe oturur.
    `design/motion.ts` aynı tercihi JS tarafında da okur. */
 @media (prefers-reduced-motion: reduce) {
+  /* Adlandırılmış animasyonlarla yetinme: `transition-colors` ve viz
+     çubukları da hareket üretir. Kök altındaki her şeyi kapat —
+     `motion.ts` aynı tercihi JS tarafında okuyor. */
+  .sn-root *,
   .sn-tint-up,
   .sn-tint-down,
   .sn-fade-up,
   .sn-slide-in,
   .sn-skeleton {
     animation: none !important;
+    transition-duration: 0.01ms !important;
   }
 }
 

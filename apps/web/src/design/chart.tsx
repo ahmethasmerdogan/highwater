@@ -12,7 +12,7 @@
  * çizgiler değeri okumaya yardım etmez, yalnızca mürekkep ekler.
  */
 
-import { useMemo } from "react";
+import { useId, useMemo } from "react";
 import {
   Area,
   AreaChart,
@@ -35,7 +35,13 @@ import { Empty } from "./primitives";
 
 /* Ortak eksen görünümü — üç grafikte de aynı. */
 const AXIS = {
-  tick: { fill: "var(--sn-ink-3)", fontSize: 10 },
+  /* Kural 6 eksene de uygulanır: SVG <text> CSS değişkenini çözer. */
+  tick: {
+    fill: "var(--sn-ink-3)",
+    fontSize: 10,
+    fontFamily: "var(--font-stack-mono)",
+    style: { fontVariantNumeric: "tabular-nums" },
+  },
   axisLine: false,
   tickLine: false,
 } as const;
@@ -53,16 +59,20 @@ export function CurveChart({
   normalize = false,
   valueFormat = (value: number) => num(value, 2),
   emptyText = "Çizilecek veri yok.",
+  legend = true,
 }: {
   series: CurveSeries[];
   height?: number;
   normalize?: boolean;
   valueFormat?: (value: number) => string;
   emptyText?: string;
+  /* Kalibrasyon sayfası kendi `ChartLegend`'ini basıyor; ikisi birden
+     aynı etiketleri alt alta yazıyordu. */
+  legend?: boolean;
 }) {
-  const { data, active } = useMemo(() => {
+  const { data, active, ticks } = useMemo(() => {
     const live = series.filter((one) => one.points.length > 0);
-    if (live.length === 0) return { data: [], active: [] as CurveSeries[] };
+    if (live.length === 0) return { data: [], active: [] as CurveSeries[], ticks: [] as string[] };
 
     /* Zaman damgaları birleştirilir; eksik nokta `null` kalır ve recharts
        `connectNulls` ile çizgiyi sürdürür.
@@ -74,7 +84,16 @@ export function CurveChart({
       live.map((one) => [one.label, new Map(one.points.map((point) => [point.at, point.value]))]),
     );
     const stamps = Array.from(new Set(live.flatMap((one) => one.points.map((p) => p.at)))).sort();
-    const bases = new Map(live.map((one) => [one.label, one.points[0]?.value ?? 1]));
+    /* Taban serinin İLK NOKTASI değil, zaman sırasına göre en erken
+       noktasıdır — girdinin sıralı geldiği varsayılamaz. Taban 0 ise seri
+       endekslenemez; onu 100 tabanlı serilerle aynı eksene ham koymak
+       yerine grafikten çıkarıp konsol yerine kullanıcıya söylemek gerekir. */
+    const bases = new Map(
+      live.map((one) => {
+        const sorted = [...one.points].sort((a, b) => (a.at < b.at ? -1 : 1));
+        return [one.label, sorted[0]?.value ?? 1];
+      }),
+    );
 
     const rows = stamps.map((at) => {
       const row: Record<string, string | number | null> = { at };
@@ -90,7 +109,20 @@ export function CurveChart({
       return row;
     });
 
-    return { data: rows, active: live };
+    const drawable = normalize ? live.filter((one) => (bases.get(one.label) ?? 0) !== 0) : live;
+
+    /* Eksen kategorik ve `minTickGap` piksel bazlı: aynı gün iki kez
+       yazılabiliyordu (…22.08 · 24.08 · 24.08…). Gün başına tek tik seç. */
+    const seen = new Set<string>();
+    const ticks: string[] = [];
+    for (const at of stamps) {
+      const day = at.slice(0, 10);
+      if (!seen.has(day)) {
+        seen.add(day);
+        ticks.push(at);
+      }
+    }
+    return { data: rows, active: drawable, ticks };
   }, [series, normalize]);
 
   if (data.length === 0) return <Empty title={emptyText} />;
@@ -107,13 +139,14 @@ export function CurveChart({
           <XAxis
             dataKey="at"
             tickFormatter={(value: string) => dateOnly(value)}
-            tick={{ fill: "var(--sn-ink-3)", fontSize: 10 }}
+            tick={AXIS.tick}
             axisLine={{ stroke: "var(--sn-hairline)" }}
             tickLine={false}
+            ticks={ticks}
             minTickGap={48}
           />
           <YAxis
-            tick={{ fill: "var(--sn-ink-3)", fontSize: 10 }}
+            tick={AXIS.tick}
             axisLine={false}
             tickLine={false}
             width={56}
@@ -128,7 +161,7 @@ export function CurveChart({
                   className="rounded-[var(--sn-r-sm)] px-2.5 py-2"
                   style={{ background: "var(--sn-overlay)", boxShadow: "var(--sn-shadow-pop)" }}
                 >
-                  <div style={{ fontSize: 10, color: "var(--sn-ink-3)" }}>{dateOnly(String(label))}</div>
+                  <div className="sn-num" style={{ fontSize: "var(--sn-t-micro)", color: "var(--sn-ink-3)" }}>{dateOnly(String(label))}</div>
                   {payload.map((entry) => (
                     <div key={String(entry.dataKey)} className="mt-1 flex items-center gap-2">
                       <span
@@ -151,13 +184,15 @@ export function CurveChart({
               );
             }}
           />
-          <Legend
-            verticalAlign="bottom"
-            height={26}
-            formatter={(value) => (
-              <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>{value}</span>
-            )}
-          />
+          {legend && (
+            <Legend
+              verticalAlign="bottom"
+              height={26}
+              formatter={(value) => (
+                <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>{value}</span>
+              )}
+            />
+          )}
           {active.map((one) => (
             <Line
               key={one.label}
@@ -167,7 +202,9 @@ export function CurveChart({
               stroke={one.color}
               strokeWidth={1.8}
               strokeDasharray={one.dashed ? "5 4" : undefined}
-              dot={false}
+              /* Tek noktalı seri `dot={false}` ile hiçbir piksel üretmiyordu —
+                 "veri var ama çizilemiyor" ile "veri yok" aynı görünüyordu. */
+              dot={one.points.length < 2 ? { r: 3, strokeWidth: 0, fill: one.color } : false}
               activeDot={{ r: 3, strokeWidth: 0 }}
               connectNulls
               isAnimationActive={false}
@@ -201,13 +238,31 @@ export function AreaCurve({
   color?: string;
   valueFormat?: (value: number) => string;
 }) {
+  /* Kancalar erken dönüşlerden ÖNCE: React kural gereği. */
+  const uid = useId();
   if (points.length === 0) return <Empty title="Çizilecek veri yok." />;
+  if (points.length === 1) {
+    return (
+      <Empty
+        title="Eğri için en az iki gözlem gerekiyor"
+        hint={`Tek gözlem: ${valueFormat(points[0].value)}`}
+      />
+    );
+  }
 
-  const id = `sn-area-${color.replace(/[^a-z0-9]/gi, "")}`;
+  /* Bütün değerler aynıysa recharts domain'i tek değere sıkıştırıp dolguyu
+     dev bir bloğa çeviriyordu. Düz çizgi düz çizgi gibi görünmeli. */
+  const values = points.map((p) => p.value);
+  const flat = Math.max(...values) === Math.min(...values);
+
+  /* Gradyan kimliği renkten türetiliyordu — aynı sayfada aynı renkle iki
+     kullanım çakışır (SVG id belge genelinde tekildir). */
+  const id = `sn-area-${uid}`;
   return (
     <div style={{ height }}>
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={points} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
+          {flat && <YAxis hide domain={[points[0].value - 1, points[0].value + 1]} />}
           <defs>
             <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={color} stopOpacity={0.28} />
@@ -221,7 +276,7 @@ export function AreaCurve({
                   className="rounded-[var(--sn-r-sm)] px-2 py-1.5"
                   style={{ background: "var(--sn-overlay)", boxShadow: "var(--sn-shadow-pop)" }}
                 >
-                  <div style={{ fontSize: 10, color: "var(--sn-ink-3)" }}>{dateOnly(String(label))}</div>
+                  <div className="sn-num" style={{ fontSize: "var(--sn-t-micro)", color: "var(--sn-ink-3)" }}>{dateOnly(String(label))}</div>
                   <div className="sn-num" style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink)" }}>
                     {typeof payload[0].value === "number" ? valueFormat(payload[0].value) : "—"}
                   </div>
@@ -312,7 +367,7 @@ export function DecileChart({
                   className="rounded-[var(--sn-r-sm)] px-2.5 py-2"
                   style={{ background: "var(--sn-overlay)", boxShadow: "var(--sn-shadow-pop)" }}
                 >
-                  <div style={{ fontSize: 10, color: "var(--sn-ink-3)" }}>{label}. dilim</div>
+                  <div className="sn-num" style={{ fontSize: "var(--sn-t-micro)", color: "var(--sn-ink-3)" }}>{label}. dilim</div>
                   {payload.map((entry) => (
                     <div key={String(entry.dataKey)} className="mt-1 flex items-center gap-3">
                       <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>
@@ -326,7 +381,7 @@ export function DecileChart({
                       </span>
                     </div>
                   ))}
-                  <div className="mt-1" style={{ fontSize: 10, color: "var(--sn-ink-3)" }}>
+                  <div className="sn-num mt-1" style={{ fontSize: "var(--sn-t-micro)", color: "var(--sn-ink-3)" }}>
                     {payload[0]?.payload?.count} gözlem
                   </div>
                 </div>
@@ -397,7 +452,15 @@ export function Sparkline({
   height?: number;
   color?: string;
 }) {
-  if (points.length < 2) return null;
+  /* Tek gözlem: eğri çizilemez ama "veri yok" da değil — nokta bas. */
+  if (points.length === 0) return null;
+  if (points.length === 1) {
+    return (
+      <svg width={width} height={height} aria-hidden>
+        <circle cx={width / 2} cy={height / 2} r={2} fill={color} />
+      </svg>
+    );
+  }
 
   const min = Math.min(...points);
   const max = Math.max(...points);

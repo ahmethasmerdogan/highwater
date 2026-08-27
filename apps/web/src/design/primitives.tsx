@@ -116,7 +116,7 @@ function faceStyle(variant: Variant): React.CSSProperties {
     case "primary":
       return { background: "var(--sn-brand-solid)", color: "var(--sn-on-brand)", border: "1px solid transparent" };
     case "danger":
-      return { background: "var(--sn-down)", color: "#ffffff", border: "1px solid transparent" };
+      return { background: "var(--sn-down)", color: "var(--sn-on-down)", border: "1px solid transparent" };
     case "neutral":
       return { background: "var(--sn-panel)", color: "var(--sn-ink)", border: "1px solid var(--sn-border)" };
     case "quiet":

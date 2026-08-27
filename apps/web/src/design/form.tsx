@@ -175,7 +175,9 @@ export function Toggle({
         <SwitchPrimitive.Thumb
           className="block h-[16px] w-[16px] rounded-full transition-transform duration-[var(--sn-dur-1)]"
           style={{
-            background: "#ffffff",
+            /* Sabit beyaz, koyu temada kapalı durumda 1,65:1'e düşüyordu. */
+            background: "var(--sn-panel)",
+            boxShadow: "inset 0 0 0 1px var(--sn-border-strong)",
             transform: checked ? "translateX(16px)" : "translateX(2px)",
           }}
         />

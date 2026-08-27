@@ -110,12 +110,6 @@ export function direction(value: number | null | undefined): Direction {
   return value > 0 ? "up" : "down";
 }
 
-export function directionClass(value: number | null | undefined): string {
-  const d = direction(value);
-  if (d === "flat") return "text-ink-3";
-  return d === "up" ? "text-up" : "text-down";
-}
-
 /* ------------------------------------------------------------------ */
 /*  Tarih ve süre                                                      */
 /* ------------------------------------------------------------------ */
@@ -201,20 +195,6 @@ export const FAMILY_TERMS: Record<string, string> = {
   flow: "aile_flow",
   vol: "aile_vol",
   sr: "aile_sr",
-};
-
-/**
- * Puan Kartı yığılmış çubuğunun aile renkleri.
- *
- * Yeşil ve kırmızı bilinçli olarak yok: o iki renk yön için rezerve.
- * Beş ton birbirinden ayırt edilebilir ve ikisi de temada okunur.
- */
-export const FAMILY_COLORS: Record<string, string> = {
-  trend: "var(--series-1)",
-  momentum: "var(--series-2)",
-  flow: "var(--series-3)",
-  vol: "var(--series-4)",
-  sr: "var(--series-5)",
 };
 
 /** Sembolün baz varlığı: "SOLUSDT" → "SOL" */

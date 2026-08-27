@@ -24,6 +24,7 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import type { Candle, SRLevels } from "@/lib/api";
+import { price } from "@/lib/format";
 import { useTheme } from "./theme";
 
 function cssVar(name: string, fallback: string): string {
@@ -65,9 +66,15 @@ export function PriceChart({
       height: fill ? el.clientHeight : height,
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
-        textColor: cssVar("--sn-ink-3", "#838d9b"),
+        textColor: cssVar("--sn-ink-3", "#6b7480"),
         fontSize: 10,
+        /* Verilmezse kitaplık kendi Trebuchet/Roboto varsayılanıyla çizer —
+           panelde monospace olmayan tek sayı ekseni burasıydı (kural 6). */
+        fontFamily: cssVar("--font-stack-mono", "monospace"),
       },
+      /* Eksen "78783.99" yazarken alttaki kart "78.783,99" yazıyordu.
+         Sayı biçiminin tek kaynağı lib/format.ts'tir. */
+      localization: { locale: "tr-TR", priceFormatter: (v: number) => price(v) },
       grid: {
         vertLines: { color: line },
         horzLines: { color: line },
@@ -75,7 +82,6 @@ export function PriceChart({
       rightPriceScale: { borderColor: line },
       timeScale: { borderColor: line, timeVisible: true, secondsVisible: false },
       crosshair: { mode: 1 },
-      localization: { locale: "tr-TR" },
     });
 
     const series = chart.addCandlestickSeries({
@@ -132,11 +138,25 @@ export function PriceChart({
     });
   }, [resolved]);
 
+  /* `fitContent` her bar güncellemesinde çağrılırsa saat başı gelen yeni
+     bar kullanıcının yakınlaştırmasını sıfırlar. Yalnızca seri kimliği
+     (ilk yükleme / sembol değişimi) değiştiğinde sığdır. */
+  const fittedKeyRef = useRef<string | null>(null);
+
   useEffect(() => {
     const series = seriesRef.current;
     if (!series) return;
+    /* S/R çizgileri için Number.isFinite denetimi zaten vardı; asıl seriye
+       uygulanmamıştı. NaN'lı tek bar tüm çizimi bozabilir. */
+    const temiz = candles.filter(
+      (c) =>
+        Number.isFinite(c.open) &&
+        Number.isFinite(c.high) &&
+        Number.isFinite(c.low) &&
+        Number.isFinite(c.close),
+    );
     series.setData(
-      candles.map((candle) => ({
+      temiz.map((candle) => ({
         time: candle.time as UTCTimestamp,
         open: candle.open,
         high: candle.high,
@@ -144,7 +164,11 @@ export function PriceChart({
         close: candle.close,
       })),
     );
-    chartRef.current?.timeScale().fitContent();
+    const key = temiz.length ? `${temiz[0].time}` : null;
+    if (key !== fittedKeyRef.current) {
+      fittedKeyRef.current = key;
+      chartRef.current?.timeScale().fitContent();
+    }
   }, [candles]);
 
   useEffect(() => {
