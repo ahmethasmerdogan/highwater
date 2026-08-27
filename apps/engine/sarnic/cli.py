@@ -309,6 +309,17 @@ def tui(url: str = settings.api_base_url) -> None:
     run_tui(url)
 
 
+@app.command()
+def konsol(url: str = settings.api_base_url) -> None:
+    """Açılış konsolu — fastfetch tarzı durum kartı + canlı AL/SAT akışı.
+
+    Sistem açılışında bir terminalde çalışır; kural 4 gereği istemcidir.
+    """
+    from sarnic.tui.konsol import run_konsol
+
+    run_konsol(url)
+
+
 # --------------------------------------------------------------------------- #
 @app.command()
 def backfill(

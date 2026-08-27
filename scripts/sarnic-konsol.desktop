@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=SARNIÇ konsolu
+Comment=Açılışta durum kartı + canlı AL/SAT akışını ayrı pencerede açar (paper — canlı para yok)
+Exec=/home/ahmet/Projects/Sarnic_Proje/scripts/open-terminal.sh konsol
+Terminal=false
+Categories=Development;Finance;
+X-GNOME-Autostart-enabled=true
+# Servisler systemd altında zaten çalışıyor; pencere yalnızca bir istemcidir.
+X-GNOME-Autostart-Delay=8
+X-KDE-autostart-after=panel

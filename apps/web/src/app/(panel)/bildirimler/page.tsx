@@ -39,6 +39,8 @@ import {
   type Tone,
 } from "@/design";
 import { cx } from "@/design/cx";
+import { ICheck, IInfo, IWarning, IZap, Reveal } from "uicean";
+import { dateOnly } from "@/lib/format";
 
 const SEVERITY_TONE: Record<Severity, Tone> = {
   error: "down",
@@ -50,7 +52,11 @@ const SEVERITY_TONE: Record<Severity, Tone> = {
 export default function NotificationsPage() {
   const qc = useQueryClient();
   const [filter, setFilter] = useState<"hepsi" | "okunmamis">("hepsi");
+  const [severite, setSeverite] = useState<Severity | "hepsi">("hepsi");
   const [selected, setSelected] = useState<Notification | null>(null);
+  /* Okundu işaretlenen satır listeden POF diye kaybolmaz: önce yumuşakça
+     kapanır (0fr), sonra veri tazelenir. */
+  const [leaving, setLeaving] = useState<Set<number>>(new Set());
 
   const query = useQuery({
     queryKey: ["notifications"],
@@ -78,14 +84,43 @@ export default function NotificationsPage() {
 
   const all = useMemo(() => query.data ?? [], [query.data]);
   const unreadCount = all.filter((item) => !item.read_at).length;
-  const rows = useMemo(
-    () => (filter === "okunmamis" ? all.filter((item) => !item.read_at) : all),
-    [all, filter],
-  );
+  const rows = useMemo(() => {
+    let out = filter === "okunmamis" ? all.filter((item) => !item.read_at) : all;
+    if (severite !== "hepsi") {
+      out = out.filter((item) => humanizeNotification(item).severity === severite);
+    }
+    return out;
+  }, [all, filter, severite]);
+
+  /* Gün başlıkları: Bugün / Dün / tarih. Akış zaten yeniden eskiye. */
+  const gunlu = useMemo(() => {
+    const bugun = new Date();
+    const dun = new Date(bugun.getTime() - 86_400_000);
+    const ayni = (a: Date, b: Date) =>
+      a.getFullYear() === b.getFullYear() &&
+      a.getMonth() === b.getMonth() &&
+      a.getDate() === b.getDate();
+    const gruplar: { baslik: string; items: Notification[] }[] = [];
+    for (const item of rows) {
+      const d = new Date(item.created_at);
+      const baslik = ayni(d, bugun) ? "Bugün" : ayni(d, dun) ? "Dün" : dateOnly(item.created_at);
+      const son = gruplar[gruplar.length - 1];
+      if (son && son.baslik === baslik) son.items.push(item);
+      else gruplar.push({ baslik, items: [item] });
+    }
+    return gruplar;
+  }, [rows]);
 
   const open = (item: Notification) => {
     setSelected(item);
-    if (!item.read_at) markRead.mutate(item.id);
+    if (!item.read_at) {
+      if (filter === "okunmamis") {
+        setLeaving((prev) => new Set(prev).add(item.id));
+        window.setTimeout(() => markRead.mutate(item.id), 240);
+      } else {
+        markRead.mutate(item.id);
+      }
+    }
   };
 
   return (
@@ -133,14 +168,28 @@ export default function NotificationsPage() {
         </>
       }
     >
-      <Segmented
-        value={filter}
-        onChange={setFilter}
-        options={[
-          { value: "hepsi", label: "Hepsi", count: all.length },
-          { value: "okunmamis", label: "Okunmamış", count: unreadCount },
-        ]}
-      />
+      <div className="flex flex-wrap items-center gap-2">
+        <Segmented
+          value={filter}
+          onChange={setFilter}
+          options={[
+            { value: "hepsi", label: "Hepsi", count: all.length },
+            { value: "okunmamis", label: "Okunmamış", count: unreadCount },
+          ]}
+        />
+        <Segmented
+          value={severite}
+          onChange={setSeverite}
+          size="sm"
+          options={[
+            { value: "hepsi", label: "Tüm düzeyler" },
+            { value: "error", label: SEVERITY_LABEL.error },
+            { value: "warn", label: SEVERITY_LABEL.warn },
+            { value: "success", label: SEVERITY_LABEL.success },
+            { value: "info", label: SEVERITY_LABEL.info },
+          ]}
+        />
+      </div>
 
       <Panel padded={false}>
         <Async
@@ -157,70 +206,138 @@ export default function NotificationsPage() {
                 hint="Hepsini okumuşsunuz. Tümünü görmek için süzgeci değiştirin."
               />
             ) : (
-              <ul>
-                {rows.map((item) => {
-                  const human = humanizeNotification(item);
-                  const unread = !item.read_at;
-                  const tone = SEVERITY_TONE[human.severity];
-                  return (
-                    <li key={item.id} style={{ borderTop: "1px solid var(--sn-hairline)" }}>
-                      <button
-                        type="button"
-                        onClick={() => open(item)}
-                        className={cx(
-                          "sn-focus flex w-full gap-3 px-4 py-3 text-left",
-                          "transition-colors duration-[var(--sn-dur-1)] hover:bg-[var(--sn-sunken)]",
-                        )}
-                        style={unread ? { background: "var(--sn-brand-bg)" } : undefined}
-                      >
-                        <span
-                          aria-hidden
-                          className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full"
-                          style={{
-                            background:
-                              tone === "down"
-                                ? "var(--sn-down)"
-                                : tone === "warn"
-                                  ? "var(--sn-warn)"
-                                  : tone === "up"
-                                    ? "var(--sn-up)"
-                                    : "var(--sn-idle)",
-                          }}
-                        />
-                        <span className="min-w-0 flex-1">
-                          <span className="flex flex-wrap items-center gap-2">
-                            <span
-                              style={{
-                                fontSize: "var(--sn-t-body)",
-                                color: "var(--sn-ink)",
-                                fontWeight: unread ? 550 : 400,
-                              }}
-                            >
-                              {human.title}
-                            </span>
-                            <span style={{ fontSize: "var(--sn-t-micro)", color: "var(--sn-ink-3)" }}>
-                              {CATEGORY_LABEL[human.category]}
-                            </span>
-                            {unread && <Tag tone="brand">yeni</Tag>}
-                          </span>
-                          <span
-                            className="mt-0.5 line-clamp-2 block"
-                            style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)", lineHeight: 1.45 }}
+              <div>
+                {gunlu.map((grup) => (
+                  <Reveal key={grup.baslik}>
+                    <div
+                      className="sticky top-0 z-10 px-4 py-1.5"
+                      style={{
+                        background: "var(--sn-raised)",
+                        borderTop: "1px solid var(--sn-hairline)",
+                        borderBottom: "1px solid var(--sn-hairline)",
+                        fontSize: "var(--sn-t-label)",
+                        fontWeight: 600,
+                        letterSpacing: "0.04em",
+                        textTransform: "uppercase",
+                        color: "var(--sn-ink-3)",
+                      }}
+                    >
+                      {grup.baslik}
+                    </div>
+                    <ul>
+                      {grup.items.map((item) => {
+                        const human = humanizeNotification(item);
+                        const unread = !item.read_at;
+                        const tone = SEVERITY_TONE[human.severity];
+                        const kapaniyor = leaving.has(item.id);
+                        const renk =
+                          tone === "down"
+                            ? "var(--sn-down)"
+                            : tone === "warn"
+                              ? "var(--sn-warn)"
+                              : tone === "up"
+                                ? "var(--sn-up)"
+                                : "var(--sn-info)";
+                        const zemin =
+                          tone === "down"
+                            ? "var(--sn-down-bg)"
+                            : tone === "warn"
+                              ? "var(--sn-warn-bg)"
+                              : tone === "up"
+                                ? "var(--sn-up-bg)"
+                                : "var(--sn-sunken)";
+                        const Ikon =
+                          human.severity === "error"
+                            ? IZap
+                            : human.severity === "warn"
+                              ? IWarning
+                              : human.severity === "success"
+                                ? ICheck
+                                : IInfo;
+                        return (
+                          <li
+                            key={item.id}
+                            className="grid transition-[grid-template-rows,opacity] duration-[var(--sn-dur-3)] ease-[var(--sn-ease)]"
+                            style={{
+                              gridTemplateRows: kapaniyor ? "0fr" : "1fr",
+                              opacity: kapaniyor ? 0 : 1,
+                              borderTop: "1px solid var(--sn-hairline)",
+                            }}
                           >
-                            {item.body || human.detail || "—"}
-                          </span>
-                        </span>
-                        <span
-                          className="shrink-0 text-right whitespace-nowrap"
-                          style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}
-                        >
-                          {relative(item.created_at)}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
+                            <div className="overflow-hidden">
+                              <button
+                                type="button"
+                                onClick={() => open(item)}
+                                className={cx(
+                                  "sn-focus relative flex w-full items-start gap-3 px-4 py-3 text-left",
+                                  "transition-colors duration-[var(--sn-dur-1)] hover:bg-[var(--sn-sunken)]",
+                                )}
+                              >
+                                {/* Okunmamış rayı: sol kenarda 2px amber. */}
+                                {unread && (
+                                  <span
+                                    aria-hidden
+                                    className="absolute top-2 bottom-2 left-0 w-[2px] rounded-r"
+                                    style={{ background: "var(--sn-brand-solid)" }}
+                                  />
+                                )}
+                                <span
+                                  aria-hidden
+                                  className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--sn-r-sm)]"
+                                  style={{ background: zemin, color: renk }}
+                                >
+                                  <Ikon size={15} />
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                  <span className="flex flex-wrap items-center gap-2">
+                                    <span
+                                      style={{
+                                        fontSize: "var(--sn-t-body)",
+                                        color: "var(--sn-ink)",
+                                        fontWeight: unread ? 550 : 400,
+                                      }}
+                                    >
+                                      {human.title}
+                                    </span>
+                                    <span
+                                      style={{
+                                        fontSize: "var(--sn-t-micro)",
+                                        color: "var(--sn-ink-3)",
+                                      }}
+                                    >
+                                      {CATEGORY_LABEL[human.category]}
+                                    </span>
+                                  </span>
+                                  <span
+                                    className="mt-0.5 line-clamp-2 block"
+                                    style={{
+                                      fontSize: "var(--sn-t-caption)",
+                                      color: "var(--sn-ink-2)",
+                                      lineHeight: 1.45,
+                                    }}
+                                  >
+                                    {item.body || human.detail || "—"}
+                                  </span>
+                                </span>
+                                <span
+                                  className="shrink-0 text-right whitespace-nowrap"
+                                  style={{
+                                    fontSize: "var(--sn-t-caption)",
+                                    color: "var(--sn-ink-3)",
+                                    fontVariantNumeric: "tabular-nums",
+                                  }}
+                                >
+                                  {relative(item.created_at)}
+                                </span>
+                              </button>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </Reveal>
+                ))}
+              </div>
             )
           }
         </Async>

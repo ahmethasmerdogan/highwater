@@ -31,7 +31,8 @@ import { Page, GuideSection } from "@/shell/page";
 import { Button, Dot, Empty, Panel, Tag } from "@/design/primitives";
 import { ErrorBox, LoadingRows } from "@/design/state";
 import { InfoDot } from "@/design/explain";
-import { IFlame, IMedal, IPeak, ITrophy, SuccessCard } from "@/design/celebration";
+import { CelebrationReveal, SuccessCard } from "@/design/celebration";
+import { IStar, ITrendUp, IWallet, IZap, Reveal } from "uicean";
 import { Delta, Metric, NumCell, NumText } from "@/design/numeric";
 import { CurveChart, type CurveSeries } from "@/design/chart";
 import { Bar } from "@/design/viz";
@@ -219,8 +220,10 @@ export default function DashboardPage() {
     >
       {status && <SystemBanner status={status} stalePrices={stalePrices} />}
 
+      <Reveal>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Metric
+          animateOnMount
           label="Özsermaye"
           info={<InfoDot text="Nakit + açık pozisyonların anlık değeri. Sistemin şu anki toplam parası." />}
           value={live?.equity}
@@ -234,6 +237,7 @@ export default function DashboardPage() {
           sub={live ? `başlangıç ${money(live.capital)}` : "yükleniyor…"}
         />
         <Metric
+          animateOnMount
           label="Bugün gerçekleşen"
           info={<InfoDot text="Bugün KAPANAN işlemlerin net toplamı — cebe girdi, artık fiyatla değişmez." />}
           value={live?.realized_today}
@@ -248,6 +252,7 @@ export default function DashboardPage() {
           sub="kapanmış işlemler — cebe girdi"
         />
         <Metric
+          animateOnMount
           label="Gerçekleşmemiş"
           info={<InfoDot text="Açık pozisyonların anlık kâr/zararı. Pozisyon kapanana kadar her barla değişir — cebe girmiş sayılmaz." />}
           value={live?.unrealized_pnl}
@@ -262,6 +267,7 @@ export default function DashboardPage() {
           sub={live ? `${num(live.open_positions, 0)} açık pozisyon` : undefined}
         />
         <Metric
+          animateOnMount
           label="Maruziyet"
           info={<InfoDot id="maruziyet" />}
           value={exposurePct}
@@ -273,6 +279,7 @@ export default function DashboardPage() {
           }
         />
       </div>
+      </Reveal>
 
       <GununKarnesi />
 
@@ -400,43 +407,46 @@ function GununKarnesi() {
       title="Günün karnesi"
       description="Bugün kapanan işlemler. Kutlama yalnızca cebe gireni sayar — açık pozisyonların kâğıt üstü değeri burada yoktur."
     >
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <SuccessCard
-          icon={<ITrophy />}
-          label="Bugün cebe giren"
-          value={karne.net}
-          format={(v) => `${(v ?? 0) > 0 ? "+" : ""}${money(v)}`}
-          tone={karne.net > 0 ? "win" : karne.net < 0 ? "loss" : "flat"}
-          sub={`${num(karne.islem, 0)} kapanan işlem`}
-        />
-        <SuccessCard
-          icon={<IMedal />}
-          label="En iyi işlem"
-          value={karne.enIyi.pnl}
-          format={(v) => `${(v ?? 0) > 0 ? "+" : ""}${money(v)}`}
-          tone={karne.enIyi.pnl > 0 ? "win" : "loss"}
-          sub={`${karne.enIyi.symbol} · ${karne.enIyi.pnl_r > 0 ? "+" : ""}${num(karne.enIyi.pnl_r, 2)}R`}
-          delay={80}
-        />
-        <SuccessCard
-          icon={<IPeak />}
-          label="İsabet"
-          value={karne.isabet}
-          format={(v) => pct(v, 0)}
-          tone={karne.isabet >= 0.5 ? "win" : "flat"}
-          sub={`${num(karne.kazanan, 0)} / ${num(karne.islem, 0)} işlem kârla kapandı`}
-          delay={160}
-        />
-        <SuccessCard
-          icon={<IFlame />}
-          label="Kazanç serisi"
-          value={karne.seri}
-          format={(v) => num(v, 0)}
-          tone={karne.seri >= 3 ? "win" : "flat"}
-          sub={karne.seri > 0 ? "üst üste kârlı kapanış" : "seri kırıldı — sıradaki işlem yeni başlangıç"}
-          delay={240}
-        />
-      </div>
+      <CelebrationReveal>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <SuccessCard
+            icon={<IWallet size={16} />}
+            label="Bugün cebe giren"
+            value={karne.net}
+            format={(v) => `${(v ?? 0) > 0 ? "+" : ""}${money(v)}`}
+            tone={karne.net > 0 ? "win" : karne.net < 0 ? "loss" : "flat"}
+            sub={`${num(karne.islem, 0)} kapanan işlem`}
+          />
+          <SuccessCard
+            icon={<IStar size={16} />}
+            label="En iyi işlem"
+            value={karne.enIyi.pnl}
+            format={(v) => `${(v ?? 0) > 0 ? "+" : ""}${money(v)}`}
+            tone={karne.enIyi.pnl > 0 ? "win" : "loss"}
+            sub={`${karne.enIyi.symbol} · ${karne.enIyi.pnl_r > 0 ? "+" : ""}${num(karne.enIyi.pnl_r, 2)}R`}
+          />
+          <SuccessCard
+            icon={<ITrendUp size={16} />}
+            label="İsabet"
+            value={karne.isabet}
+            format={(v) => pct(v, 0)}
+            tone={karne.isabet >= 0.5 ? "win" : "flat"}
+            sub={`${num(karne.kazanan, 0)} / ${num(karne.islem, 0)} işlem kârla kapandı`}
+          />
+          <SuccessCard
+            icon={<IZap size={16} />}
+            label="Kazanç serisi"
+            value={karne.seri}
+            format={(v) => num(v, 0)}
+            tone={karne.seri >= 3 ? "win" : "flat"}
+            sub={
+              karne.seri > 0
+                ? "üst üste kârlı kapanış"
+                : "seri kırıldı — sıradaki işlem yeni başlangıç"
+            }
+          />
+        </div>
+      </CelebrationReveal>
       {kayipGunu && (
         <p
           className="mt-3 pl-3"

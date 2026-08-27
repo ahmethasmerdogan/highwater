@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { demoCredentials, devCredentials, totpNow } from "@/lib/dev-auth";
+import { LogoTile } from "@/design/logo";
 import { Alert, Button, FormField, Tag, TextInput, TooltipHost } from "@/design";
 
 export default function LoginPage() {
@@ -126,17 +127,7 @@ export default function LoginPage() {
       >
         <div className="w-full max-w-sm">
           <div className="mb-5 flex items-center gap-2.5">
-            <span
-              aria-hidden
-              className="flex h-8 w-8 items-center justify-center rounded-[var(--sn-r-sm)] font-bold"
-              style={{
-                background: "var(--sn-brand-solid)",
-                color: "var(--sn-on-brand)",
-                fontSize: 15,
-              }}
-            >
-              S
-            </span>
+            <LogoTile size={32} />
             <div className="min-w-0">
               <div
                 className="font-semibold"

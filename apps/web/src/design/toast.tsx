@@ -22,9 +22,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { cx } from "./cx";
 import { IClose } from "./icons";
 import { IconButton, type Tone } from "./primitives";
+import { ICheck, IInfo, IWarning, IZap } from "uicean";
+import { cx } from "./cx";
 
 export interface ToastInput {
   tone?: "success" | "danger" | "warning" | "info";
@@ -34,6 +35,8 @@ export interface ToastInput {
 
 interface ToastItem extends ToastInput {
   id: number;
+  /** Çıkış animasyonu oynuyor; süre dolunca gerçekten silinir. */
+  leaving?: boolean;
 }
 
 const Ctx = createContext<{ push: (input: ToastInput) => void }>({ push: () => {} });
@@ -60,12 +63,20 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
 
   const dismiss = useCallback((id: number) => {
-    setItems((list) => list.filter((item) => item.id !== id));
+    /* POF diye silinmez: önce çıkış animasyonu (aşağı kayar, söner),
+       süre dolunca DOM'dan düşer. Hareket azaltılmışsa global kural
+       süreyi 1 ms'ye indirir — bekletme hissedilmez. */
+    setItems((list) =>
+      list.map((item) => (item.id === id ? { ...item, leaving: true } : item)),
+    );
     const timer = timers.current.get(id);
     if (timer) {
       clearTimeout(timer);
       timers.current.delete(id);
     }
+    setTimeout(() => {
+      setItems((list) => list.filter((item) => item.id !== id));
+    }, 220);
   }, []);
 
   const arm = useCallback(
@@ -110,14 +121,28 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       >
         {items.map((item) => {
           const tone = TONE[item.tone ?? "info"];
+          const zemin: Record<Tone, string> = {
+            up: "var(--sn-up-bg)",
+            down: "var(--sn-down-bg)",
+            warn: "var(--sn-warn-bg)",
+            info: "var(--sn-info-bg)",
+            brand: "var(--sn-brand-bg)",
+            neutral: "var(--sn-sunken)",
+          };
+          const Ikon =
+            item.tone === "success"
+              ? ICheck
+              : item.tone === "danger"
+                ? IZap
+                : item.tone === "warning"
+                  ? IWarning
+                  : IInfo;
           return (
             <div
               key={item.id}
               className={cx(
-                "sn-fade-up pointer-events-auto flex gap-2.5 rounded-[var(--sn-r-md)] p-3",
-                /* Başarı bildirimi hafif amber ışıltı taşır — kutlama
-                   katmanının dili. Hata/uyarı sade kalır. */
-                item.tone === "success" && "sn-glow",
+                "pointer-events-auto flex gap-2.5 rounded-[var(--sn-r-md)] p-3",
+                item.leaving ? "sn-toast-out" : "sn-fade-up",
               )}
               style={{ background: "var(--sn-overlay)", boxShadow: "var(--sn-shadow-pop)" }}
               onMouseEnter={() => {
@@ -131,9 +156,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             >
               <span
                 aria-hidden
-                className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full"
-                style={{ background: COLOR[tone] }}
-              />
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--sn-r-sm)]"
+                style={{ background: zemin[tone], color: COLOR[tone] }}
+              >
+                <Ikon size={14} />
+              </span>
               <div className="min-w-0 flex-1">
                 <div
                   className="font-medium"

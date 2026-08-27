@@ -342,17 +342,32 @@ export function DataGrid<T>({
                         }
                       >
                         {/* Gerçek <button>: span klavyeden sıralanamıyordu.
-                            Görsel fark yok — düğme sıfırlanmış. */}
+                            `all: unset` başlığın tipografisini birebir korur —
+                            önceki sıfırlama (font-[inherit]) tarayıcının
+                            disabled rengini ve buton metriklerini sızdırıyor,
+                            başlık satırı "bozuk" görünüyordu. */}
                         <button
                           type="button"
                           disabled={!header.column.getCanSort()}
-                          className={cx(
-                            "inline-flex items-center gap-1 border-0 bg-transparent p-0 font-[inherit] text-[inherit] uppercase",
-                            header.column.getCanSort() && "cursor-pointer",
-                          )}
-                          style={{ color: "inherit", letterSpacing: "inherit" }}
+                          className="sn-focus"
+                          style={{
+                            all: "unset",
+                            outline: "revert-layer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 4,
+                            font: "inherit",
+                            color: "inherit",
+                            letterSpacing: "inherit",
+                            textTransform: "inherit",
+                            cursor: header.column.getCanSort() ? "pointer" : "default",
+                          }}
                           onClick={header.column.getToggleSortingHandler()}
-                          title={header.column.getCanSort() ? "Sırala · Shift ile ikincil sıralama" : undefined}
+                          title={
+                            header.column.getCanSort()
+                              ? "Sırala · Shift ile ikincil sıralama"
+                              : undefined
+                          }
                         >
                           {column?.hint ? (
                             <Tip content={column.hint}>
@@ -367,10 +382,14 @@ export function DataGrid<T>({
                             (header.column.columnDef.header as string)
                           )}
                           {sorted && (
-                            <span aria-hidden style={{ color: "var(--sn-brand)" }}>
+                            <span
+                              aria-hidden
+                              className="inline-flex items-center"
+                              style={{ color: "var(--sn-brand)", fontSize: 9, lineHeight: 1 }}
+                            >
                               {sorted === "asc" ? "▲" : "▼"}
                               {sorting.length > 1 && (
-                                <span className="sn-num" style={{ fontSize: 9 }}>
+                                <span className="sn-num" style={{ fontSize: 9, marginLeft: 2 }}>
                                   {order + 1}
                                 </span>
                               )}

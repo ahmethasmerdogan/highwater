@@ -48,6 +48,14 @@ tui:       ## Terminal arayüzü (bu pencerede)
 terminal:  ## Canlı akışı AYRI bir pencerede aç (TUI)
 	scripts/open-terminal.sh tui
 
+konsol:    ## Fastfetch tarzı durum kartı + canlı AL/SAT akışı (ayrı pencere)
+	scripts/open-terminal.sh konsol
+
+konsol-autostart: ## Oturum açılışında konsolu otomatik aç
+	mkdir -p $(HOME)/.config/autostart
+	cp scripts/sarnic-konsol.desktop $(HOME)/.config/autostart/
+	@echo "Kuruldu: $(HOME)/.config/autostart/sarnic-konsol.desktop"
+
 terminal-log: ## Servis loglarını ayrı bir pencerede aç
 	scripts/open-terminal.sh log
 

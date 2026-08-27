@@ -8,10 +8,11 @@
 # gerekiyordu. Bu betik o pencereyi açar; **pencereyi kapatmak işlemleri
 # durdurmaz.**
 #
-#   kullanım: scripts/open-terminal.sh [tui|log|shell]
-#     tui   (varsayılan) Textual arayüzü — API'ye bağlanır, dört panel
-#     log   supervisor + worker + marketdata loglarının birleşik akışı
-#     shell motor sanal ortamı yüklü bir kabuk
+#   kullanım: scripts/open-terminal.sh [tui|konsol|log|shell]
+#     tui    (varsayılan) Textual arayüzü — beş ekranlı terminal
+#     konsol fastfetch tarzı durum kartı + canlı AL/SAT akışı
+#     log    supervisor + worker + marketdata loglarının birleşik akışı
+#     shell  motor sanal ortamı yüklü bir kabuk
 #
 # Terminal emülatörü otomatik seçilir; `SARNIC_TERMINAL` ile ezilebilir.
 set -euo pipefail
@@ -26,6 +27,10 @@ case "$MODE" in
   tui)
     INNER="cd '$ROOT/apps/engine' && exec uv run python -m sarnic.cli tui"
     TITLE="SARNIÇ · terminal arayüzü"
+    ;;
+  konsol)
+    INNER="cd '$ROOT/apps/engine' && exec uv run python -m sarnic.cli konsol"
+    TITLE="SARNIÇ · canlı akış"
     ;;
   log)
     # `--follow` üç birimi tek akışta birleştirir; `-n 200` açılışta bağlamı verir.

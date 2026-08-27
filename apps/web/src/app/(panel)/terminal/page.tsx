@@ -11,14 +11,18 @@
  * yoğun bir veri ızgarasını telefona sıkıştırmak ikisini de bozar.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DockviewReact, type DockviewApi, type IDockviewPanelProps } from "dockview-react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Marquee } from "uicean";
 import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
 import { parseCommand, type PanelKind } from "@/lib/terminal-commands";
 import { Button, Chip, InfoDot } from "@/design";
+import { LogoMark } from "@/design/logo";
+import { num, pctSigned } from "@/lib/format";
+import type { Position, Score, SystemStatus } from "@/lib/api";
 import {
   CalibrationPanel,
   ChartPanel,
@@ -103,6 +107,144 @@ const TEMPLATES: {
     ],
   },
 ];
+
+/** Canlı saat — Bloomberg köşe saati. Yerel + UTC, saniyeli. */
+function TerminalClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const yerel = now.toLocaleTimeString("tr-TR", { hour12: false });
+  const utc = now.toLocaleTimeString("tr-TR", { hour12: false, timeZone: "UTC" });
+  return (
+    <span
+      className="sn-num flex items-baseline gap-2"
+      style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}
+    >
+      <span style={{ color: "var(--sn-ink)" }}>{yerel}</span>
+      <span style={{ color: "var(--sn-ink-3)" }}>UTC {utc}</span>
+    </span>
+  );
+}
+
+/** Canlı bant: açık pozisyonlar + en yüksek puanlar. Veri gerçektir. */
+function TerminalTape() {
+  const positions = useQuery({
+    queryKey: ["positions", "tape"],
+    queryFn: () => api.get<Position[]>("/positions", { status_filter: "OPEN" }),
+    refetchInterval: 20_000,
+  });
+  const scores = useQuery({
+    queryKey: ["scores", "tape"],
+    queryFn: () => api.get<Score[]>("/scores", { limit: 10 }),
+    refetchInterval: 60_000,
+  });
+
+  const items = useMemo(() => {
+    const out: { key: string; node: React.ReactNode }[] = [];
+    for (const p of positions.data ?? []) {
+      const pct = p.unrealized_pct ?? null;
+      out.push({
+        key: `p-${p.id}`,
+        node: (
+          <span className="sn-num flex items-baseline gap-1.5">
+            <span style={{ color: "var(--sn-ink)" }}>{p.symbol}</span>
+            <span
+              style={{
+                color:
+                  pct === null
+                    ? "var(--sn-ink-3)"
+                    : pct >= 0
+                      ? "var(--sn-up)"
+                      : "var(--sn-down)",
+              }}
+            >
+              {pct === null ? "—" : pctSigned(pct)}
+            </span>
+          </span>
+        ),
+      });
+    }
+    for (const sc of scores.data ?? []) {
+      out.push({
+        key: `s-${sc.symbol}`,
+        node: (
+          <span className="sn-num flex items-baseline gap-1.5">
+            <span style={{ color: "var(--sn-ink-2)" }}>{sc.symbol}</span>
+            <span style={{ color: "var(--sn-brand)" }}>{num(sc.score, 1)}</span>
+          </span>
+        ),
+      });
+    }
+    return out;
+  }, [positions.data, scores.data]);
+
+  if (items.length === 0) return null;
+  return (
+    <div className="sn-terminal-tape px-2 py-1">
+      <Marquee duration={40}>
+        {items.map((item) => (
+          <span key={item.key} className="flex items-center gap-10">
+            <span
+              className="flex items-center gap-2"
+              style={{ fontSize: "var(--sn-t-caption)" }}
+            >
+              {item.node}
+            </span>
+            <span aria-hidden style={{ color: "var(--sn-ink-4)", fontSize: 8 }}>
+              ◆
+            </span>
+          </span>
+        ))}
+      </Marquee>
+    </div>
+  );
+}
+
+/** Alt durum çubuğu — sistemin nabzı, Bloomberg'in durum satırı. */
+function TerminalStatusLine() {
+  const status = useQuery({
+    queryKey: ["system-status", "terminal"],
+    queryFn: () => api.get<SystemStatus>("/system/status"),
+    refetchInterval: 30_000,
+  });
+  const s = status.data;
+  return (
+    <span
+      className="sn-num flex items-center gap-4"
+      style={{ fontSize: "var(--sn-t-micro)", color: "var(--sn-ink-3)" }}
+    >
+      <span>
+        havuz <span style={{ color: "var(--sn-ink)" }}>{s?.universe_size ?? "—"}</span>
+      </span>
+      <span>
+        bot{" "}
+        <span style={{ color: "var(--sn-ink)" }}>
+          {s ? `${s.running_bots}/${s.total_bots}` : "—"}
+        </span>
+      </span>
+      <span>
+        alarm{" "}
+        <span style={{ color: (s?.alarms ?? 0) > 0 ? "var(--sn-warn)" : "var(--sn-ink)" }}>
+          {s?.alarms ?? "—"}
+        </span>
+      </span>
+      {s?.market_data_stale ? (
+        <span style={{ color: "var(--sn-down)" }}>VERİ BAYAT</span>
+      ) : (
+        <span className="flex items-center gap-1.5" style={{ color: "var(--sn-up)" }}>
+          <span
+            aria-hidden
+            className="inline-block h-1.5 w-1.5 rounded-full"
+            style={{ background: "var(--sn-up)" }}
+          />
+          CANLI
+        </span>
+      )}
+    </span>
+  );
+}
 
 export default function TerminalPage() {
   const router = useRouter();
@@ -241,7 +383,7 @@ export default function TerminalPage() {
   };
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="sn-terminal flex h-full flex-col">
       {/* Dar ekran uyarısı */}
       <div
         className="px-4 py-3 lg:hidden"
@@ -260,13 +402,38 @@ export default function TerminalPage() {
       </div>
 
       <div className="hidden flex-1 flex-col lg:flex">
-        {/* Komut satırı */}
+        {/* Üst şerit: marka · komut · saat — Bloomberg chrome'u */}
         <div
-          className="flex flex-wrap items-center gap-3 px-4 py-2"
+          className="flex flex-wrap items-center gap-3 px-3 py-1.5"
           style={{ background: "var(--sn-panel)", borderBottom: "1px solid var(--sn-hairline)" }}
         >
-          <form onSubmit={submit} className="flex min-w-72 flex-1 items-center gap-2">
-            <span style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink-3)" }}>›</span>
+          <span
+            className="flex items-center gap-2 pr-2"
+            style={{ borderRight: "1px solid var(--sn-hairline)" }}
+          >
+            <LogoMark size={18} className="text-[var(--sn-brand)]" />
+            <span
+              className="font-semibold"
+              style={{
+                fontSize: "var(--sn-t-caption)",
+                color: "var(--sn-brand)",
+                letterSpacing: "0.08em",
+              }}
+            >
+              SARNIÇ TERMİNAL
+            </span>
+          </span>
+          <form
+            onSubmit={submit}
+            className="sn-terminal-cmd flex min-w-72 flex-1 items-center gap-2 rounded-[var(--sn-r-sm)] px-2.5 py-1"
+            style={{ background: "var(--sn-sunken)", border: "1px solid var(--sn-border)" }}
+          >
+            <span
+              className="sn-num"
+              style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-brand)" }}
+            >
+              &gt;
+            </span>
             <input
               ref={inputRef}
               value={command}
@@ -281,7 +448,7 @@ export default function TerminalPage() {
             <kbd
               className="sn-num rounded-[var(--sn-r-xs)] px-1.5"
               style={{
-                background: "var(--sn-sunken)",
+                background: "var(--sn-raised)",
                 color: "var(--sn-ink-3)",
                 fontSize: "var(--sn-t-micro)",
               }}
@@ -289,6 +456,7 @@ export default function TerminalPage() {
               /
             </kbd>
           </form>
+          <TerminalClock />
 
           <div className="flex items-center gap-1.5">
             <span
@@ -339,6 +507,9 @@ export default function TerminalPage() {
           </div>
         )}
 
+        {/* Canlı bant */}
+        <TerminalTape />
+
         {/* Çalışma alanı */}
         <div className="relative flex-1">
           <DockviewReact
@@ -355,9 +526,9 @@ export default function TerminalPage() {
           )}
         </div>
 
-        {/* Komut yardımı */}
+        {/* Alt şerit: tuş takımı + sistem nabzı */}
         <div
-          className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-1.5"
+          className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5"
           style={{
             background: "var(--sn-panel)",
             borderTop: "1px solid var(--sn-hairline)",
@@ -365,22 +536,48 @@ export default function TerminalPage() {
             color: "var(--sn-ink-3)",
           }}
         >
-          {[
-            ["SEMBOL G [dilim]", "grafik"],
-            ["SEMBOL SC", "puan kartı"],
-            ["SEMBOL SR", "destek/direnç"],
-            ["SCAN 80", "puanı ≥80 olanlar"],
-            ["POOL · POS · ORD · LOG · CAL", "paneller"],
-          ].map(([code, label]) => (
-            <span key={code}>
-              <span className="sn-num" style={{ color: "var(--sn-ink-2)" }}>
-                {code}
-              </span>{" "}
-              {label}
-            </span>
+          {(
+            [
+              ["POS", "positions", "Pozisyonlar"],
+              ["ORD", "orders", "Emirler"],
+              ["POOL", "pool", "Havuz"],
+              ["LOG", "logs", "Log akışı"],
+              ["CAL", "calibration", "Kalibrasyon"],
+            ] as const
+          ).map(([kod, kind, title]) => (
+            <button
+              key={kod}
+              type="button"
+              onClick={() => addPanel(kind, title)}
+              className="sn-num rounded-[3px] px-1.5 py-0.5 transition-colors duration-[var(--sn-dur-1)]"
+              style={{
+                background: "var(--sn-raised)",
+                border: "1px solid var(--sn-border)",
+                color: "var(--sn-brand)",
+                cursor: "pointer",
+              }}
+              title={`${title} panelini aç`}
+            >
+              {kod}
+            </button>
           ))}
+          <span>
+            <span className="sn-num" style={{ color: "var(--sn-ink-2)" }}>
+              SEMBOL G · SC · SR
+            </span>{" "}
+            grafik / puan kartı / destek-direnç
+          </span>
+          <span>
+            <span className="sn-num" style={{ color: "var(--sn-ink-2)" }}>
+              SCAN 80
+            </span>{" "}
+            puanı ≥80 olanlar
+          </span>
           <span style={{ color: "var(--sn-warn)" }}>
             <span className="sn-num">KILL</span> acil durdurma (onay ister)
+          </span>
+          <span className="ml-auto">
+            <TerminalStatusLine />
           </span>
         </div>
       </div>

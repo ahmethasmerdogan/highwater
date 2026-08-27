@@ -25,22 +25,37 @@ def _to_out(snap: UniverseSnapshot) -> SnapshotOut:
     )
 
 
+VALID_MARKETS = {"CRYPTO", "BIST", "US"}
+
+
 @router.get("/current", response_model=SnapshotDetail)
-async def current(session: SessionDep, user: CurrentUser) -> SnapshotDetail:
-    snap = await UniverseEngine().latest_snapshot(session)
+async def current(
+    session: SessionDep, user: CurrentUser, market: str = "CRYPTO"
+) -> SnapshotDetail:
+    """Pazarın güncel havuzu. Havuz pazar başınadır — TRY cirosu USD
+    cirosuyla aynı sıralamaya girmez; panel pazarları ayrı sekmelerde gösterir."""
+    if market not in VALID_MARKETS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "market CRYPTO, BIST veya US olmalı.")
+    snap = await UniverseEngine().latest_snapshot(session, market=market)
     if snap is None:
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,
-            "Henüz havuz oluşturulmadı. Yönetici panelinden yenileme başlatın.",
+            "Bu pazar için henüz havuz oluşturulmadı."
+            + (" Yönetici panelinden yenileme başlatın." if market == "CRYPTO" else ""),
         )
     return SnapshotDetail(**_to_out(snap).model_dump(), symbols=snap.symbols, funnel=snap.funnel)
 
 
 @router.get("/snapshots", response_model=list[SnapshotOut])
-async def snapshots(session: SessionDep, user: CurrentUser, limit: int = 50) -> list[SnapshotOut]:
+async def snapshots(
+    session: SessionDep, user: CurrentUser, limit: int = 50, market: str = "CRYPTO"
+) -> list[SnapshotOut]:
+    if market not in VALID_MARKETS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "market CRYPTO, BIST veya US olmalı.")
     rows = (
         await session.execute(
             select(UniverseSnapshot)
+            .where(UniverseSnapshot.market == market)
             .order_by(UniverseSnapshot.taken_at.desc())
             .limit(min(limit, 200))
         )

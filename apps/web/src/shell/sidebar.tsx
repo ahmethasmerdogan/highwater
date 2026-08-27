@@ -16,6 +16,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { cx } from "@/design/cx";
 import { Dot, Tip } from "@/design/primitives";
+import { LogoTile, LogoWordmark } from "@/design/logo";
 import { ICaret } from "@/design/icons";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -69,26 +70,8 @@ export function Sidebar() {
       }}
     >
       {/* ---- Marka ------------------------------------------------- */}
-      <div className={cx("flex h-12 items-center gap-2.5", rail ? "justify-center px-0" : "px-3")}>
-        <span
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--sn-r-sm)] font-semibold"
-          style={{ background: "var(--sn-brand-solid)", color: "var(--sn-on-brand)", fontSize: 13 }}
-        >
-          S
-        </span>
-        {!rail && (
-          <span className="min-w-0">
-            <span
-              className="block truncate font-semibold"
-              style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)", letterSpacing: "0.02em" }}
-            >
-              SARNIÇ
-            </span>
-            <span className="block truncate" style={{ fontSize: 10, color: "var(--sn-ink-3)" }}>
-              kağıt üstü işlem
-            </span>
-          </span>
-        )}
+      <div className={cx("flex h-12 items-center", rail ? "justify-center px-0" : "px-3")}>
+        {rail ? <LogoTile /> : <LogoWordmark sub="kağıt üstü işlem" />}
       </div>
 
       {/* ---- Gruplar ----------------------------------------------- */}

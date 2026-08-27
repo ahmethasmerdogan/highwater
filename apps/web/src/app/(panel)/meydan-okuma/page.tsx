@@ -270,7 +270,9 @@ export default function ChallengePage() {
                 progress={ilerleme}
                 storageKey="meydan-seviye"
                 milestones={SEVIYELER.map((tl, i) => ({
-                  label: i === 0 ? `${num(tl / 1000, 0)}k ₺` : `SEVİYE ${i} · ${num(tl / 1000, 0)}k ₺`,
+                  /* Kısa etiket: mutlak konumlu etiketler uzun metinle
+                     birbirine giriyordu. */
+                  label: i === 0 ? "20k ₺" : `S${i} · ${num(tl / 1000, 0)}k`,
                   at: (tl - BASLANGIC_TRY) / (HEDEF_TRY - BASLANGIC_TRY),
                 }))}
               />

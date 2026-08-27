@@ -276,10 +276,17 @@ export function TextMetric({
         {value}
       </div>
       {sub && (
-        /* Altyazılar sık sık sayı taşır ("ortalama kayma 6,9 bp"). Kural 6
-           altyazıyı da kapsar; kabın kendisi sn-num alır — harfler için
-           zararsız, rakamlar için hizalayıcı. */
-        <div className="sn-num mt-1" style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}>
+        /* Yazı mono OLMAZ — mono yalnız sayının kendisine aittir (kural 6
+           rakamı hizalar, cümleyi değil). Altyazı orantılı fontta kalır;
+           içindeki rakamlar tabular-nums özelliğiyle hizalanır. */
+        <div
+          className="mt-1"
+          style={{
+            fontSize: "var(--sn-t-caption)",
+            color: "var(--sn-ink-3)",
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
           {sub}
         </div>
       )}
@@ -338,7 +345,10 @@ export function Metric({
         {delta}
       </div>
       {sub && (
-        <div className="sn-num mt-1 text-[length:var(--sn-t-caption)]" style={{ color: "var(--sn-ink-3)" }}>
+        <div
+          className="mt-1 text-[length:var(--sn-t-caption)]"
+          style={{ color: "var(--sn-ink-3)", fontVariantNumeric: "tabular-nums" }}
+        >
           {sub}
         </div>
       )}

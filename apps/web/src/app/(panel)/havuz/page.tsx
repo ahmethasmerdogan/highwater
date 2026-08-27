@@ -38,6 +38,7 @@ import {
   Metric,
   NumText,
   Panel,
+  Segmented,
   Tag,
   TextInput,
   TextMetric,
@@ -48,14 +49,32 @@ import { DataGrid } from "@/grid/data-grid";
 import type { GridColumn } from "@/grid/types";
 import { cx } from "@/design/cx";
 
+type Market = "CRYPTO" | "BIST" | "US";
+
+const MARKET_OPTIONS: { value: Market; label: string }[] = [
+  { value: "CRYPTO", label: "Kripto" },
+  { value: "BIST", label: "BIST" },
+  { value: "US", label: "ABD" },
+];
+
+const MARKET_SUMMARY: Record<Market, string> = {
+  CRYPTO:
+    "Sistemin işlem yapmayı düşündüğü coinler. Binance'teki her coin değil — likidite ve ölçülebilirlik filtrelerinden geçenler.",
+  BIST: "Borsa İstanbul havuzu — günlük barla çalışır, veri İş Yatırım'dan gelir. Hacimler TL'dir.",
+  US: "ABD hisse havuzu (NYSE/NASDAQ) — günlük barla çalışır. Hacimler dolardır.",
+};
+
 export default function UniversePage() {
   const { can } = useAuth();
   const qc = useQueryClient();
   const [selected, setSelected] = useState<UniverseSymbol | null>(null);
+  /* Havuz pazar başınadır: TRY cirosu USD cirosuyla aynı sıralamaya
+     girmez. Sekme yalnızca görünümü değiştirir; karar yolu zaten ayrı. */
+  const [market, setMarket] = useState<Market>("CRYPTO");
 
   const snapshot = useQuery({
-    queryKey: ["universe-current"],
-    queryFn: () => api.get<SnapshotDetail>("/universe/current"),
+    queryKey: ["universe-current", market],
+    queryFn: () => api.get<SnapshotDetail>("/universe/current", { market }),
     refetchInterval: 60_000,
   });
 
@@ -71,18 +90,21 @@ export default function UniversePage() {
   return (
     <Page
       title="Havuz"
-      summary="Sistemin işlem yapmayı düşündüğü coinler. Binance'teki her coin değil — likidite ve ölçülebilirlik filtrelerinden geçenler."
+      summary={MARKET_SUMMARY[market]}
       actions={
-        can("TRADER") ? (
-          <Button
-            size="sm"
-            variant="primary"
-            disabled={refresh.isPending}
-            onClick={() => refresh.mutate()}
-          >
-            {refresh.isPending ? "Yenileniyor…" : "Havuzu yenile"}
-          </Button>
-        ) : undefined
+        <span className="flex items-center gap-2">
+          <Segmented value={market} onChange={setMarket} options={MARKET_OPTIONS} size="sm" />
+          {can("TRADER") && market === "CRYPTO" && (
+            <Button
+              size="sm"
+              variant="primary"
+              disabled={refresh.isPending}
+              onClick={() => refresh.mutate()}
+            >
+              {refresh.isPending ? "Yenileniyor…" : "Havuzu yenile"}
+            </Button>
+          )}
+        </span>
       }
       guide={
         <>
@@ -159,7 +181,7 @@ export default function UniversePage() {
             </div>
 
             <Funnel snap={snap} />
-            <Turnover />
+            <Turnover market={market} />
             <SymbolTable snap={snap} onSelect={setSelected} />
             {can() && <Blacklist />}
             <SymbolDrawer symbol={selected} onClose={() => setSelected(null)} />
@@ -181,10 +203,10 @@ export default function UniversePage() {
  * geçmişi hiç göstermiyordu. Devir hızı bir sağlık ölçüsüdür: her turda
  * onlarca sembol değişiyorsa filtreler gürültüyü ölçüyor demektir.
  */
-function Turnover() {
+function Turnover({ market }: { market: Market }) {
   const q = useQuery({
-    queryKey: ["universe-snapshots"],
-    queryFn: () => api.get<SnapshotSummary[]>("/universe/snapshots", { limit: 100 }),
+    queryKey: ["universe-snapshots", market],
+    queryFn: () => api.get<SnapshotSummary[]>("/universe/snapshots", { limit: 100, market }),
     refetchInterval: 300_000,
   });
   const seriler = useMemo<CurveSeries[]>(() => {

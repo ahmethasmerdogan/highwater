@@ -1,21 +1,23 @@
 "use client";
 
 /**
- * Kutlama katmanı — başarı kartları, konfeti, kilometre taşları.
+ * Kutlama katmanı — v2, uicean diliyle.
  *
- * DÜRÜSTLÜK SÖZLEŞMESİ (CLAUDE.md "panel dürüstçe göstermek zorundadır"):
- * - Kutlama yalnızca GERÇEKLEŞMİŞ kâra ateşlenir. Gerçekleşmemiş k/z
- *   havai fişek görmez — o daha cebe girmedi.
- * - Kayıp saklanmaz ve küçültülmez: kayıp kartı sakin, net ve kırmızıdır;
- *   utanç animasyonu da yoktur, kutlama da.
- * - Yeşil/kırmızı yalnızca yön demektir; parıltıyı marka amber'i taşır.
- * - `prefers-reduced-motion` her şeyi kapatır: konfeti hiç çizilmez.
+ * İlk sürüm parıltıyı tek karta yığmıştı (akan gradyan çerçeve, madalya
+ * animasyonu, kademeli pop) — ucuz duruyordu. uicean'ın kuralı düz ve
+ * gölgesizdir: hareket İÇERİKTE yaşar (sayaçla dolan değer, tek Reveal),
+ * süslemede değil.
+ *
+ * DÜRÜSTLÜK SÖZLEŞMESİ değişmedi:
+ * - Kutlama yalnızca GERÇEKLEŞMİŞ kâra ve gerçek eşiklere ateşlenir.
+ * - Kayıp saklanmaz; kayıp kartı sakin, net, kırmızıdır.
+ * - `prefers-reduced-motion` her şeyi kapatır; konfeti hiç çizilmez.
  */
 
 import { useEffect, useRef } from "react";
+import { Reveal } from "uicean";
 import { cx } from "@/design/cx";
 import { Num } from "@/design/numeric";
-import { useReducedMotion } from "@/design/motion";
 import { useLive } from "@/lib/ws";
 import { toast } from "@/lib/toast";
 import { money, num } from "@/lib/format";
@@ -40,10 +42,10 @@ interface Particle {
 }
 
 /**
- * Ekranın üstünden bir konfeti patlaması. `strength` parça sayısını ölçekler.
+ * Bir konfeti patlaması. `strength` parça sayısını ölçekler.
  *
- * Kendi canvas'ını yaratır, ~2 sn animasyon sonunda söker — kalıcı DOM yok,
- * dinleyici yok. Hareket azaltılmışsa HİÇ çizmez.
+ * Kendi canvas'ını yaratır, ~2 sn sonra söker — kalıcı DOM yok, dinleyici
+ * yok. Hareket azaltılmışsa HİÇ çizmez.
  */
 export function fireConfetti(strength = 1): void {
   if (typeof window === "undefined") return;
@@ -83,7 +85,7 @@ export function fireConfetti(strength = 1): void {
     const t = now - started;
     ctx.clearRect(0, 0, W, window.innerHeight);
     for (const p of parts) {
-      p.vy += 0.22; // yer çekimi
+      p.vy += 0.22;
       p.vx *= 0.992;
       p.x += p.vx;
       p.y += p.vy;
@@ -107,59 +109,7 @@ export function fireConfetti(strength = 1): void {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Rozet ikonları — küçük, kendi içinde SVG                           */
-/* ------------------------------------------------------------------ */
-
-function svgProps(size: number) {
-  return {
-    width: size,
-    height: size,
-    viewBox: "0 0 24 24",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: 1.8,
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-    "aria-hidden": true,
-  };
-}
-
-export function ITrophy({ size = 18 }: { size?: number }) {
-  return (
-    <svg {...svgProps(size)}>
-      <path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4Z" />
-      <path d="M7 6H4a3 3 0 0 0 3 5M17 6h3a3 3 0 0 1-3 5" />
-    </svg>
-  );
-}
-
-export function IMedal({ size = 18 }: { size?: number }) {
-  return (
-    <svg {...svgProps(size)}>
-      <circle cx="12" cy="14" r="5" />
-      <path d="M9.5 10 7 3h4l1 3 1-3h4l-2.5 7" />
-    </svg>
-  );
-}
-
-export function IFlame({ size = 18 }: { size?: number }) {
-  return (
-    <svg {...svgProps(size)}>
-      <path d="M12 21c-3.9 0-6-2.6-6-5.6 0-2.7 1.8-4.6 3.2-6.2C10.4 7.8 11 6.2 11 4c2.8 1.6 7 5.2 7 11.4 0 3-2.1 5.6-6 5.6Z" />
-    </svg>
-  );
-}
-
-export function IPeak({ size = 18 }: { size?: number }) {
-  return (
-    <svg {...svgProps(size)}>
-      <path d="M3 20 10 6l4 8 3-5 4 11H3Z" />
-    </svg>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Başarı kartı                                                       */
+/*  Başarı kartı — düz, gölgesiz; hareket içerikte                     */
 /* ------------------------------------------------------------------ */
 
 export function SuccessCard({
@@ -169,59 +119,54 @@ export function SuccessCard({
   format = (v) => money(v),
   sub,
   tone,
-  delay = 0,
 }: {
   icon?: React.ReactNode;
   label: string;
   value: number | null;
   format?: (v: number | null | undefined) => string;
   sub?: React.ReactNode;
-  /** win: amber ışıltı · loss: sakin kırmızı · flat: nötr */
+  /** win: amber vurgu · loss: sakin kırmızı · flat: nötr */
   tone: "win" | "loss" | "flat";
-  delay?: number;
 }) {
-  const reduced = useReducedMotion();
   const renk =
     tone === "win" ? "var(--sn-up)" : tone === "loss" ? "var(--sn-down)" : "var(--sn-ink)";
   return (
     <div
-      className={cx(
-        "rounded-[var(--sn-r-md)] px-4 py-3.5",
-        !reduced && "sn-pop",
-        tone === "win" ? "sn-card-win" : "sn-card-loss",
-      )}
-      style={{
-        background: tone === "win" ? undefined : "var(--sn-panel)",
-        animationDelay: reduced ? undefined : `${delay}ms`,
-      }}
+      className="flex items-start gap-3 rounded-[var(--sn-r-md)] px-4 py-3.5"
+      style={{ background: "var(--sn-panel)", border: "1px solid var(--sn-hairline)" }}
     >
-      <div className="flex items-center gap-1.5">
-        {icon && (
-          <span
-            className={cx(!reduced && "sn-medal")}
-            style={{
-              color: tone === "win" ? "var(--sn-brand)" : "var(--sn-ink-3)",
-              animationDelay: reduced ? undefined : `${delay + 160}ms`,
-            }}
-          >
-            {icon}
-          </span>
-        )}
-        <span className="sn-label">{label}</span>
-      </div>
-      <div className="mt-1.5" style={{ color: renk }}>
-        <Num value={value} format={format} size="display" animate animateOnMount />
-      </div>
-      {sub && (
-        <div
-          className="sn-num mt-1"
-          style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}
+      {icon && (
+        <span
+          className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--sn-r-sm)]"
+          style={{
+            background: tone === "win" ? "var(--sn-brand-bg)" : "var(--sn-sunken)",
+            color: tone === "win" ? "var(--sn-brand)" : "var(--sn-ink-3)",
+          }}
         >
-          {sub}
-        </div>
+          {icon}
+        </span>
       )}
+      <div className="min-w-0">
+        <div className="sn-label">{label}</div>
+        <div className="mt-1" style={{ color: renk }}>
+          <Num value={value} format={format} size="lg" animate animateOnMount />
+        </div>
+        {sub && (
+          <div
+            className="mt-0.5 truncate"
+            style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}
+          >
+            {sub}
+          </div>
+        )}
+      </div>
     </div>
   );
+}
+
+/** Bölümün tek, sakin girişi — kart başına ayrı gösteri yok. */
+export function CelebrationReveal({ children }: { children: React.ReactNode }) {
+  return <Reveal>{children}</Reveal>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -246,7 +191,6 @@ export function MilestoneTrack({
       konfeti atar. Sayfa yenilemesi kutlamayı tekrarlamaz. */
   storageKey?: string;
 }) {
-  const reduced = useReducedMotion();
   const clamped = progress === null ? 0 : Math.max(0, Math.min(1, progress));
 
   const fired = useRef(false);
@@ -260,27 +204,26 @@ export function MilestoneTrack({
         window.localStorage.setItem(storageKey, String(gecilen));
         fireConfetti(1 + gecilen * 0.4);
       } else if (gecilen < onceki) {
-        // Gerileme: sayaç dürüstçe geri alınır ki aynı eşik tekrar
-        // geçildiğinde yeniden kutlanabilsin.
+        /* Gerileme dürüstçe geri alınır: aynı eşik yeniden geçilirse
+           yeniden kutlanabilir. */
         window.localStorage.setItem(storageKey, String(gecilen));
       }
     } catch {
-      /* localStorage kapalı olabilir — kutlama süs, veri değil. */
+      /* localStorage kapalı olabilir — kutlama süstür, veri değil. */
     }
   }, [storageKey, progress, clamped, milestones]);
 
   return (
-    <div>
-      <div
-        className="relative h-2.5 overflow-visible rounded-full"
-        style={{ background: "var(--sn-sunken)" }}
-      >
+    /* Etiketler noktaların ALTINA hizalanır (mutlak konum) — ilk sürümde
+       justify-between eşit dağıtıyordu ve etiketler geometrik eşiklerle
+       örtüşmüyordu; çizgi "bozuk" görünüyordu. Alt boşluk etiket satırına. */
+    <div className="relative pb-7">
+      <div className="relative h-2 rounded-full" style={{ background: "var(--sn-sunken)" }}>
         <div
-          className={cx("h-full rounded-full", !reduced && "sn-track-fill")}
+          className="sn-track-fill h-full rounded-full"
           style={{
             width: `${clamped * 100}%`,
-            background:
-              "linear-gradient(90deg, var(--sn-brand-2), var(--sn-brand-solid))",
+            background: "var(--sn-brand-solid)",
             minWidth: clamped > 0 ? 4 : 0,
           }}
         />
@@ -289,34 +232,39 @@ export function MilestoneTrack({
           return (
             <span
               key={m.label}
-              className="absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full"
+              className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full transition-colors duration-[var(--sn-dur-2)]"
               style={{
                 left: `${m.at * 100}%`,
                 background: gecildi ? "var(--sn-brand-solid)" : "var(--sn-panel)",
                 border: `2px solid ${gecildi ? "var(--sn-brand-solid)" : "var(--sn-border-strong)"}`,
-                boxShadow: gecildi ? "0 0 8px rgba(240,185,11,0.5)" : undefined,
               }}
               title={m.label}
             />
           );
         })}
       </div>
-      <div className="sn-num mt-2 flex justify-between" style={{ fontSize: "var(--sn-t-micro)" }}>
-        {milestones.map((m) => {
-          const gecildi = clamped >= m.at && m.at > 0;
-          return (
-            <span
-              key={m.label}
-              style={{
-                color: gecildi ? "var(--sn-brand)" : "var(--sn-ink-3)",
-                fontWeight: gecildi ? 600 : 400,
-              }}
-            >
-              {m.label}
-            </span>
-          );
-        })}
-      </div>
+      {milestones.map((m, i) => {
+        const gecildi = clamped >= m.at && m.at > 0;
+        const ilk = i === 0;
+        const son = i === milestones.length - 1;
+        return (
+          <span
+            key={m.label}
+            className={cx(
+              "sn-num absolute top-4 whitespace-nowrap",
+              ilk ? "" : son ? "-translate-x-full" : "-translate-x-1/2",
+            )}
+            style={{
+              left: `${m.at * 100}%`,
+              fontSize: "var(--sn-t-micro)",
+              color: gecildi ? "var(--sn-brand)" : "var(--sn-ink-3)",
+              fontWeight: gecildi ? 600 : 400,
+            }}
+          >
+            {m.label}
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -328,9 +276,9 @@ export function MilestoneTrack({
 /**
  * WS akışını izler; bir pozisyon KÂRLA kapanınca başarı bildirimi + konfeti.
  *
- * Yalnızca gerçekleşmiş kâr: `position.closed` ve `pnl > 0`. Kayıpla kapanış
- * kutlanmaz — logda ve tabloda zaten net görünür. Aynı olay iki kez
- * ateşlenmez (at+symbol anahtarıyla tekilleştirilir).
+ * Yalnızca gerçekleşmiş kâr: `position.closed` ve `pnl > 0`. Kayıpla
+ * kapanış kutlanmaz — logda ve tabloda zaten net görünür. Aynı olay iki
+ * kez ateşlenmez; açılıştaki history olayları kutlanmaz.
  */
 export function CelebrationWatcher() {
   const { events } = useLive();
@@ -343,8 +291,6 @@ export function CelebrationWatcher() {
       const key = `${event.at}:${event.symbol ?? ""}`;
       if (seen.current.has(key)) continue;
       seen.current.add(key);
-      /* Geçmiş (history) olayları kutlanmaz — sayfa açılışında 40 eski
-         kapanış için konfeti yağdırmak hem yanlış hem gürültü. */
       if (event.at < mountedAt.current) continue;
       const pnl = Number(event.payload?.pnl ?? 0);
       const r = Number(event.payload?.pnl_r ?? 0);

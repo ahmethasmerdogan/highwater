@@ -253,6 +253,11 @@
 }
 .sn-fade-up { animation: sn-fade-up var(--sn-dur-2) var(--sn-ease-out) both; }
 
+@keyframes sn-toast-out {
+  to { opacity: 0; transform: translateY(6px) scale(0.98); }
+}
+.sn-toast-out { animation: sn-toast-out 200ms var(--sn-ease) both; }
+
 @keyframes sn-slide-in {
   from { opacity: 0; transform: translateX(12px); }
   to { opacity: 1; transform: none; }
@@ -260,55 +265,12 @@
 .sn-slide-in { animation: sn-slide-in var(--sn-dur-3) var(--sn-ease-out) both; }
 
 /* =====================================================================
- * Kutlama katmanı — başarı kartları
+ * Kutlama katmanı — kalan tek animasyon
  *
- * Kural: kutlama yalnızca GERÇEKLEŞMİŞ kâra ve gerçek eşiklere ateşlenir.
- * Gerçekleşmemiş k/z havai fişek görmez; kayıp saklanmaz, sakin ve net
- * gösterilir. Yeşil yine yalnızca yön demektir — parıltıyı amber taşır.
+ * v2: gösteriş animasyonları (shimmer/pop/medal) kaldırıldı — hareket
+ * içerikte yaşar (sayaç, Reveal), süslemede değil. Sözleşme: kutlama
+ * yalnızca GERÇEKLEŞMİŞ kâra; kayıp saklanmaz.
  * ===================================================================== */
-@keyframes sn-pop {
-  0% { opacity: 0; transform: scale(0.92) translateY(6px); }
-  60% { transform: scale(1.02) translateY(-1px); }
-  100% { opacity: 1; transform: scale(1) translateY(0); }
-}
-.sn-pop { animation: sn-pop 420ms var(--sn-ease-out) both; }
-
-@keyframes sn-shimmer {
-  from { background-position: -200% 0; }
-  to { background-position: 200% 0; }
-}
-/* Kazanç kartının çerçevesi: akan amber ışıltı. Kenarlık bir gradyanla
-   boyanır; içerik kendi zeminini korur. */
-.sn-card-win {
-  position: relative;
-  border: 1px solid transparent;
-  background:
-    linear-gradient(var(--sn-panel), var(--sn-panel)) padding-box,
-    linear-gradient(
-      110deg,
-      var(--sn-border) 20%,
-      var(--sn-brand-solid) 40%,
-      var(--sn-brand-2) 50%,
-      var(--sn-brand-solid) 60%,
-      var(--sn-border) 80%
-    ) border-box;
-  background-size: 100% 100%, 200% 100%;
-  animation: sn-shimmer 2.6s linear infinite;
-}
-.sn-card-loss { border: 1px solid var(--sn-hairline); }
-
-@keyframes sn-glow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(240, 185, 11, 0); }
-  50% { box-shadow: 0 0 18px 1px rgba(240, 185, 11, 0.22); }
-}
-.sn-glow { animation: sn-glow 2.6s var(--sn-ease) infinite; }
-
-@keyframes sn-medal-rise {
-  0% { opacity: 0; transform: translateY(8px) rotate(-8deg) scale(0.8); }
-  100% { opacity: 1; transform: none; }
-}
-.sn-medal { animation: sn-medal-rise 520ms var(--sn-ease-out) both; }
-
 /* Kilometre taşı çizgisinin dolumu — genişlik dışarıdan verilir. */
 @keyframes sn-track-fill {
   from { width: 0; }
