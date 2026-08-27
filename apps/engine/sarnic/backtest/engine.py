@@ -237,11 +237,16 @@ class BacktestEngine:
         return out
 
     async def load_universe(self, session: AsyncSession, fallback: list[str]) -> UniverseTimeline:
+        # Havuz pazar başınadır; BIST snapshot'ı kripto backtestine sızmamalı.
+        market = getattr(self.params, "market", "CRYPTO")
         snapshots = (
             (
                 await session.execute(
                     select(UniverseSnapshot)
-                    .where(UniverseSnapshot.taken_at <= self.params.end)
+                    .where(
+                        UniverseSnapshot.taken_at <= self.params.end,
+                        UniverseSnapshot.market == market,
+                    )
                     .order_by(UniverseSnapshot.taken_at)
                 )
             )
@@ -308,7 +313,7 @@ class BacktestEngine:
         # S/R ve formasyon motorları pencere tabanlı olduğu için bar bar
         # yeniden hesaplanmaya devam eder.
         indicator_frames = {
-            symbol: precompute_indicators(frames) for symbol, frames in data.items()
+            symbol: precompute_indicators(frames, symbol) for symbol, frames in data.items()
         }
 
         for bar in times:

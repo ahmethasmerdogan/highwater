@@ -17,8 +17,10 @@ from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sarnic.core.calendar import calendar_for
 from sarnic.core.enums import TIMEFRAME_MINUTES
 from sarnic.core.logging import get_logger
+from sarnic.core.markets import market_of
 from sarnic.db.models import DataQualityReport
 
 log = get_logger(__name__)
@@ -71,9 +73,17 @@ class QualityReport:
 
 
 def find_gaps(df: pd.DataFrame, symbol: str, timeframe: str) -> list[Gap]:
-    """Ardışık `open_time` farkı bir bardan büyükse boşluk vardır."""
+    """Ardışık `open_time` farkı bir bardan büyükse boşluk vardır.
+
+    Seanslı pazarda (ekli sembol) adım aritmetiği hafta sonunu ~65 barlık
+    ERROR sanır ve onarımcı olmayan barları sonsuza kadar kovalar. Orada
+    boşluk KÜME farkıyla ölçülür: takvimin beklediği seans günleri − eldekiler.
+    """
     if len(df) < 2:
         return []
+    market = market_of(symbol)
+    if market.code != "CRYPTO":
+        return _find_session_gaps(df, symbol, timeframe, market)
     step = timedelta(minutes=TIMEFRAME_MINUTES[timeframe])
     times = pd.to_datetime(df["open_time"], utc=True).sort_values().reset_index(drop=True)
     deltas = times.diff().dropna()
@@ -94,6 +104,48 @@ def find_gaps(df: pd.DataFrame, symbol: str, timeframe: str) -> list[Gap]:
     return gaps
 
 
+def _find_session_gaps(
+    df: pd.DataFrame, symbol: str, timeframe: str, market
+) -> list[Gap]:
+    """Takvim-farkında boşluk: yalnızca GERÇEK seans günleri sayılır."""
+    if timeframe != "1d":
+        return []  # v1: hisselerde yalnız 1d toplanır
+    cal = calendar_for(market.calendar)
+    times = pd.to_datetime(df["open_time"], utc=True).sort_values()
+    have = {t.date() for t in times}
+    start, end = times.min().to_pydatetime(), times.max().to_pydatetime()
+    expected = getattr(cal, "_sessions", None)
+    if expected is None:
+        return []
+    beklenen = {s.date() for s in cal._sessions(start, end)}
+    eksik = sorted(beklenen - have)
+    if not eksik:
+        return []
+    # Ardışık eksik günleri tek boşlukta topla.
+    gaps: list[Gap] = []
+    blok = [eksik[0]]
+    for day in eksik[1:]:
+        if (day - blok[-1]).days <= 3:  # hafta sonu köprüsü
+            blok.append(day)
+        else:
+            gaps.append(_session_gap(symbol, timeframe, blok))
+            blok = [day]
+    gaps.append(_session_gap(symbol, timeframe, blok))
+    return gaps
+
+
+def _session_gap(symbol: str, timeframe: str, days: list) -> Gap:
+    from datetime import datetime as _dt
+
+    return Gap(
+        symbol=symbol,
+        timeframe=timeframe,
+        start=_dt(days[0].year, days[0].month, days[0].day, tzinfo=UTC),
+        end=_dt(days[-1].year, days[-1].month, days[-1].day, tzinfo=UTC),
+        missing_bars=len(days),
+    )
+
+
 def find_trailing_gap(df: pd.DataFrame, symbol: str, timeframe: str, now: datetime) -> Gap | None:
     """Son kayıtlı bar ile kapanmış olması gereken son bar arasındaki boşluk.
 
@@ -110,6 +162,21 @@ def find_trailing_gap(df: pd.DataFrame, symbol: str, timeframe: str, now: dateti
         return None
     step = timedelta(minutes=TIMEFRAME_MINUTES[timeframe])
     last = pd.to_datetime(df["open_time"], utc=True).max().to_pydatetime()
+    market = market_of(symbol)
+    if market.code != "CRYPTO":
+        # Kapanmış son seansa göre: cumartesi "dün bar yok" bir arıza değildir.
+        cal = calendar_for(market.calendar)
+        expected_last = cal.last_closed_bar(now, timeframe)
+        missing = cal.expected_bars(last, expected_last, timeframe) - 1
+        if missing < STALE_AFTER_BARS:
+            return None
+        return Gap(
+            symbol=symbol,
+            timeframe=timeframe,
+            start=last,
+            end=expected_last + step,
+            missing_bars=missing,
+        )
     expected_last = now - step  # en son kapanmış olması gereken barın açılışı
     missing = int((expected_last - last) / step)
     if missing < STALE_AFTER_BARS:
@@ -197,8 +264,16 @@ def audit_frame(
         return report
 
     times = pd.to_datetime(df["open_time"], utc=True)
-    span_minutes = (times.max() - times.min()).total_seconds() / 60
-    report.expected_bars = int(span_minutes // TIMEFRAME_MINUTES[timeframe]) + 1
+    market = market_of(symbol)
+    if market.code != "CRYPTO":
+        # Takvim aralığını bar süresine bölmek hissede completeness'i her
+        # zaman ~%30 gösterirdi — hafta sonu "eksik" değildir.
+        report.expected_bars = calendar_for(market.calendar).expected_bars(
+            times.min().to_pydatetime(), times.max().to_pydatetime(), timeframe
+        )
+    else:
+        span_minutes = (times.max() - times.min()).total_seconds() / 60
+        report.expected_bars = int(span_minutes // TIMEFRAME_MINUTES[timeframe]) + 1
 
     report.gaps = find_gaps(df, symbol, timeframe)
     if now is not None:

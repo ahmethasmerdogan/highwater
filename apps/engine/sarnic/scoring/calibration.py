@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from itertools import pairwise
 
 import numpy as np
@@ -75,6 +75,12 @@ class CalibrationReport:
     pool_return: float = float("nan")
     gate_edge: float = float("nan")
     gate_edge_t: float = float("nan")
+    #: Gün-kümelenmiş t. Bar-bazlı t bağımsızlık varsayar; aynı günün barları
+    #: aynı piyasa hareketini paylaşır ve ham t ~%70 şişkin çıkar (ölçüldü:
+    #: referans kenarda ham 2,61 → gün-kümeli 1,52). Karar İKİSİNE birden
+    #: bakmalı; şüphede kümelenmiş olan esas alınır.
+    gate_edge_t_daily: float = float("nan")
+    gate_days: int = 0
     top_minus_bottom: float = float("nan")
     top_minus_bottom_t: float = float("nan")
     top_minus_bottom_p: float = float("nan")
@@ -117,6 +123,8 @@ class CalibrationReport:
             "pool_return": _clean(self.pool_return),
             "gate_edge": _clean(self.gate_edge),
             "gate_edge_t": _clean(self.gate_edge_t),
+            "gate_edge_t_daily": _clean(self.gate_edge_t_daily),
+            "gate_days": self.gate_days,
             "top_minus_bottom": _clean(self.top_minus_bottom),
             "top_minus_bottom_t": _clean(self.top_minus_bottom_t),
             "top_minus_bottom_p": _clean(self.top_minus_bottom_p),
@@ -311,7 +319,8 @@ def _gate_edge(
     farklar: list[float] = []
     secim: list[float] = []
     havuz: list[float] = []
-    for idx in bar_index.values():
+    gunler: list[str] = []
+    for ts, idx in bar_index.items():
         if len(idx) < 5:
             continue
         bar_scores = scores[idx]
@@ -322,6 +331,7 @@ def _gate_edge(
         farklar.append(float(secilen.mean() - bar_returns.mean()))
         secim.append(float(secilen.mean()))
         havuz.append(float(bar_returns.mean()))
+        gunler.append(datetime.fromtimestamp(ts, tz=UTC).date().isoformat())
 
     report.gate_n = len(farklar)
     if len(farklar) < 20:
@@ -333,6 +343,19 @@ def _gate_edge(
     std = f.std(ddof=1)
     if std > 0:
         report.gate_edge_t = float(f.mean() / (std / math.sqrt(len(f))))
+
+    # Gün-kümelenmiş t: aynı günün barları tek gözleme indirilir. Ham t'nin
+    # bağımsızlık varsayımı saatlik kesitte gerçekçi değil — bir günün 24
+    # barı aynı piyasa dalgasını paylaşır.
+    gun_ort: dict[str, list[float]] = {}
+    for g, fark in zip(gunler, farklar, strict=True):
+        gun_ort.setdefault(g, []).append(fark)
+    if len(gun_ort) >= 10:
+        g = np.asarray([float(np.mean(v)) for v in gun_ort.values()])
+        report.gate_days = len(g)
+        g_std = g.std(ddof=1)
+        if g_std > 0:
+            report.gate_edge_t_daily = float(g.mean() / (g_std / math.sqrt(len(g))))
 
 
 def _insufficient_message(r: CalibrationReport) -> str:

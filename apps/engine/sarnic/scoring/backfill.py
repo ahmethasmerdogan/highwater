@@ -78,7 +78,7 @@ async def backfill_scores(
         (
             await session.execute(
                 select(UniverseSnapshot)
-                .where(UniverseSnapshot.taken_at <= end)
+                .where(UniverseSnapshot.taken_at <= end, UniverseSnapshot.market == "CRYPTO")
                 .order_by(UniverseSnapshot.taken_at)
             )
         )
@@ -92,7 +92,7 @@ async def backfill_scores(
         log.warning("score_backfill_no_bars", days=days, symbols=len(symbols))
         return 0
 
-    indicator_frames = {s: precompute_indicators(frames) for s, frames in data.items()}
+    indicator_frames = {s: precompute_indicators(frames, s) for s, frames in data.items()}
 
     scoring = ScoringEngine(
         weights=definition.scoring.weights,
@@ -184,7 +184,11 @@ async def pool_symbols(session: AsyncSession, *, days: int | None = None) -> lis
     """
     from sarnic.db.models import UniverseSnapshot
 
-    stmt = select(UniverseSnapshot).order_by(UniverseSnapshot.taken_at)
+    stmt = (
+        select(UniverseSnapshot)
+        .where(UniverseSnapshot.market == "CRYPTO")
+        .order_by(UniverseSnapshot.taken_at)
+    )
     if days is not None:
         stmt = stmt.where(UniverseSnapshot.taken_at >= utcnow() - timedelta(days=days))
     snaps = (await session.execute(stmt)).scalars().all()

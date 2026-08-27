@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 
 from sarnic.core.enums import TIMEFRAME_MINUTES
+from sarnic.core.markets import bars_per_year, market_of
 
 # Karar birimi 1h; bunlar bar cinsinden pencerelerdir.
 EMA_PERIODS = (20, 50, 200)
@@ -278,7 +279,7 @@ _FRAME_FIELDS = (
 )
 
 
-def compute_frame(df: pd.DataFrame, timeframe: str) -> pd.DataFrame:
+def compute_frame(df: pd.DataFrame, timeframe: str, symbol: str = "") -> pd.DataFrame:
     """**Her bar için** gösterge sütunları.
 
     Buradaki her hesap nedenseldir (`ewm`, `rolling`, `shift(+n)`); `t` satırı
@@ -315,7 +316,14 @@ def compute_frame(df: pd.DataFrame, timeframe: str) -> pd.DataFrame:
     out["obv_slope"] = slope(obv_series, 10)
 
     out["vwap"] = session_vwap(df)
-    out["realized_vol"] = realized_vol(close, bars_per_year=BARS_PER_YEAR.get(timeframe, 8760))
+    # Yıllıklandırma pazar-farkında: 8760 sabiti hisse volatilitesini ~2,3 kat
+    # şişirir (ABD 1h ~1638 bar/yıl) — vol filtresi ve vol_scalar üzerinden
+    # hem yanlış ölçer hem yanlış boyutlandırırdı. Kriptoda değer birebir aynı.
+    if symbol:
+        bpy = bars_per_year(market_of(symbol), timeframe)
+    else:
+        bpy = BARS_PER_YEAR.get(timeframe, 8760)
+    out["realized_vol"] = realized_vol(close, bars_per_year=bpy)
     out["rvol"] = rvol(volume)
 
     # Alım baskısı: son 20 barın taker alım hacminin toplam hacme oranı.
@@ -374,7 +382,7 @@ def compute(df: pd.DataFrame, symbol: str, timeframe: str) -> IndicatorSet:
         out.warnings.append("veri yok")
         return out
 
-    frame = compute_frame(df, timeframe)
+    frame = compute_frame(df, timeframe, symbol)
     return set_from_frame(
         frame,
         frame.index[-1],

@@ -206,7 +206,9 @@ class BotWorker:
             definition = self._definition_of(bot)
             timeframe = definition.timeframe
 
-        bar = last_closed_bar(self.clock.now(), timeframe)
+        bar = last_closed_bar(
+            self.clock.now(), timeframe, market_code=definition.universe.market
+        )
         if self._last_bar is not None and bar <= self._last_bar:
             return
 
@@ -229,7 +231,9 @@ class BotWorker:
                 return False
             definition = self._definition_of(bot)
 
-            symbols = await self.universe.current_symbols(session, at=bar_time)
+            symbols = await self.universe.current_symbols(
+                session, at=bar_time, market=definition.universe.market
+            )
             if not symbols:
                 # Bar tüketilmediği için bu kontrol 20 sn'de bir tekrarlanıyor;
                 # her seferinde olay yazmak `bot_events`'i boğardı. Bar başına

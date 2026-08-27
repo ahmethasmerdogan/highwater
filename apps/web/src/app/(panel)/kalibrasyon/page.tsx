@@ -298,7 +298,9 @@ function Verdict({ cal }: { cal: Calibration }) {
      hüküm veriyordu: "öngörü gücü gösteremiyor" yazarken hemen altında
      "kapının üstü havuzu anlamlı biçimde geçiyor" diyordu. */
   const gateWorks =
-    cal.gate_n >= 20 && (cal.gate_edge ?? 0) > 0 && Math.abs(cal.gate_edge_t ?? 0) >= 2;
+    cal.gate_n >= 20 &&
+    (cal.gate_edge ?? 0) > 0 &&
+    Math.abs(cal.gate_edge_t_daily ?? cal.gate_edge_t ?? 0) >= 2;
 
   const tone = insufficient ? "warn" : positive || gateWorks ? "up" : "down";
   const title = insufficient
@@ -495,7 +497,12 @@ function GateEdge({ cal }: { cal: Calibration }) {
 
   const edge = cal.gate_edge;
   const t = cal.gate_edge_t;
-  const strong = t !== null && Math.abs(t) >= 2;
+  /* Karar KÜMELENMİŞ t'ye göre: aynı günün barları aynı piyasa dalgasını
+     paylaşır; ham t bağımsızlık varsayıp ~%70 şişkin çıkıyordu (ölçüldü:
+     2,61 → 1,52). Kümelenmiş değer yoksa ham t'ye düşülür. */
+  const tDaily = cal.gate_edge_t_daily ?? null;
+  const tKarar = tDaily ?? t;
+  const strong = tKarar !== null && Math.abs(tKarar) >= 2;
 
   return (
     <Panel
@@ -522,11 +529,17 @@ function GateEdge({ cal }: { cal: Calibration }) {
           value={edge}
           format={(value) => pctSigned(value, 2)}
           accent={edge > 0 ? "var(--sn-up)" : "var(--sn-down)"}
-          sub={t !== null ? `t = ${signed(t, 1)}` : "sistemin seçiciliğinin tek ölçüsü"}
+          sub={
+            tDaily !== null
+              ? `t = ${signed(tDaily, 1)} (gün-kümeli, ${num(cal.gate_days, 0)} gün) · ham ${signed(t ?? 0, 1)}`
+              : t !== null
+                ? `t = ${signed(t, 1)} (ham — kümelenmiş henüz yok)`
+                : "sistemin seçiciliğinin tek ölçüsü"
+          }
         />
         <TextMetric
           label="Gürültüden ayrılıyor mu"
-          info={<InfoDot text="|t| ≥ 2 kabaca %95 güven demektir. Altındaysa fark tesadüf olabilir." />}
+          info={<InfoDot text="|t| ≥ 2 kabaca %95 güven demektir. Ölçü GÜN-KÜMELENMİŞ t'dir: aynı günün barları bağımsız değildir, ham t şişkin çıkar." />}
           value={strong ? "Evet" : "Hayır"}
           tone={strong ? "var(--sn-ink)" : "var(--sn-ink-3)"}
           sub={strong ? "|t| ≥ 2" : "|t| < 2 — tesadüf olabilir"}

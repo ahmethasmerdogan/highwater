@@ -87,6 +87,7 @@ class Settings(BaseSettings):
     metrics_port_marketdata: int = 9101
     metrics_port_supervisor: int = 9102
     metrics_port_notifier: int = 9103
+    metrics_port_equitydata: int = 9104
     # Worker'lar süpervizörün alt süreçleridir; her birinin kendi kayıt defteri
     # vardır, dolayısıyla kendi portunu açmalıdır. Port = taban + bot_id, yani
     # 1 numaralı bot 9111'dedir. Sabit ve öngörülebilir olması Prometheus hedef

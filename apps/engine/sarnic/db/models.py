@@ -170,6 +170,10 @@ class UniverseSnapshot(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     taken_at: Mapped[datetime] = mapped_column(TimestampTZ, index=True)
     reason: Mapped[str] = mapped_column(String(24))  # scheduled | delist | manual | stale
+    #: Havuz pazar başınadır: kripto botu BIST snapshot'ını asla görmemeli.
+    market: Mapped[str] = mapped_column(
+        String(8), default="CRYPTO", server_default="CRYPTO", index=True
+    )
     config_hash: Mapped[str] = mapped_column(String(64), index=True)
     symbols: Mapped[list] = mapped_column(JSONB)
     funnel: Mapped[list] = mapped_column(JSONB)

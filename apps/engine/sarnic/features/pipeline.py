@@ -39,11 +39,19 @@ CONTEXT_TFS = ("4h", "1d")
 BARS_NEEDED = {"15m": 400, "30m": 400, "1h": 400, "4h": 300, "1d": 300}
 
 
-def timeframes_for(decision_tf: str = DECISION_TF) -> tuple[str, ...]:
+def timeframes_for(decision_tf: str = DECISION_TF, symbol: str = "") -> tuple[str, ...]:
     """Bir karar dilimi için yüklenecek tüm çerçeveler.
 
     Karar dilimi bağlam dilimlerinden biriyse (ör. 4h botu) tekrar yüklenmez.
+    Hisse pazarında (ekli sembol) gün içi bağlam dilimi YOKTUR — 4h çerçevesi
+    hiç var olmadı; onu isteyip boş bulmak özellikleri sessizce sakatlamak
+    yerine baştan istenmemesi gereken bir şey.
     """
+    if symbol:
+        from sarnic.core.markets import market_of
+
+        if market_of(symbol).code != "CRYPTO":
+            return (decision_tf,)
     return (decision_tf, *(tf for tf in CONTEXT_TFS if tf != decision_tf))
 
 
@@ -69,7 +77,7 @@ def build_bundle(
     decision_tf: str = DECISION_TF,
 ) -> SymbolBundle:
     """Saf: verilen (yalnızca kapanmış barlardan oluşan) çerçevelerden özellik üretir."""
-    tfs = timeframes_for(decision_tf)
+    tfs = timeframes_for(decision_tf, symbol)
     ind = {tf: indicators.compute(frames.get(tf, pd.DataFrame()), symbol, tf) for tf in tfs}
 
     base = frames.get(decision_tf)
@@ -86,6 +94,7 @@ def build_bundle(
 
 def precompute_indicators(
     frames: dict[str, pd.DataFrame],
+    symbol: str = "",
 ) -> dict[str, pd.DataFrame]:
     """Zaman dilimi başına gösterge sütunlarını bir kez hesaplar.
 
@@ -95,7 +104,7 @@ def precompute_indicators(
     (`tests/test_lookahead.py::test_precomputed_frame_row_equals_sliced_compute`).
     """
     return {
-        tf: indicators.compute_frame(df, tf)
+        tf: indicators.compute_frame(df, tf, symbol)
         for tf, df in frames.items()
         if df is not None and not df.empty
     }
@@ -116,7 +125,7 @@ def build_bundle_precomputed(
     tabanlıdır ve satır okumasıyla elde edilemez.
     """
     ind: dict[str, indicators.IndicatorSet] = {}
-    for tf in timeframes_for(decision_tf):
+    for tf in timeframes_for(decision_tf, symbol):
         frame = indicator_frames.get(tf)
         df = frames.get(tf)
         cut = cuts.get(tf, 0)
@@ -181,7 +190,9 @@ async def load_bundles(
     if not symbols:
         return []
 
-    tfs = timeframes_for(decision_tf)
+    # Havuz pazar içidir (kural: kesit pazarlar arası karışmaz); dilim
+    # kümesi ilk sembolden çözülür.
+    tfs = timeframes_for(decision_tf, symbols[0])
     per_tf = await asyncio.gather(
         *(load_frames(session, symbols, tf, end=at, limit=BARS_NEEDED.get(tf, 400)) for tf in tfs)
     )

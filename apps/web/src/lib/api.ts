@@ -444,6 +444,9 @@ export interface Calibration {
   pool_return: number | null;
   gate_edge: number | null;
   gate_edge_t: number | null;
+  /** Gün-kümelenmiş t — ham t bağımsızlık varsayar ve ~%70 şişkin çıkar. */
+  gate_edge_t_daily: number | null;
+  gate_days: number;
   top_minus_bottom: number | null;
   top_minus_bottom_p: number | null;
   verdict: string;

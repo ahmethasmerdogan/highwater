@@ -25,6 +25,9 @@ class StrategyValidationError(ValueError):
 @dataclass(slots=True)
 class UniverseSpec:
     preset: str = "default"
+    #: Havuzun pazarı: CRYPTO | BIST | US. Karar saati, havuz snapshot'ı ve
+    #: yıllıklandırma bu alandan türetilir (core/markets.py).
+    market: str = "CRYPTO"
     overrides: dict[str, Any] = field(default_factory=dict)
 
 

@@ -181,6 +181,34 @@ def _tracked_set(symbols: list[str], open_symbols: list[str]) -> list[str]:
     return sorted(set(symbols) | set(open_symbols) | {settings.reference_symbol})
 
 
+@app.command()
+def equitydata() -> None:
+    """Hisse verisi servisi — BIST (İş Yatırım) + ABD (Yahoo), günlük bar.
+
+    Kural 5'in hisse ayağı: hisse verisi de tek yerden çekilir. Kripto
+    servisinden ayrı çalışır; Binance bütçesine dokunmaz.
+    """
+    configure_logging()
+    init_sentry("equitydata")
+    start_metrics_server(settings.metrics_port_equitydata, "equitydata")
+    asyncio.run(_equitydata())
+
+
+async def _equitydata() -> None:
+    import redis.asyncio as aioredis
+
+    from sarnic.data.equities import EquityDataService
+
+    async def redis_factory():
+        return aioredis.from_url(settings.redis_url, decode_responses=True)
+
+    service = EquityDataService(redis_factory)
+    try:
+        await service.run()
+    finally:
+        service.stop()
+
+
 async def _marketdata(backfill_days: int) -> None:
     import redis.asyncio as aioredis
 

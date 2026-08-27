@@ -685,3 +685,46 @@ mekanizması açık — az slot yalnızca en yüksek puanlıyı almaktır ve ken
 ikinci yarı birinci yarının dörtte biri kadar. 60 gün tek rejimdir. Cevap ancak canlı kayıtla
 gelir; altı bot farklı ayarlarla çalışıyor ve `strategy_version_id` sayesinde her işlem hangi
 sürümden geldiğini artık taşıyor.
+
+
+## Çok-pazar kararları — 2026-08-27
+
+Sahip "BIST + ABD aktif olsun" dedi; spec'te olmayan şu kararlar verildi
+(kural 7 gereği burada kayıtlı; her biri geri alınabilir):
+
+1. **Sembol ad-alanı borsa ekiyle:** `THYAO.IS`, `AAPL.US`; kripto eksiz.
+   `ohlcv` birincil anahtarı değişmedi (787 MB hypertable göçü ertelendi).
+   Gerçek `market` kolonu yalnızca `universe_snapshots`'a eklendi (0007).
+2. **Hisse karar birimi 1 gün.** 1 saatlik hisse verisi için meşru ve
+   ücretsiz kaynak yok: AlgoLab kapandı (31.12.2025), TradingView ToS'u
+   algoritmik kullanımı yasaklıyor, Yahoo bu IP'den ABD dışına 429.
+   1h şart olursa tek yol lisanslı sağlayıcıya (Matriks vb.) abonelik.
+3. **Veri kaynakları:** BIST = İş Yatırım günlük seri (HGDG_* düzeltilmiş;
+   ham HG_* de var, v1'de düzeltilmiş saklanıyor). ABD = Yahoo chart API
+   (kişisel kullanım; seri bölünme-düzeltilmiş; delist geçmişi YOK —
+   hayatta kalma yanlılığı yapısal, ölçüm raporlarında damgalanmalı).
+4. **Düzeltilmiş seri saklamanın bedeli:** geçmiş bir sermaye işleminde
+   sağlayıcı seriyi geriye dönük değiştirir ve `upsert` eski barların
+   üstüne yazar — o dönemki `scores` satırları eski fiyat sürümüyle
+   yaşamaya devam eder. Doğru mimari (ham seri + `corporate_actions`
+   tablosu + okuma anında `as_of` çarpanı) backlog'da.
+5. **BIST açılış fiyatı yok:** İş Yatırım open vermez. `open` = gün içi
+   min/max aralığına kırpılmış AOF (ağırlıklı ortalama) yazılıyor.
+6. **Başlangıç evrenleri elle seçildi** (BIST 60 / ABD 80 likit isim) ve
+   bugünden geriye bakar — geçmiş ölçüm İÇİN KULLANILAMAZ. Dürüst evren
+   bugünden itibaren `universe_snapshots` ile birikiyor (kriptoda ölçüm
+   zeminini çürüten hatanın hisse tekrarına baştan kapı kapatıldı).
+   Hisse havuz hunisi v1'de yalnız ciro sıralaması; spread/yaş/oynaklık
+   filtreleri yok.
+7. **Sentetik emir defteri:** hisselerde derinlik verisi yok; paper motoru
+   kapanış ± yarım spread (BIST 15 bp / ABD 5 bp) tek kademeli defterle
+   çalışıyor. Boşlukla stopun altında açılan seansta paper dolumu o anki
+   fiyattan olur (temkinli); backtest `min(stop, open)` kullanır — bilinen
+   ve bilinçli fark, ortak `gapfill` fonksiyonu backlog'da.
+8. **Gece boşluğu ATR'ye giriyor** (bar bazlı hesap değişmedi) ve
+   `max_hold_hours` duvar saati sayıyor — hisse stratejilerinde 336 saat
+   (~10 seans) verildi.
+9. **Bot para birimi örtük:** BIST botunun `capital`'i TRY, ABD'ninki USD.
+   Motor tek para birimi varsayar; pazarlar arası toplam sermaye raporu
+   bu yüzden yalnız pazar içi anlamlıdır. Panel bazı yerlerde "USD" yazar
+   — kozmetik, backlog'da.

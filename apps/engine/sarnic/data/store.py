@@ -13,8 +13,10 @@ from sqlalchemy import delete, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sarnic.core.calendar import calendar_for
 from sarnic.core.enums import TIMEFRAME_MINUTES
 from sarnic.core.logging import get_logger
+from sarnic.core.markets import MARKETS, market_of
 from sarnic.core.observability import BARS_WRITTEN
 from sarnic.data.binance import Kline
 from sarnic.db.models import OHLCV, SymbolInfo
@@ -241,7 +243,19 @@ def _coerce(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def expected_bar_count(start: datetime, end: datetime, timeframe: str) -> int:
+def expected_bar_count(
+    start: datetime, end: datetime, timeframe: str, symbol: str = ""
+) -> int:
+    """Beklenen bar sayısı — pazar-farkında.
+
+    Kripto için eski aritmetiğin birebir aynısı. Hisse sembolünde (ekli ad)
+    takvim sorulur: hafta sonu ve tatil "eksik bar" DEĞİLDİR — eski hesap
+    BIST'te her hafta sonunu 48 barlık ERROR sanıp onarımcıyı sonsuza kadar
+    olmayan barları doldurmaya gönderirdi.
+    """
+    market = market_of(symbol) if symbol else None
+    if market is not None and market.code != "CRYPTO":
+        return calendar_for(market.calendar).expected_bars(start, end, timeframe)
     minutes = TIMEFRAME_MINUTES[timeframe]
     span = (end - start).total_seconds() / 60
     return max(0, int(span // minutes) + 1)
@@ -257,9 +271,16 @@ def floor_to_bar(moment: datetime, timeframe: str) -> datetime:
     return datetime.fromtimestamp(floored * 60, tz=UTC)
 
 
-def last_closed_bar(moment: datetime, timeframe: str) -> datetime:
+def last_closed_bar(moment: datetime, timeframe: str, market_code: str = "CRYPTO") -> datetime:
     """`moment` anında **kapanmış** son barın açılış zamanı.
 
     Look-ahead korumasının temel taşı: içinde bulunulan bar sayılmaz.
+    Seanslı pazarda (BIST/ABD) saf epoch aritmetiği piyasa kapalıyken var
+    olmayan barı "kapanmış" sayardı; bot gece boyunca aynı bayat barı
+    yeniden puanlar, `scores`'a olmayan bar zamanları yazardı. Takvim
+    sorulur: kapanmış son SEANS neyse odur.
     """
+    market = MARKETS.get(market_code)
+    if market is not None and market.code != "CRYPTO":
+        return calendar_for(market.calendar).last_closed_bar(moment, timeframe)
     return floor_to_bar(moment, timeframe) - timedelta(minutes=TIMEFRAME_MINUTES[timeframe])

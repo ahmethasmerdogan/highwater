@@ -348,23 +348,40 @@ class UniverseEngine:
 
     # ------------------------------------------------------------------ #
     async def latest_snapshot(
-        self, session: AsyncSession, *, at: datetime | None = None
+        self,
+        session: AsyncSession,
+        *,
+        at: datetime | None = None,
+        market: str = "CRYPTO",
     ) -> UniverseSnapshot | None:
-        """Point-in-time okuma — backtest motorunun havuz kaynağı (§11)."""
-        stmt = select(UniverseSnapshot).order_by(UniverseSnapshot.taken_at.desc()).limit(1)
+        """Point-in-time okuma — backtest motorunun havuz kaynağı (§11).
+
+        Havuz pazar başınadır: kripto botu BIST snapshot'ını görmemeli.
+        Varsayılan CRYPTO — mevcut çağıranların davranışı değişmez.
+        """
+        stmt = (
+            select(UniverseSnapshot)
+            .where(UniverseSnapshot.market == market)
+            .order_by(UniverseSnapshot.taken_at.desc())
+            .limit(1)
+        )
         if at is not None:
             stmt = (
                 select(UniverseSnapshot)
-                .where(UniverseSnapshot.taken_at <= at)
+                .where(UniverseSnapshot.market == market, UniverseSnapshot.taken_at <= at)
                 .order_by(UniverseSnapshot.taken_at.desc())
                 .limit(1)
             )
         return (await session.execute(stmt)).scalar_one_or_none()
 
     async def current_symbols(
-        self, session: AsyncSession, *, at: datetime | None = None
+        self,
+        session: AsyncSession,
+        *,
+        at: datetime | None = None,
+        market: str = "CRYPTO",
     ) -> list[str]:
-        snap = await self.latest_snapshot(session, at=at)
+        snap = await self.latest_snapshot(session, at=at, market=market)
         if snap is None:
             return []
         return [s["symbol"] for s in snap.symbols]
