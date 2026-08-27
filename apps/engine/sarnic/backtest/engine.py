@@ -30,6 +30,7 @@ from sarnic.core.enums import TIMEFRAME_MINUTES, ExitReason
 from sarnic.core.logging import get_logger
 from sarnic.data.store import load_frames
 from sarnic.db.models import UniverseSnapshot
+from sarnic.execution.accounting import net_pnl, total_fees
 from sarnic.execution.exits import MarketView, PositionView, evaluate_exit, rotation_candidate
 from sarnic.features.indicators import ema, realized_vol
 from sarnic.features.pipeline import (
@@ -560,7 +561,11 @@ class BacktestEngine:
         gross = price * position.qty
         fee = gross * cost_bps / 10_000
         proceeds = gross - fee
-        pnl = (price - position.entry_price) * position.qty - fee - position.entry_fees
+        pnl = net_pnl(
+            gross=(price - position.entry_price) * position.qty,
+            entry_fees=position.entry_fees,
+            exit_fees=fee,
+        )
         risk_per_unit = max(position.entry_price - position.initial_stop, 1e-12)
         trades.append(
             {
@@ -573,7 +578,7 @@ class BacktestEngine:
                 "exit_reason": str(reason),
                 "pnl": round(pnl, 8),
                 "pnl_r": round((price - position.entry_price) / risk_per_unit, 6),
-                "fees": round(fee + position.entry_fees, 8),
+                "fees": round(total_fees(entry_fees=position.entry_fees, exit_fees=fee), 8),
                 "slippage_bps": round(cost_bps, 4),
                 "mfe": round(position.mfe, 6),
                 "mae": round(position.mae, 6),

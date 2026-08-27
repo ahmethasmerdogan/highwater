@@ -45,6 +45,7 @@ from sarnic.data.marketdata import data_is_stale, read_last_bars, read_tickers
 from sarnic.data.store import last_closed_bar, load_frame
 from sarnic.db.models import Bot, BotEvent, Order, Position, Score, Trade
 from sarnic.db.session import session_scope
+from sarnic.execution.accounting import net_pnl, total_fees
 from sarnic.execution.base import OrderRequest, OrderResult
 from sarnic.execution.exits import (
     ExitDecision,
@@ -617,8 +618,17 @@ class BotWorker:
             return
 
         gross = (exit_price - position.entry_price) * result.filled_qty
-        fees = position.entry_fees + position.realized_fees + result.fees
-        pnl = position.realized_pnl + gross - result.fees
+        fees = total_fees(
+            entry_fees=position.entry_fees,
+            exit_fees=result.fees,
+            realized_fees=position.realized_fees,
+        )
+        pnl = net_pnl(
+            gross=gross,
+            entry_fees=position.entry_fees,
+            exit_fees=result.fees,
+            realized_pnl=position.realized_pnl,
+        )
         risk_per_unit = max(position.entry_price - position.initial_stop, 1e-12)
         pnl_r = (exit_price - position.entry_price) / risk_per_unit
 
