@@ -424,7 +424,11 @@ async def metrics(session: SessionDep, redis: RedisDep, user: CurrentUser) -> di
         exposure = sum(float(p.qty) * prices.get(p.symbol, float(p.entry_price)) for p in open_rows)
         cash = float(bot.cash)
         eq = cash + exposure
-        peak = float(bot.equity_peak) or eq
+        # `eq` canlı fiyatlarla şimdi hesaplanır, `equity_peak` ise yalnızca
+        # çalışan bir bot bar kapanışında yazdığında güncellenir. Durdurulmuş
+        # bir botta `eq` tepeyi geçebiliyor ve uç POZİTİF drawdown döndürüyordu.
+        # Drawdown tanımı gereği ≤ 0'dır; tepe en az bugünkü özsermaye kadardır.
+        peak = max(float(bot.equity_peak) or eq, eq)
         stats = await trade_stats(session, bot.id)
         per_bot.append(
             {
@@ -435,7 +439,7 @@ async def metrics(session: SessionDep, redis: RedisDep, user: CurrentUser) -> di
                 "cash": cash,
                 "exposure": exposure,
                 "exposure_pct": exposure / eq if eq else 0.0,
-                "drawdown": (eq / peak - 1) if peak else 0.0,
+                "drawdown": min(0.0, eq / peak - 1) if peak else 0.0,
                 "total_return": (eq / float(bot.capital) - 1) if bot.capital else 0.0,
                 "open_positions": len(open_rows),
                 **stats,

@@ -15,6 +15,7 @@ import { api, type Bot, type Strategy } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { toast } from "@/lib/toast";
 import { money, num, pctSigned, relative } from "@/lib/format";
+import { botEylemleri, EYLEM_ETIKET } from "@/lib/bot-actions";
 import { Page, GuideSection } from "@/shell/page";
 import {
   Async,
@@ -179,35 +180,19 @@ export default function BotsPage() {
           can("TRADER") ? (
             /* Satır tıklaması detaya gider; düğmeler onu tetiklemesin. */
             <span className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
-              {row.state === "PAPER_RUNNING" ? (
-                <>
-                  {/* Sessiz (`quiet`) değil: satır içinde zeminsiz bir düğme
-                      metin sütunundan ayırt edilmiyor ve tıklanabilir
-                      olduğu anlaşılmıyordu. */}
-                  <Button
-                    size="sm"
-                    variant="neutral"
-                    onClick={() => action.mutate({ id: row.id, verb: "pause" })}
-                  >
-                    Duraklat
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="neutral"
-                    onClick={() => action.mutate({ id: row.id, verb: "stop" })}
-                  >
-                    Durdur
-                  </Button>
-                </>
-              ) : (
+              {/* Sessiz (`quiet`) değil: satır içinde zeminsiz bir düğme
+                  metin sütunundan ayırt edilmiyor ve tıklanabilir olduğu
+                  anlaşılmıyordu. */}
+              {botEylemleri(row.state).map((verb) => (
                 <Button
+                  key={verb}
                   size="sm"
                   variant="neutral"
-                  onClick={() => action.mutate({ id: row.id, verb: "start" })}
+                  onClick={() => action.mutate({ id: row.id, verb })}
                 >
-                  Başlat
+                  {EYLEM_ETIKET[verb]}
                 </Button>
-              )}
+              ))}
             </span>
           ) : null,
       },

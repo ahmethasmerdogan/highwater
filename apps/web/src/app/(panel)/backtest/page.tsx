@@ -459,7 +459,16 @@ function BacktestReport({ id, onClose }: { id: number; onClose: () => void }) {
         </Button>
       }
     >
-      {!backtest ? (
+      {query.isError ? (
+        /* Uç 404 dönerse `data` hiç dolmaz; `isError` okunmadığı için kart
+           sonsuza kadar "Yükleniyor…" yazıyordu. Bekleme ile başarısızlık
+           aynı görünmemeli. */
+        <ErrorBox
+          title="Rapor getirilemedi"
+          hint="Koşu silinmiş olabilir ya da API'ye ulaşılamıyor."
+          message={query.error instanceof Error ? query.error.message : "Bilinmeyen hata."}
+        />
+      ) : !backtest ? (
         <p style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink-3)" }}>Yükleniyor…</p>
       ) : backtest.status === "FAILED" ? (
         <ErrorBox

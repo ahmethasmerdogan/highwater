@@ -26,6 +26,7 @@ import {
 } from "@/lib/format";
 import { Page, GuideSection } from "@/shell/page";
 import { Panel, Segmented, Tag, Tip } from "@/design/primitives";
+import { ErrorBox } from "@/design/state";
 import { Delta, Metric, NumCell, NumText } from "@/design/numeric";
 import { Bar, RangeDot } from "@/design/viz";
 import { Drawer, DrawerSection, KeyValue } from "@/design/drawer";
@@ -33,6 +34,17 @@ import { DataGrid } from "@/grid/data-grid";
 import type { GridColumn } from "@/grid/types";
 
 type Tab = "acik" | "kapali" | "emirler";
+
+/*
+ * Boş tablo tek başına "kayıt yok" demez — "veri gelmedi" de olabilir.
+ * İkisini aynı göstermek veri yokluğunu ölçüm sonucu gibi sunar: API
+ * kapalıyken sayfa 11 açık pozisyonu "açık pozisyon yok" diye anlatıyordu.
+ */
+type SorguDurumu = { isLoading: boolean; isError: boolean; error?: unknown };
+
+function sorguHatasi(query: SorguDurumu): string {
+  return query.error instanceof Error ? query.error.message : String(query.error ?? "");
+}
 
 export default function PositionsPage() {
   const [tab, setTab] = useState<Tab>("acik");
@@ -102,9 +114,9 @@ export default function PositionsPage() {
         ]}
       />
 
-      {tab === "acik" && <OpenPositions rows={open.data ?? []} loading={open.isLoading} />}
-      {tab === "kapali" && <ClosedTrades rows={trades.data ?? []} loading={trades.isLoading} />}
-      {tab === "emirler" && <Orders rows={orders.data ?? []} loading={orders.isLoading} />}
+      {tab === "acik" && <OpenPositions rows={open.data ?? []} query={open} />}
+      {tab === "kapali" && <ClosedTrades rows={trades.data ?? []} query={trades} />}
+      {tab === "emirler" && <Orders rows={orders.data ?? []} query={orders} />}
     </Page>
   );
 }
@@ -114,7 +126,12 @@ export default function PositionsPage() {
 /* ------------------------------------------------------------------ */
 
 /**
- * Komisyon ve kaymanın brüt kârdan aldığı pay.
+ * Komisyonun brüt kârdan aldığı pay.
+ *
+ * Kayma bu metriklerde ayrı bir kalem DEĞİLDİR: dolum fiyatlarının içinde
+ * olduğu için brüt kârdan zaten düşülmüştür (`api/routes/portfolio.py`:
+ * `gross = net + fees` ve `fees` yalnızca komisyon toplamıdır). Bu yüzden
+ * "maliyet payı" kaymayı kapsamaz; kayma yanda baz puan olarak gösterilir.
  *
  * Ayrı bir bölüm olmasının sebebi: maliyet, tek tek işlemlere bakarken
  * görünmez. İşlem başına 8 baz puan önemsiz görünür; 400 işlemde brüt
@@ -141,7 +158,7 @@ function CostPanel() {
         sub={`${num(data.trades, 0)} kapanmış işlem`}
       />
       <Metric
-        label="Komisyon + kayma"
+        label="Komisyon"
         value={-Math.abs(data.fees)}
         format={(value) => money(value)}
         accent="var(--sn-warn)"
@@ -169,8 +186,8 @@ function CostPanel() {
             : heavy
               ? "%30 üstü: strateji fazla işlem yapıyor"
               : measured?.one_way_bps !== undefined
-                ? `ölçülen tek yön ${bps(measured.one_way_bps)}`
-                : "brüt kârın maliyete giden kısmı"
+                ? `komisyonun payı · ölçülen tek yön ${bps(measured.one_way_bps)}`
+                : "brüt kârın komisyona giden kısmı"
         }
       />
     </div>
@@ -181,7 +198,7 @@ function CostPanel() {
 /*  Açık pozisyonlar                                                   */
 /* ------------------------------------------------------------------ */
 
-function OpenPositions({ rows, loading }: { rows: Position[]; loading: boolean }) {
+function OpenPositions({ rows, query }: { rows: Position[]; query: SorguDurumu }) {
   const [selected, setSelected] = useState<Position | null>(null);
 
   const columns = useMemo<GridColumn<Position>[]>(
@@ -261,7 +278,7 @@ function OpenPositions({ rows, loading }: { rows: Position[]; loading: boolean }
         header: "Açık risk",
         width: 118,
         num: true,
-        hint: "Stop tetiklenirse kaybedilecek tutar. Pozisyon büyüklüğü × (giriş − stop).",
+        hint: "Fiyat buradan stopa düşerse geri verilecek tutar: (güncel fiyat − stop) × miktar. Stop girişin üstüne çekilmişse bu tutar kilitlenmiş kârdan gider, sermayeden değil.",
         value: (row) => openRisk(row),
         cell: (row) => {
           const risk = openRisk(row);
@@ -327,6 +344,14 @@ function OpenPositions({ rows, loading }: { rows: Position[]; loading: boolean }
     [],
   );
 
+  if (query.isError) {
+    return (
+      <Panel title="Açık pozisyonlar">
+        <ErrorBox message={sorguHatasi(query)} />
+      </Panel>
+    );
+  }
+
   return (
     <>
       <Panel
@@ -349,9 +374,9 @@ function OpenPositions({ rows, loading }: { rows: Position[]; loading: boolean }
                 ? "var(--sn-up)"
                 : "var(--sn-down)"
           }
-          emptyTitle={loading ? "Yükleniyor…" : "Açık pozisyon yok"}
+          emptyTitle={query.isLoading ? "Yükleniyor…" : "Açık pozisyon yok"}
           emptyHint={
-            loading
+            query.isLoading
               ? undefined
               : "Botlar puan eşiğini geçen bir aday bulduğunda pozisyon açar. Eşiği geçen aday yoksa beklemek doğru davranıştır."
           }
@@ -423,7 +448,14 @@ function OpenPositions({ rows, loading }: { rows: Position[]; loading: boolean }
   );
 }
 
-/** Stop tetiklenirse kaybedilecek tutar. */
+/**
+ * Fiyat buradan stopa düşerse geri verilecek tutar.
+ *
+ * Referans giriş değil **güncel fiyattır**: stop trail edildikçe açık risk
+ * düşer, başabaşa çekildiğinde sermaye riski biter. Sütunun ipucu önceden
+ * `(giriş − stop)` diyordu — o ilk risktir (R birimi), bu ise şu anki risk.
+ * İkisi farklı büyüklük; ipucu hesabın söylediğini söylemeli.
+ */
 function openRisk(position: Position): number | null {
   if (!Number.isFinite(position.qty) || !Number.isFinite(position.stop)) return null;
   const reference = position.last_price ?? position.entry_price;
@@ -434,7 +466,7 @@ function openRisk(position: Position): number | null {
 /*  Kapanmış işlemler                                                  */
 /* ------------------------------------------------------------------ */
 
-function ClosedTrades({ rows, loading }: { rows: Trade[]; loading: boolean }) {
+function ClosedTrades({ rows, query }: { rows: Trade[]; query: SorguDurumu }) {
   const columns = useMemo<GridColumn<Trade>[]>(
     () => [
       {
@@ -551,6 +583,14 @@ function ClosedTrades({ rows, loading }: { rows: Trade[]; loading: boolean }) {
     [],
   );
 
+  if (query.isError) {
+    return (
+      <Panel title="Kapanmış işlemler">
+        <ErrorBox message={sorguHatasi(query)} />
+      </Panel>
+    );
+  }
+
   return (
     <Panel
       title="Kapanmış işlemler"
@@ -565,9 +605,11 @@ function ClosedTrades({ rows, loading }: { rows: Trade[]; loading: boolean }) {
         searchPlaceholder="Sembol ya da çıkış sebebi…"
         defaultSort={[{ id: "exit_time", desc: true }]}
         rowAccent={(row) => (row.pnl_r >= 0 ? "var(--sn-up)" : "var(--sn-down)")}
-        emptyTitle={loading ? "Yükleniyor…" : "Kapanmış işlem yok"}
+        emptyTitle={query.isLoading ? "Yükleniyor…" : "Kapanmış işlem yok"}
         emptyHint={
-          loading ? undefined : "Bir pozisyon kapandığında sonucu burada R cinsinden görünür."
+          query.isLoading
+            ? undefined
+            : "Bir pozisyon kapandığında sonucu burada R cinsinden görünür."
         }
       />
     </Panel>
@@ -586,7 +628,7 @@ function exitTone(reason: string): "up" | "down" | "warn" | "info" | "neutral" {
 /*  Emirler                                                            */
 /* ------------------------------------------------------------------ */
 
-function Orders({ rows, loading }: { rows: Order[]; loading: boolean }) {
+function Orders({ rows, query }: { rows: Order[]; query: SorguDurumu }) {
   const columns = useMemo<GridColumn<Order>[]>(
     () => [
       {
@@ -687,6 +729,14 @@ function Orders({ rows, loading }: { rows: Order[]; loading: boolean }) {
     [],
   );
 
+  if (query.isError) {
+    return (
+      <Panel title="Emirler">
+        <ErrorBox message={sorguHatasi(query)} />
+      </Panel>
+    );
+  }
+
   return (
     <Panel
       title="Emirler"
@@ -700,8 +750,10 @@ function Orders({ rows, loading }: { rows: Order[]; loading: boolean }) {
         storageKey="pozisyonlar-emirler"
         searchPlaceholder="Sembol, durum ya da red sebebi…"
         defaultSort={[{ id: "created_at", desc: true }]}
-        emptyTitle={loading ? "Yükleniyor…" : "Emir yok"}
-        emptyHint={loading ? undefined : "Botlar pozisyon açtığında emirler burada görünür."}
+        emptyTitle={query.isLoading ? "Yükleniyor…" : "Emir yok"}
+        emptyHint={
+          query.isLoading ? undefined : "Botlar pozisyon açtığında emirler burada görünür."
+        }
       />
     </Panel>
   );

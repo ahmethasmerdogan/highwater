@@ -355,7 +355,9 @@ function SystemBanner({ status, stalePrices }: { status: SystemStatus; stalePric
           className="flex items-start gap-2.5 rounded-[var(--sn-r-md)] px-4 py-3"
           style={{
             background: problem.tone === "error" ? "var(--sn-down-bg)" : "var(--sn-warn-bg)",
-            border: `1px solid ${problem.tone === "error" ? "var(--sn-down)" : "var(--sn-warn)"}33`,
+            border: `1px solid color-mix(in oklab, ${
+              problem.tone === "error" ? "var(--sn-down)" : "var(--sn-warn)"
+            } 20%, transparent)`,
             fontSize: "var(--sn-t-body)",
           }}
         >

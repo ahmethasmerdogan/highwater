@@ -13,6 +13,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Bot, type Position, type Trade } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { toast } from "@/lib/toast";
+import { botEylemleri, EYLEM_ETIKET } from "@/lib/bot-actions";
 import { humanizeEvent, payloadSummary, type Severity } from "@/lib/humanize";
 import {
   dateTime,
@@ -131,20 +132,16 @@ export default function BotDetailPage({ params }: { params: Promise<{ id: string
           </Link>
           {can("TRADER") && data && (
             <>
-              {data.state === "PAPER_RUNNING" ? (
-                <>
-                  <Button size="sm" variant="neutral" onClick={() => action.mutate("pause")}>
-                    Duraklat
-                  </Button>
-                  <Button size="sm" variant="neutral" onClick={() => action.mutate("stop")}>
-                    Durdur
-                  </Button>
-                </>
-              ) : (
-                <Button size="sm" variant="primary" onClick={() => action.mutate("start")}>
-                  Başlat
+              {botEylemleri(data.state).map((verb) => (
+                <Button
+                  key={verb}
+                  size="sm"
+                  variant={verb === "start" ? "primary" : "neutral"}
+                  onClick={() => action.mutate(verb)}
+                >
+                  {EYLEM_ETIKET[verb]}
                 </Button>
-              )}
+              ))}
             </>
           )}
         </div>

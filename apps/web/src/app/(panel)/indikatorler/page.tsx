@@ -47,6 +47,15 @@ import { SimpleTable, type SimpleColumn } from "@/grid/simple-table";
 
 const TIMEFRAMES = ["15m", "1h", "4h", "1d"].map((value) => ({ value, label: value }));
 
+/* Uç dört tür döndürür (`features/sr.py:29 LevelKind`). İkiye zorlanınca
+   POC ve değer alanı "Direnç" diye etiketleniyordu. */
+const SR_TUR: Record<string, string> = {
+  support: "Destek",
+  resistance: "Direnç",
+  poc: "POC",
+  value_area: "Değer alanı",
+};
+
 /*
  * `useSearchParams` bir Suspense sınırı ister; yoksa derleme sırasında
  * uyarı verir ve sayfa tamamen istemci tarafına kaçar.
@@ -216,7 +225,7 @@ function SymbolPanels({ symbol, tf }: { symbol: string; tf: string }) {
       header: "Tür",
       cell: (row) => (
         <span style={{ fontSize: "var(--sn-t-caption)" }}>
-          {row.kind === "support" ? "Destek" : "Direnç"}
+          {SR_TUR[row.kind] ?? row.kind}
         </span>
       ),
     },

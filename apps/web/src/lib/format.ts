@@ -39,21 +39,32 @@ export function money(value: number | null | undefined, digits = 2): string {
   return num(value, digits);
 }
 
-/** Oranı yüzdeye çevirir: 0,0154 → %1,54 */
+/**
+ * Yüzde iminin önüne işaret koyar: `-%0,15`, `%-0,15` değil.
+ *
+ * Türkçede yüzde imi sayının önüne yazılır ve işaret onun da önüne geçer.
+ * `num()` işareti sayıya yapıştırdığı için burada ayrılıp başa alınır.
+ */
+function percent(formatted: string, artiIsareti: boolean): string {
+  const eksi = formatted.startsWith("-");
+  return `${eksi ? "-" : artiIsareti ? "+" : ""}%${eksi ? formatted.slice(1) : formatted}`;
+}
+
+/** Oranı yüzdeye çevirir: 0,0154 → %1,54 · -0,0015 → -%0,15 */
 export function pct(value: number | null | undefined, digits = 2): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return EMPTY;
-  return `%${num(value * 100, digits)}`;
+  return percent(num(value * 100, digits), false);
 }
 
 /** Zaten yüzde olarak gelen değer için: 1,54 → %1,54 */
 export function pctRaw(value: number | null | undefined, digits = 2): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return EMPTY;
-  return `%${num(value, digits)}`;
+  return percent(num(value, digits), false);
 }
 
 export function pctSigned(value: number | null | undefined, digits = 2): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return EMPTY;
-  return `${value > 0 ? "+" : ""}%${num(value * 100, digits)}`;
+  return percent(num(value * 100, digits), value > 0);
 }
 
 export function signed(value: number | null | undefined, digits = 2): string {

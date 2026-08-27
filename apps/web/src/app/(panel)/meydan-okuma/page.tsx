@@ -49,6 +49,8 @@ import { SimpleTable, type SimpleColumn } from "@/grid/simple-table";
 /** Botun adı kimliğidir; başka bir yerde saklanan bir bayrak yok. */
 const BOT_ADI = "MEYDAN OKUMA";
 
+/* Kalan sürenin altında bileşik günlük oranın hesaplanmadığı eşik (gün). */
+const SON_CEYREK_GUN = 0.25;
 const BASLANGIC_TRY = 20_000;
 const HEDEF_TRY = 100_000;
 /** Meydan okuma başlarken USDTTRY (2026-08-26). Bilerek dondurulmuştur. */
@@ -120,8 +122,13 @@ export default function ChallengePage() {
       ? null
       : Math.max(0, (Date.now() - baslangic.getTime()) / 86_400_000);
   const kalan = gecen === null ? null : Math.max(0, SURE_GUN - gecen);
+  /* Son çeyrek günde bileşik oran hesaplanmaz. `1 / kalan` sıfıra yaklaşırken
+     üs patlar: `kalan` 0,001 günken kart 40 basamaklı bir sayı yazıyordu.
+     Sıfır korunmuştu, sıfırın hemen üstü korunmamıştı. Bir günün altındaki
+     süre için "günlük bileşik oran" zaten anlamsız bir büyüklüktür. */
+  const sureDoluyor = kalan !== null && kalan < SON_CEYREK_GUN;
   const gerekenGunluk =
-    kalan !== null && kalan > 0 && equity !== null && equity > 0
+    kalan !== null && kalan >= SON_CEYREK_GUN && equity !== null && equity > 0
       ? Math.pow(HEDEF_USDT / equity, 1 / kalan) - 1
       : null;
   /* Yarım gün dolmadan bileşik oran hesaplanmaz: birkaç saatlik veriden
@@ -247,7 +254,11 @@ export default function ChallengePage() {
               value={gerekenGunluk}
               format={(value) => (value === null || value === undefined ? "—" : pct(value, 2))}
               accent="var(--sn-brand-solid)"
-              sub="bugünkü özsermayeden hedefe, kalan günde"
+              sub={
+                sureDoluyor
+                  ? "süre doluyor — günlük oran anlamını yitirdi"
+                  : "bugünkü özsermayeden hedefe, kalan günde"
+              }
             />
             <Metric
               label="Gerçekleşen günlük"

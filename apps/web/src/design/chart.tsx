@@ -340,7 +340,16 @@ export function DecileChart({
               <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>{value}</span>
             )}
           />
-          <Bar dataKey="mean_return" name="Ortalama getiri" radius={[3, 3, 0, 0]} isAnimationActive={false}>
+          {/* `fill` yalnızca Legend içindir: Recharts açıklama kutusunu Bar'dan okur,
+              Cell'lerden değil — verilmezse varsayılan siyahı basar ve koyu temada
+              kaybolur. Çubukların gerçek rengi aşağıdaki Cell'lerden gelir. */}
+          <Bar
+            dataKey="mean_return"
+            name="Ortalama getiri"
+            fill="var(--sn-ink-3)"
+            radius={[3, 3, 0, 0]}
+            isAnimationActive={false}
+          >
             {rows.map((row) => (
               <Cell
                 key={row.decile}

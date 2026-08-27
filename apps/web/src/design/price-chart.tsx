@@ -8,8 +8,11 @@
  * direnç olduğunu renkten tahmin etmek zorunda kalmaz.
  *
  * Kitaplık `var()` kabul etmez, hesaplanmış renk ister. Bu yüzden token'lar
- * `getComputedStyle` ile okunur ve tema değişince grafik **baştan kurulur**;
- * aksi hâlde açık temaya geçildiğinde koyu bir grafik kalıyordu.
+ * `getComputedStyle` ile okunur ve tema değişince **yalnızca renkler**
+ * güncellenir (`applyOptions`). Önceden grafik baştan kuruluyordu; mumları
+ * basan effect yalnızca `candles`'a bağlı olduğu ve tema değişiminde o
+ * referans değişmediği için `setData` hiç çağrılmıyor, grafik boş kalıyordu.
+ * Renkleri yerinde güncellemek ayrıca kullanıcının yakınlaştırmasını korur.
  */
 
 import { useEffect, useRef } from "react";
@@ -102,7 +105,32 @@ export function PriceChart({
       chartRef.current = null;
       seriesRef.current = null;
     };
-  }, [height, fill, resolved]);
+  }, [height, fill]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    const series = seriesRef.current;
+    if (!chart || !series) return;
+
+    const line = cssVar("--sn-hairline", "#e7eaef");
+    const up = cssVar("--sn-up", "#17a56b");
+    const down = cssVar("--sn-down", "#d6304a");
+
+    chart.applyOptions({
+      layout: { textColor: cssVar("--sn-ink-3", "#838d9b") },
+      grid: { vertLines: { color: line }, horzLines: { color: line } },
+      rightPriceScale: { borderColor: line },
+      timeScale: { borderColor: line },
+    });
+    series.applyOptions({
+      upColor: up,
+      downColor: down,
+      borderUpColor: up,
+      borderDownColor: down,
+      wickUpColor: up,
+      wickDownColor: down,
+    });
+  }, [resolved]);
 
   useEffect(() => {
     const series = seriesRef.current;
