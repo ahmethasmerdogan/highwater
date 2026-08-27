@@ -718,9 +718,11 @@ Sahip "BIST + ABD aktif olsun" dedi; spec'te olmayan şu kararlar verildi
    filtreleri yok.
 7. **Sentetik emir defteri:** hisselerde derinlik verisi yok; paper motoru
    kapanış ± yarım spread (BIST 15 bp / ABD 5 bp) tek kademeli defterle
-   çalışıyor. Boşlukla stopun altında açılan seansta paper dolumu o anki
-   fiyattan olur (temkinli); backtest `min(stop, open)` kullanır — bilinen
-   ve bilinçli fark, ortak `gapfill` fonksiyonu backlog'da.
+   çalışıyor. ~~Boşluk dolumu farkı~~ KAPANDI (2026-08-27 akşam): ortak
+   `execution/gapfill.py::stop_fill_price` yazıldı; hisse botları bar
+   kapanışında stopu barın kendisinden denetliyor (`low ≤ stop` →
+   `min(stop, open)`), backtest aynı fonksiyonu çağırıyor — kural 1
+   yapıyla korunuyor.
 8. **Gece boşluğu ATR'ye giriyor** (bar bazlı hesap değişmedi) ve
    `max_hold_hours` duvar saati sayıyor — hisse stratejilerinde 336 saat
    (~10 seans) verildi.

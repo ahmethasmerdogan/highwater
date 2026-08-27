@@ -446,3 +446,65 @@ class _SessizVeriyolu:
 
     async def emit(self, *args, **kwargs) -> None:
         return None
+
+
+# --------------------------------------------------------------------------- #
+#  Boşluk dolumu — kural 1: backtest ile paper aynı fiyattan kapanır
+# --------------------------------------------------------------------------- #
+def test_stop_fill_price_gap_below():
+    from sarnic.execution.gapfill import stop_fill_price
+
+    # Bar stopun ALTINDA açıldı: dolum açılıştır — piyasa stopa hiç uğramadı.
+    assert stop_fill_price(stop=100.0, bar_open=92.0) == 92.0
+    # Bar üstte açılıp gün içinde deldi: dolum stoptur.
+    assert stop_fill_price(stop=100.0, bar_open=104.0) == 100.0
+
+
+@pytest.mark.asyncio
+async def test_gap_fill_price_overrides_book_and_skips_prer():
+    """Boşluk dolumu defter fiyatını değil BARIN fiyatını kullanır.
+
+    Defterin en iyi alıcısı 99 iken bar açılışı 80'den dolum istenir:
+    sonuç ~80 (kayma dahil) olmalı ve %20'lik sapma PRER'e TAKILMAMALI —
+    sapma boşluğun kendisidir, bir hata değil.
+    """
+    adapter = PaperAdapter(
+        book_source=StaticBookSource({"TESTUSDT": BOOK}),
+        balance=10_000.0,
+        config=PaperConfig(
+            latency_ms=0, simulate_latency=False, extra_slippage_bps=0.0, taker_fee=0.001
+        ),
+    )
+    adapter.restore_positions({"TESTUSDT": 5.0})
+
+    result = await adapter.submit(
+        OrderRequest(
+            symbol="TESTUSDT",
+            side=OrderSide.SELL,
+            type=OrderType.MARKET,
+            qty=5.0,
+            meta={"gap_fill_price": 80.0},
+        )
+    )
+    assert result.status == OrderStatus.FILLED
+    # Kayma sıfır: dolum tam bar fiyatı. Komisyon yine kesilir.
+    assert result.avg_price == pytest.approx(80.0)
+    assert result.fees == pytest.approx(80.0 * 5.0 * 0.001)
+
+
+@pytest.mark.asyncio
+async def test_gap_fill_absent_uses_book_as_before():
+    """meta boşken davranış birebir eski: defter yürüyüşü + PRER aktif."""
+    adapter = PaperAdapter(
+        book_source=StaticBookSource({"TESTUSDT": BOOK}),
+        balance=10_000.0,
+        config=PaperConfig(
+            latency_ms=0, simulate_latency=False, extra_slippage_bps=0.0, taker_fee=0.0
+        ),
+    )
+    adapter.restore_positions({"TESTUSDT": 5.0})
+    result = await adapter.submit(
+        OrderRequest(symbol="TESTUSDT", side=OrderSide.SELL, type=OrderType.MARKET, qty=5.0)
+    )
+    assert result.status == OrderStatus.FILLED
+    assert result.avg_price == pytest.approx(99.0)  # en iyi alıcı

@@ -64,3 +64,38 @@ async def dispose_engine() -> None:
         await _engine.dispose()
     _engine = None
     _sessionmaker = None
+
+
+async def wait_for_db(timeout_seconds: float = 90.0) -> None:
+    """Postgres hazır olana kadar bekler — açılış yarışının ilacı.
+
+    Makine açılışında systemd servisleri Docker'daki Postgres'ten önce
+    kalkıyor; marketdata `Connect call failed 127.0.0.1:5432` ile ölüp
+    10 sn sonra yeniden doğuyordu. Çökme-yeniden-doğma teknik olarak
+    çalışsa da journal'a bir traceback bırakıyor ve ilk backfill turunu
+    geciktiriyordu. Servisler artık başlamadan önce burada bekler;
+    süre dolarsa DÜRÜSTÇE ölür — sonsuz sessiz bekleme yok.
+    """
+    import asyncio
+
+    from sqlalchemy import text
+
+    from sarnic.core.logging import get_logger
+
+    log = get_logger(__name__)
+    started = asyncio.get_event_loop().time()
+    bekleme = 1.0
+    while True:
+        try:
+            async with get_engine().connect() as conn:
+                await conn.execute(text("SELECT 1"))
+            return
+        except Exception as exc:
+            gecen = asyncio.get_event_loop().time() - started
+            if gecen >= timeout_seconds:
+                raise TimeoutError(
+                    f"PostgreSQL {timeout_seconds:.0f} sn içinde hazır olmadı: {exc}"
+                ) from exc
+            log.info("db_bekleniyor", elapsed=round(gecen, 1), retry_in=bekleme)
+            await asyncio.sleep(bekleme)
+            bekleme = min(bekleme * 1.6, 8.0)

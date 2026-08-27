@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter
@@ -17,6 +18,8 @@ from sarnic.core.enums import PositionStatus
 from sarnic.data.marketdata import read_tickers
 from sarnic.db.models import Bot, Order, Position, SpreadSample, Trade
 from sarnic.universe.engine import UniverseEngine
+
+METRICS_CACHE_KEY = "sarnic:cache:portfolio-metrics"
 
 router = APIRouter(tags=["portfolio"])
 
@@ -414,7 +417,18 @@ async def live(session: SessionDep, redis: RedisDep, user: CurrentUser) -> dict:
 
 @router.get("/portfolio/metrics")
 async def metrics(session: SessionDep, redis: RedisDep, user: CurrentUser) -> dict:
-    """Panel özeti. Kötü haber saklanmaz — drawdown kazanç kadar görünür (DESIGN §1)."""
+    """Panel özeti. Kötü haber saklanmaz — drawdown kazanç kadar görünür (DESIGN §1).
+
+    60 sn Redis önbelleği: uç her bot için tüm işlemler üzerinde kazanma
+    oranı / profit factor / çıkış dağılımı hesaplar. Meydan okuma sayfası,
+    bot detayları ve TUI filosu aynı anda çekince aynı ağır hesap dakikada
+    onlarca kez koşuyor ve bot işçileriyle çekirdek yarışıyordu. Metrikler
+    bar kapanışıyla değişir; bir dakikalık tazelik fazlasıyla dürüst.
+    """
+    cached = await redis.get(METRICS_CACHE_KEY)
+    if cached:
+        return json.loads(cached)
+
     bots = (await session.execute(select(Bot))).scalars().all()
     tickers = await read_tickers(redis)
     prices = {s: float(t["last_price"]) for s, t in tickers.items()}
@@ -461,7 +475,7 @@ async def metrics(session: SessionDep, redis: RedisDep, user: CurrentUser) -> di
         total_cash += cash
         total_exposure += exposure
 
-    return {
+    payload = {
         "total": {
             "equity": total_equity,
             "cash": total_cash,
@@ -470,3 +484,5 @@ async def metrics(session: SessionDep, redis: RedisDep, user: CurrentUser) -> di
         },
         "bots": per_bot,
     }
+    await redis.set(METRICS_CACHE_KEY, json.dumps(payload), ex=60)
+    return payload

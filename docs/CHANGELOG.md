@@ -1770,3 +1770,19 @@ aboneliği (~700 dinleyici → 1), reduced-motion artık her şeyi kapsıyor
 Bilinçli yapılmadı: TUI'de meydan okuma ekranı (sabitlerin API'ye
 taşınması kararı bekliyor), kalibrasyon ekranı (panel daha iyi anlatıyor),
 hisse paper stop dolumu için ortak gapfill (temkinli fark belgelendi).
+
+### Aynı gün, akşam — sağlamlaştırma ve performans
+
+Kural 1'in son bilinen ayrışması kapandı: stop dolumu tek kaynakta
+(`execution/gapfill.py`); hisse botları bar kapanışında `low ≤ stop`
+denetimiyle `min(stop, open)`'dan dolar, backtest aynı fonksiyonu kullanır,
+PaperAdapter boşluk dolumunda PRER'i bilerek atlar (sapma boşluğun
+kendisidir). Açılış yarışı bitti: dört servis başlamadan önce Postgres'i
+bekler (`wait_for_db`, 90 sn tavan) — marketdata'nın boot'taki
+çök-yeniden-doğ turu ve traceback'i tarih oldu. Hisse verisi artımlı:
+günlük tazeleme son 12 seans (79 bin satır/gün yeniden yazılıyordu),
+pazartesi tam eşitleme sermaye işlemlerini yakalar. `/portfolio/metrics`
+60 sn Redis önbelleğinde — meydan okuma + bot detayları + TUI filosu aynı
+ağır hesabı dakikada onlarca kez koşturuyordu. Bilinçli yapılmadı:
+puanlama/çıkış parametrelerine dokunulmadı (sekiz hipotezin sekizi çürük;
+dondurma kararı geçerli).

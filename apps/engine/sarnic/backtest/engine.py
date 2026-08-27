@@ -32,6 +32,7 @@ from sarnic.data.store import load_frames
 from sarnic.db.models import UniverseSnapshot
 from sarnic.execution.accounting import net_pnl, total_fees
 from sarnic.execution.exits import MarketView, PositionView, evaluate_exit, rotation_candidate
+from sarnic.execution.gapfill import stop_fill_price
 from sarnic.features.indicators import ema, realized_vol
 from sarnic.features.pipeline import (
     BARS_NEEDED,
@@ -547,7 +548,7 @@ class BacktestEngine:
             if row["open_time"].to_pydatetime().timestamp() != bar.timestamp():
                 continue
             if float(row["low"]) <= position.stop:
-                fill = min(position.stop, float(row["open"]))
+                fill = stop_fill_price(position.stop, float(row["open"]))
                 cash += self._close(position, fill, bar, ExitReason.STOP, cost_bps, trades)
                 turnover += position.qty * fill
                 positions.remove(position)

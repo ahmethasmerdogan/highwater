@@ -291,23 +291,41 @@ class PaperAdapter:
 
         mid_before = book.mid
 
-        # Gecikme simülasyonu: karar → emir arası 250 ms.
-        if self.config.simulate_latency and self.config.latency_ms > 0:
-            moved = await self.books.price_after_latency(order.symbol, self.config.latency_ms)
-            if moved is not None and mid_before and mid_before > 0:
-                drift = moved / mid_before
-                book = _shift_book(book, drift)
+        # Bar-kapanış çıkışlarında dolum BARIN kendisinden gelir (kural 1):
+        # stopun altında açılan seansta backtest `min(stop, open)` doldurur;
+        # canlı paper aynı fiyatı `meta["gap_fill_price"]` ile bildirir.
+        # Defter yürüyüşü ve gecikme atlanır — o fiyat zaten barın gerçeği;
+        # kayma/PRER/komisyon yine uygulanır.
+        gap_fill = order.meta.get("gap_fill_price")
+        if gap_fill is not None:
+            raw_avg = float(gap_fill)
+            outcome = FillOutcome(
+                filled_qty=order.qty,
+                avg_price=raw_avg,
+                fills=[Fill(price=raw_avg, qty=order.qty, fee=0.0)],
+                exhausted=False,
+            )
+        else:
+            # Gecikme simülasyonu: karar → emir arası 250 ms.
+            if self.config.simulate_latency and self.config.latency_ms > 0:
+                moved = await self.books.price_after_latency(order.symbol, self.config.latency_ms)
+                if moved is not None and mid_before and mid_before > 0:
+                    drift = moved / mid_before
+                    book = _shift_book(book, drift)
 
-        outcome = walk_book(book, order.side, order.qty)
-        if outcome.filled_qty <= 0:
-            return _reject(result, "defterde likidite yok")
+            outcome = walk_book(book, order.side, order.qty)
+            if outcome.filled_qty <= 0:
+                return _reject(result, "defterde likidite yok")
 
-        raw_avg = outcome.avg_price
+            raw_avg = outcome.avg_price
         vol_scalar = _volatility_scalar(order.meta.get("realized_vol"))
         fill_price = apply_slippage(raw_avg, order.side, self.config.extra_slippage_bps, vol_scalar)
 
         mid = book.mid
-        if prer_violation(fill_price, mid, self.config.prer_max_deviation):
+        # Boşluk dolumunda sapma GERÇEĞİN kendisidir (bar stopun altında
+        # açıldı); PRER'e takılıp reddetmek pozisyonu stopun altında askıda
+        # bırakırdı.
+        if gap_fill is None and prer_violation(fill_price, mid, self.config.prer_max_deviation):
             return _reject(
                 result,
                 f"PRER: dolum fiyatı orta fiyattan %"

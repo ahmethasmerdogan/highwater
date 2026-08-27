@@ -56,24 +56,148 @@ HALF_SPREAD_BPS = {"BIST": 15.0, "US": 5.0}
 #: tarafında 19 Haz–14 Ağu ölçüm zemininin çürümesine yol açan hatanın aynısını
 #: hisselerde baştan yapmamak için).
 BIST_SEED = [
-    "THYAO", "GARAN", "ISCTR", "AKBNK", "YKBNK", "EREGL", "ASELS", "KCHOL",
-    "SAHOL", "SISE", "TUPRS", "BIMAS", "TCELL", "PGSUS", "FROTO", "TOASO",
-    "ARCLK", "PETKM", "KOZAL", "HEKTS", "SASA", "ENKAI", "TAVHL", "MGROS",
-    "VESTL", "TTKOM", "AKSEN", "ODAS", "KRDMD", "EKGYO", "GUBRF", "ALARK",
-    "OYAKC", "TKFEN", "DOHOL", "ISDMR", "CIMSA", "BRSAN", "ULKER", "AEFES",
-    "ASTOR", "KONTR", "MIATK", "ENJSA", "AGHOL", "AKSA", "CCOLA", "DOAS",
-    "EGEEN", "GESAN", "IPEKE", "KOZAA", "MAVI", "OTKAR", "SMRTG", "SOKM",
-    "TSKB", "TTRAK", "VAKBN", "YEOTK",
+    "THYAO",
+    "GARAN",
+    "ISCTR",
+    "AKBNK",
+    "YKBNK",
+    "EREGL",
+    "ASELS",
+    "KCHOL",
+    "SAHOL",
+    "SISE",
+    "TUPRS",
+    "BIMAS",
+    "TCELL",
+    "PGSUS",
+    "FROTO",
+    "TOASO",
+    "ARCLK",
+    "PETKM",
+    "KOZAL",
+    "HEKTS",
+    "SASA",
+    "ENKAI",
+    "TAVHL",
+    "MGROS",
+    "VESTL",
+    "TTKOM",
+    "AKSEN",
+    "ODAS",
+    "KRDMD",
+    "EKGYO",
+    "GUBRF",
+    "ALARK",
+    "OYAKC",
+    "TKFEN",
+    "DOHOL",
+    "ISDMR",
+    "CIMSA",
+    "BRSAN",
+    "ULKER",
+    "AEFES",
+    "ASTOR",
+    "KONTR",
+    "MIATK",
+    "ENJSA",
+    "AGHOL",
+    "AKSA",
+    "CCOLA",
+    "DOAS",
+    "EGEEN",
+    "GESAN",
+    "IPEKE",
+    "KOZAA",
+    "MAVI",
+    "OTKAR",
+    "SMRTG",
+    "SOKM",
+    "TSKB",
+    "TTRAK",
+    "VAKBN",
+    "YEOTK",
 ]
 US_SEED = [
-    "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "AVGO", "BRK-B",
-    "JPM", "LLY", "V", "UNH", "XOM", "MA", "COST", "HD", "PG", "JNJ", "ABBV",
-    "WMT", "NFLX", "CRM", "BAC", "ORCL", "CVX", "MRK", "KO", "AMD", "PEP",
-    "ADBE", "TMO", "CSCO", "ACN", "MCD", "LIN", "ABT", "INTU", "DIS", "WFC",
-    "QCOM", "GE", "CAT", "TXN", "VZ", "IBM", "AMGN", "PM", "NOW", "ISRG",
-    "SPGI", "GS", "NEE", "UBER", "PFE", "RTX", "HON", "AMAT", "T", "BLK",
-    "UNP", "LOW", "BKNG", "ELV", "SYK", "TJX", "PLTR", "VRTX", "C", "BA",
-    "PANW", "MU", "LRCX", "MDT", "SCHW", "ADP", "ANET", "DE", "KLAC", "SBUX",
+    "AAPL",
+    "MSFT",
+    "NVDA",
+    "AMZN",
+    "GOOGL",
+    "META",
+    "TSLA",
+    "AVGO",
+    "BRK-B",
+    "JPM",
+    "LLY",
+    "V",
+    "UNH",
+    "XOM",
+    "MA",
+    "COST",
+    "HD",
+    "PG",
+    "JNJ",
+    "ABBV",
+    "WMT",
+    "NFLX",
+    "CRM",
+    "BAC",
+    "ORCL",
+    "CVX",
+    "MRK",
+    "KO",
+    "AMD",
+    "PEP",
+    "ADBE",
+    "TMO",
+    "CSCO",
+    "ACN",
+    "MCD",
+    "LIN",
+    "ABT",
+    "INTU",
+    "DIS",
+    "WFC",
+    "QCOM",
+    "GE",
+    "CAT",
+    "TXN",
+    "VZ",
+    "IBM",
+    "AMGN",
+    "PM",
+    "NOW",
+    "ISRG",
+    "SPGI",
+    "GS",
+    "NEE",
+    "UBER",
+    "PFE",
+    "RTX",
+    "HON",
+    "AMAT",
+    "T",
+    "BLK",
+    "UNP",
+    "LOW",
+    "BKNG",
+    "ELV",
+    "SYK",
+    "TJX",
+    "PLTR",
+    "VRTX",
+    "C",
+    "BA",
+    "PANW",
+    "MU",
+    "LRCX",
+    "MDT",
+    "SCHW",
+    "ADP",
+    "ANET",
+    "DE",
+    "KLAC",
+    "SBUX",
 ]
 
 REFRESH_CHECK_SECONDS = 300
@@ -115,10 +239,7 @@ class DailyBar:
 class IsYatirimClient:
     """İş Yatırım günlük seri istemcisi (BIST)."""
 
-    URL = (
-        "https://www.isyatirim.com.tr/_layouts/15/IsYatirim.Website/Common/"
-        "Data.aspx/HisseTekil"
-    )
+    URL = "https://www.isyatirim.com.tr/_layouts/15/IsYatirim.Website/Common/Data.aspx/HisseTekil"
 
     def __init__(self, client: httpx.AsyncClient) -> None:
         self.client = client
@@ -290,11 +411,22 @@ class EquityDataService:
         assert isinstance(cal, ExchangeSessionCalendar)
         son_seans = cal.last_closed_session(utcnow())
 
+        # Artımlı çekim: ilk dolum bir kez tam pencere; günlük tazeleme son
+        # ~12 seansı çeker (60+80 sembol × 672 gün her gün 79 bin satırı
+        # yeniden yazıyordu — sağlayıcıya da bize de saygısızlık). Pazartesi
+        # TAM yeniden eşitleme: sermaye işlemi (bölünme/temettü) düzeltilmiş
+        # seriyi geriye dönük değiştirir; haftalık tam çekim onu yakalar
+        # (OPEN-QUESTIONS §Çok-pazar madde 4'ün bilinen bedeli).
+        ilk_dolum = self._refreshed_session[market.code] is None and not await self._has_history(
+            market
+        )
+        tam = ilk_dolum or utcnow().weekday() == 0
+
         yazilan = 0
         basarili: list[tuple[str, float, float]] = []  # (sembol, kapanış, ciro)
         for base in seeds:
             try:
-                bars = await self._fetch(market, http, base)
+                bars = await self._fetch(market, http, base, full=tam)
             except Exception as exc:
                 log.warning("equity_fetch_failed", market=market.code, symbol=base, error=str(exc))
                 continue
@@ -318,15 +450,36 @@ class EquityDataService:
             market=market.code,
             symbols=len(basarili),
             bars_written=yazilan,
+            mode="full" if tam else "incremental",
             session=son_seans.date().isoformat() if son_seans else None,
         )
 
-    async def _fetch(self, market: Market, http: httpx.AsyncClient, base: str) -> list[DailyBar]:
+    async def _has_history(self, market: Market) -> bool:
+        """Pazarın deposunda anlamlı geçmiş var mı? (yeniden başlatma ≠ ilk dolum)"""
+        from sqlalchemy import func, select
+
+        from sarnic.db.models import OHLCV
+
+        ek = market.suffix
+        async with session_scope() as session:
+            adet = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(OHLCV)
+                    .where(OHLCV.symbol.like(f"%{ek}"), OHLCV.timeframe == "1d")
+                )
+            ).scalar_one()
+        return int(adet or 0) > 1000
+
+    async def _fetch(
+        self, market: Market, http: httpx.AsyncClient, base: str, *, full: bool
+    ) -> list[DailyBar]:
+        sessions = BACKFILL_SESSIONS if full else 12
         if market.code == "BIST":
             end = utcnow()
-            start = end - timedelta(days=int(BACKFILL_SESSIONS * 1.6))
+            start = end - timedelta(days=int(sessions * 1.6))
             return await IsYatirimClient(http).fetch_daily(base, start, end)
-        return await YahooDailyClient(http).fetch_daily(base, BACKFILL_SESSIONS)
+        return await YahooDailyClient(http).fetch_daily(base, sessions)
 
     # ------------------------------------------------------------------ #
     async def _write_state(self) -> None:

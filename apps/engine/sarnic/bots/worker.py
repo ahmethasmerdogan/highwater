@@ -54,6 +54,7 @@ from sarnic.execution.exits import (
     evaluate_exit,
     rotation_candidate,
 )
+from sarnic.execution.gapfill import stop_fill_price
 from sarnic.execution.paper import PaperAdapter, PaperConfig, RedisBookSource
 from sarnic.features.indicators import realized_vol
 from sarnic.features.pipeline import load_bundles
@@ -206,9 +207,7 @@ class BotWorker:
             definition = self._definition_of(bot)
             timeframe = definition.timeframe
 
-        bar = last_closed_bar(
-            self.clock.now(), timeframe, market_code=definition.universe.market
-        )
+        bar = last_closed_bar(self.clock.now(), timeframe, market_code=definition.universe.market)
         if self._last_bar is not None and bar <= self._last_bar:
             return
 
@@ -258,6 +257,14 @@ class BotWorker:
             snapshot = await load_snapshot(session, bot, ctx.prices, now=bar_time)
 
             # 1) Çıkışlar önce — sermaye önce korunur.
+            if definition.universe.market != "CRYPTO":
+                # Seanslı pazarda stop tetiği barın KENDİSİNDEN okunur:
+                # `low <= stop` ise dolum `min(stop, open)` — backtest ile
+                # birebir (kural 1). Kapanışa bakan sürekli yol bunu
+                # göremezdi: gün içi delip kapanışta toparlayan bar stopu
+                # sessizce atlar, boşlukta açılan bar da kapanış fiyatından
+                # (çoğu kez daha kötü) dolardı.
+                await self._bar_stop_exits(session, bot, definition, snapshot, bar_time)
             await self._manage_exits(session, bot, definition, snapshot, ctx, bar_closed=True)
 
             # 2) Risk kapısı
@@ -474,6 +481,52 @@ class BotWorker:
     # ------------------------------------------------------------------ #
     #  Çıkışlar
     # ------------------------------------------------------------------ #
+    async def _bar_stop_exits(
+        self,
+        session,
+        bot: Bot,
+        definition: StrategyDefinition,
+        snapshot: PortfolioSnapshot,
+        bar_time: datetime,
+    ) -> None:
+        """Kapanan karar barına karşı stop denetimi (yalnız seanslı pazar)."""
+        for position in list(snapshot.positions):
+            df = await load_frame(
+                session,
+                position.symbol,
+                definition.timeframe,
+                end=bar_time,
+                limit=1,
+            )
+            if df.empty:
+                continue
+            row = df.iloc[-1]
+            if row["open_time"].to_pydatetime().timestamp() != bar_time.timestamp():
+                continue  # bu sembolün barı henüz yazılmadı
+            low, bar_open = float(row["low"]), float(row["open"])
+            if low > position.stop:
+                continue
+            fill = stop_fill_price(position.stop, bar_open)
+            reason = (
+                ExitReason.BREAKEVEN
+                if position.breakeven_locked
+                and math.isclose(position.stop, position.entry_price, rel_tol=1e-9)
+                else ExitReason.TRAILING
+                if position.breakeven_locked
+                else ExitReason.STOP
+            )
+            await self._close_position(
+                session,
+                bot,
+                snapshot,
+                position,
+                reason,
+                message=(
+                    f"bar stopu deldi: düşük {low:.6f} ≤ stop {position.stop:.6f}, dolum {fill:.6f}"
+                ),
+                gap_fill_price=fill,
+            )
+
     async def _manage_exits(
         self,
         session,
@@ -558,8 +611,14 @@ class BotWorker:
         position: OpenPosition,
         reason: ExitReason,
         message: str = "",
+        gap_fill_price: float | None = None,
     ) -> None:
         adapter = await self._get_adapter(session, bot)
+        meta: dict = {}
+        if gap_fill_price is not None:
+            # Bar-kapanış çıkışı: dolum barın gerçeğinden (kural 1 —
+            # backtest ile aynı stop_fill_price). Kayma/komisyon yine işler.
+            meta["gap_fill_price"] = gap_fill_price
         result = await adapter.submit(
             OrderRequest(
                 symbol=position.symbol,
@@ -568,6 +627,7 @@ class BotWorker:
                 qty=position.qty,
                 bot_id=bot.id,
                 position_id=position.id,
+                meta=meta,
             )
         )
         await self._record_order(session, bot, result, position.id)

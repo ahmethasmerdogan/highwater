@@ -197,6 +197,10 @@ def equitydata() -> None:
 async def _equitydata() -> None:
     import redis.asyncio as aioredis
 
+    from sarnic.db.session import wait_for_db
+
+    await wait_for_db()
+
     from sarnic.data.equities import EquityDataService
 
     async def redis_factory():
@@ -211,6 +215,10 @@ async def _equitydata() -> None:
 
 async def _marketdata(backfill_days: int) -> None:
     import redis.asyncio as aioredis
+
+    from sarnic.db.session import wait_for_db
+
+    await wait_for_db()
 
     from sarnic.data.marketdata import MarketDataService
     from sarnic.universe.engine import UniverseEngine
@@ -278,7 +286,14 @@ def supervisor() -> None:
 
     init_sentry("supervisor")
     start_metrics_server(settings.metrics_port_supervisor, "supervisor")
-    asyncio.run(run_supervisor())
+
+    async def _run() -> None:
+        from sarnic.db.session import wait_for_db
+
+        await wait_for_db()
+        await run_supervisor()
+
+    asyncio.run(_run())
 
 
 @app.command()
@@ -298,7 +313,14 @@ def notifier() -> None:
 
     init_sentry("notifier")
     start_metrics_server(settings.metrics_port_notifier, "notifier")
-    asyncio.run(run_notifier())
+
+    async def _run() -> None:
+        from sarnic.db.session import wait_for_db
+
+        await wait_for_db()
+        await run_notifier()
+
+    asyncio.run(_run())
 
 
 @app.command()
