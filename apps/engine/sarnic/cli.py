@@ -618,7 +618,7 @@ async def _score_backfill(days: int, bot_id: int) -> None:
             )
         ).scalar_one()
         definition = StrategyDefinition.from_dict(version.definition)
-        symbols = await pool_symbols(session)
+        symbols = await pool_symbols(session, days=days)
         bot_name = bot.name
 
     if not symbols:

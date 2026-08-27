@@ -28,6 +28,7 @@ import { humanizeEvent, type Severity } from "@/lib/humanize";
 import { useLive } from "@/lib/ws";
 import { Page, GuideSection } from "@/shell/page";
 import { Button, Dot, Empty, Panel, Tag } from "@/design/primitives";
+import { ErrorBox, LoadingRows } from "@/design/state";
 import { Delta, Metric, NumCell, NumText } from "@/design/numeric";
 import { CurveChart, type CurveSeries } from "@/design/chart";
 import { Bar } from "@/design/viz";
@@ -59,25 +60,80 @@ export default function DashboardPage() {
     refetchInterval: 120_000,
   });
 
-  const { data: positions = [] } = useQuery({
+  const positionsQuery = useQuery({
     queryKey: ["positions", "open"],
     queryFn: () => api.get<Position[]>("/positions", { status_filter: "OPEN" }),
     refetchInterval: 20_000,
   });
+  const positions = positionsQuery.data ?? [];
 
   const { events } = useLive();
 
   const curves = useMemo<CurveSeries[]>(() => {
     const out: CurveSeries[] = [];
 
-    /* Uç bir dizi değil `{bots, total}` döndürür. Diziymiş gibi okunduğunda
-       uzunluk `undefined` çıkar ve botların eğrisi SESSİZCE çizilmez;
-       grafikte yalnızca kıyas görünürdü. */
-    if ((equity?.total.length ?? 0) > 0) {
+    /* `equity.total` BURAYA GİREMEZ. O alan botların mutlak toplam
+       özsermayesidir ve yeni bot eklendikçe sermaye enjeksiyonuyla
+       basamaklanır — 15.000'den 33.653'e çıkışının çoğu getiri değil, eklenen
+       sermayedir. Grafik her seriyi ilk noktasına göre 100'e çektiği için bu
+       seri 224'e tırmanıyor, kıyas 115'te kalıyordu ve panel "piyasayı 109
+       puan geçtik" diyordu. Gerçekte botların hepsi kıyasın altındaydı.
+       Sayfanın kendi kılavuzu "kıyası geçemiyorsanız seçim değer katmıyor"
+       diyor; grafik tam o soruyu ters cevaplıyordu.
+
+       Doğru veri `benchmark.bots[]`: uç her botu kendi ilk noktasına göre
+       zaten normalize ediyor, yani kıyasla aynı tabanda. */
+    const oranlar = benchmark?.bots ?? [];
+
+    /* Sermaye ağırlıklı bileşik: portföyün gerçek getirisi, botların
+       getirilerinin sermayeyle ağırlıklı ortalamasıdır. Ağırlık her botun
+       başlangıç özsermayesinden gelir. Eşit ağırlık almak, 416 USDT'lik
+       meydan okuma botunu 5.000 USDT'lik botla eşitler ve tabloyu çarpıtır. */
+    const agirlik = new Map<number, number>();
+    for (const bot of equity?.bots ?? []) {
+      const ilk = bot.curve[0]?.equity;
+      if (ilk && ilk > 0) agirlik.set(bot.bot_id, ilk);
+    }
+
+    /* İşlem yapmamış botlar dışarıda: eğrileri sabit 1,0'dır ve bileşiği
+       sulandırmaktan başka bir şey yapmazlar. */
+    const calisan = oranlar.filter((bot) => {
+      const w = agirlik.get(bot.bot_id);
+      return Boolean(w) && bot.curve.some((point) => point.value !== 1);
+    });
+
+    if (calisan.length > 0) {
+      const damgalar = new Map<string, { pay: number; toplam: number }>();
+      for (const bot of calisan) {
+        const w = agirlik.get(bot.bot_id) ?? 0;
+        for (const point of bot.curve) {
+          const hucre = damgalar.get(point.at) ?? { pay: 0, toplam: 0 };
+          hucre.pay += point.value * w;
+          hucre.toplam += w;
+          damgalar.set(point.at, hucre);
+        }
+      }
+      const points = [...damgalar.entries()]
+        .filter(([, hucre]) => hucre.toplam > 0)
+        .map(([at, hucre]) => ({ at, value: hucre.pay / hucre.toplam }))
+        .sort((a, b) => a.at.localeCompare(b.at));
+      if (points.length > 0) {
+        out.push({
+          label: `Botlar (sermaye ağırlıklı, ${calisan.length})`,
+          color: "var(--sn-series-1)",
+          points,
+        });
+      }
+    }
+
+    /* Meydan okuma botu ayrı çizilir: bileşiğin içinde kaybolan ama sahibin
+       asıl izlediği eğri odur. */
+    const meydan = calisan.find((bot) => bot.name.toUpperCase().includes("MEYDAN OKUMA"));
+    if (meydan) {
       out.push({
-        label: "Botlar",
-        color: "var(--sn-series-1)",
-        points: equity!.total.map((point) => ({ at: point.at, value: point.equity })),
+        label: "Meydan okuma",
+        color: "var(--sn-series-3)",
+        points: meydan.curve.map((point) => ({ at: point.at, value: point.value })),
       });
     }
 
@@ -129,8 +185,10 @@ export default function DashboardPage() {
               kapanana kadar değişir — cebe girmiş sayılmaz.
             </p>
             <p>
-              Eğri grafiğinde botların eğrisi kıyas sepetiyle birlikte çizilir ve ikisi de 100
-              tabanına endekslenir. Kıyası geçemiyorsanız, seçim yapmak değer katmıyor demektir.
+              Eğri grafiğinde botların <strong>getirisi</strong> kıyas sepetiyle birlikte
+              çizilir; hepsi 100 tabanına endekslenir. Bot eğrisi sermaye ağırlıklı bileşiktir
+              — yani eklenen sermaye getiri gibi görünmez. Kıyası geçemiyorsanız, seçim yapmak
+              değer katmıyor demektir.
             </p>
           </GuideSection>
           <GuideSection title="Ne yapabilirim">
@@ -242,7 +300,7 @@ export default function DashboardPage() {
         <AlertList alerts={alerts} />
       </div>
 
-      <OpenPositions rows={positions} />
+      <OpenPositions rows={positions} query={positionsQuery} />
     </Page>
   );
 }
@@ -452,7 +510,16 @@ function AlertList({
 /*  Açık pozisyonlar                                                   */
 /* ------------------------------------------------------------------ */
 
-function OpenPositions({ rows }: { rows: Position[] }) {
+function OpenPositions({
+  rows,
+  query,
+}: {
+  rows: Position[];
+  /* Boş tablo tek başına "pozisyon yok" demez — "veri gelmedi" de olabilir.
+     İkisini aynı göstermek, veri yokluğunu ölçüm sonucu gibi sunar: API
+     kapalıyken panel 11 açık pozisyonu "açık pozisyon yok" diye anlatır. */
+  query: { isLoading: boolean; isError: boolean; error?: unknown };
+}) {
   const columns = useMemo<GridColumn<Position>[]>(
     () => [
       {
@@ -539,6 +606,24 @@ function OpenPositions({ rows }: { rows: Position[] }) {
     ],
     [],
   );
+
+  if (query.isLoading) {
+    return (
+      <Panel title="Açık pozisyonlar">
+        <LoadingRows rows={4} />
+      </Panel>
+    );
+  }
+
+  if (query.isError) {
+    return (
+      <Panel title="Açık pozisyonlar">
+        <ErrorBox
+          message={query.error instanceof Error ? query.error.message : String(query.error ?? "")}
+        />
+      </Panel>
+    );
+  }
 
   return (
     <Panel

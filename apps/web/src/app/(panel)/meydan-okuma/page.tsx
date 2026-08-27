@@ -31,7 +31,9 @@ import {
   Button,
   Delta,
   Dot,
+  ErrorBox,
   InfoDot,
+  LoadingRows,
   Metric,
   NumText,
   Panel,
@@ -52,8 +54,7 @@ const HEDEF_TRY = 100_000;
 /** Meydan okuma başlarken USDTTRY (2026-08-26). Bilerek dondurulmuştur. */
 const KUR = 48.08;
 
-/** Sahibin koyduğu süre: 30 gün, 26 Ağustos 2026'dan itibaren. */
-const BASLANGIC = new Date("2026-08-26T00:00:00Z");
+/** Sahibin koyduğu süre: 30 gün. Sayaç botun fonlandığı andan işler. */
 const SURE_GUN = 30;
 
 const BASLANGIC_USDT = BASLANGIC_TRY / KUR;
@@ -106,18 +107,29 @@ export default function ChallengePage() {
 
   /* Süre ve hız. Tek başına "ne kadar kaldı" yetmez: hedefe yetişip
      yetişmediğimizi söyleyen şey gereken günlük oran ile gerçekleşen oranın
-     karşılaştırması. İkisini yan yana koymayan bir sayaç, son gün sürpriz yapar. */
-  const gecen = Math.max(
-    0,
-    (Date.now() - BASLANGIC.getTime()) / 86_400_000,
-  );
-  const kalan = Math.max(0, SURE_GUN - gecen);
-  const gerekenGunluk = kalan > 0 && equity !== null && equity > 0
-    ? Math.pow(HEDEF_USDT / equity, 1 / kalan) - 1
-    : null;
-  const gerceklesenGunluk = gecen >= 0.5 && equity !== null
-    ? Math.pow(equity / BASLANGIC_USDT, 1 / gecen) - 1
-    : null;
+     karşılaştırması. İkisini yan yana koymayan bir sayaç, son gün sürpriz yapar.
+
+     Başlangıç anı botun kendi `created_at`'inden gelir, elle yazılmış bir
+     tarihten değil. Elle yazıldığında gece yarısından sayıyordu ama bot 17:18'de
+     fonlanmıştı: geçen süre 0,57 gün yerine 1,29 gün çıkıyor, gerçekleşen oran
+     %1,24 yerine %0,55 görünüyordu. İki hata da aynı yöne çalışıyordu — bot
+     olduğundan yavaş, hedef olduğundan uzak. */
+  const baslangic = meydan ? new Date(meydan.created_at) : null;
+  const gecen =
+    baslangic === null
+      ? null
+      : Math.max(0, (Date.now() - baslangic.getTime()) / 86_400_000);
+  const kalan = gecen === null ? null : Math.max(0, SURE_GUN - gecen);
+  const gerekenGunluk =
+    kalan !== null && kalan > 0 && equity !== null && equity > 0
+      ? Math.pow(HEDEF_USDT / equity, 1 / kalan) - 1
+      : null;
+  /* Yarım gün dolmadan bileşik oran hesaplanmaz: birkaç saatlik veriden
+     günlük hız çıkarmak sayıyı anlamsız büyütür. */
+  const gerceklesenGunluk =
+    gecen !== null && gecen >= 0.5 && equity !== null && equity > 0
+      ? Math.pow(equity / BASLANGIC_USDT, 1 / gecen) - 1
+      : null;
 
   return (
     <Page
@@ -164,8 +176,21 @@ export default function ChallengePage() {
         </>
       }
     >
-      {/* ---- İlerleme ------------------------------------------------ */}
-      {meydan === null ? (
+      {/* ---- İlerleme ------------------------------------------------
+          Üç durum ayrılır: yükleniyor, hata, gerçekten yok. Üçünü "bot
+          bulunamadı" diye göstermek, veri yokluğunu ölçüm sonucu gibi sunar —
+          API kapalıyken sahibi botun silindiğini sanır. */}
+      {bots.isLoading ? (
+        <Panel>
+          <LoadingRows rows={3} />
+        </Panel>
+      ) : bots.isError ? (
+        <ErrorBox
+          message={
+            bots.error instanceof Error ? bots.error.message : String(bots.error ?? "")
+          }
+        />
+      ) : meydan === null ? (
         <Alert tone="warn" title="Meydan okuma botu bulunamadı">
           Adı <span className="sn-num">{BOT_ADI}</span> ile başlayan bir bot yok. Bot silinmiş ya
           da yeniden adlandırılmış olabilir; sayfa botu adından tanır.
@@ -209,9 +234,13 @@ export default function ChallengePage() {
             <Metric
               label="Kalan gün"
               value={kalan}
-              format={(value) => num(value, 1)}
-              accent={kalan < 7 ? "var(--sn-warn)" : undefined}
-              sub={`${num(SURE_GUN, 0)} günlük süre · ${num(gecen, 1)} gün geçti`}
+              format={(value) => (value === null || value === undefined ? "—" : num(value, 1))}
+              accent={kalan !== null && kalan < 7 ? "var(--sn-warn)" : undefined}
+              sub={
+                gecen === null
+                  ? "bot bulunamadı"
+                  : `${num(SURE_GUN, 0)} günlük süre · ${num(gecen, 1)} gün geçti`
+              }
             />
             <Metric
               label="Gereken günlük"
@@ -231,7 +260,11 @@ export default function ChallengePage() {
                     : "var(--sn-down)"
                   : undefined
               }
-              sub={gecen < 0.5 ? "ilk yarım gün dolmadan ölçülmez" : "başlangıçtan bugüne bileşik"}
+              sub={
+                gecen !== null && gecen < 0.5
+                  ? "ilk yarım gün dolmadan ölçülmez"
+                  : "fonlanmadan bugüne bileşik"
+              }
             />
             <TextMetric
               label="Yetişiyor mu"
@@ -253,7 +286,7 @@ export default function ChallengePage() {
                     : "var(--sn-down)"
               }
               sub={
-                gecen < 1
+                gecen !== null && gecen < 1
                   ? "ilk gün — henüz anlamlı değil"
                   : "erken günlerde çok oynak"
               }

@@ -1004,3 +1004,106 @@ Hedef 2.080 USDT (100.000 ₺ / 48,08). Kalan 28,8 gün için gereken bileşik g
 oran **%5,73**. Bot #11'in fiilî işlem süresi yarım gün ve gerçekleşen oran
 %1,4/gün — ama bu yarım günün neredeyse tamamı betadır, seçicilik değil.
 Daha önce ölçülen en iyi gözlem %1,20/gün idi. Aradaki fark kapanmadı.
+
+---
+
+## Referans değerim çürüktü — 2026-08-27
+
+Bu bölüm, bu defterdeki daha önceki ölçümlerin çoğunu geçersiz kılıyor.
+
+### Bulgu
+
+`scores` tablosunda 19 Haziran – 14 Ağustos arası her gün **tam 86 sembol,
+2064 satır** var. 15 Ağustos'tan itibaren sayı canlı dalgalanıyor (95, 97, 98,
+91, 87, 82, 83, 86, 87, 92). `universe_snapshots` tablosunun en eski kaydı
+**2026-08-15 02:08**.
+
+Sebebi `scoring/backfill.py`'deki `pool_symbols`: yalnızca **en son**
+snapshot'ı alıp (`order_by(id.desc()).limit(1)`) tüm geçmiş barlara
+uyguluyordu. Canlı yol doğru davranıyor (`worker.py:232` →
+`current_symbols(at=bar_time)`); ayrışan backfill'di.
+
+Bu bozulmaz kural 2'nin (look-ahead yasağı) doğrudan ihlali. Bugünün havuzu,
+geçmişte o havuzda olmayan sembolleri içerir — ve bir sembolün bugün havuzda
+olmasının sebebi genellikle **o dönemde yükselmiş olmasıdır**. Geçmişe geri
+yerleştirildiğinde ölçüme olmayan bir kenar bindirir.
+
+### Bedeli
+
+Aynı sorgu, aynı yöntem, iki pencere:
+
+| pencere | kapı 75,2 | n | t |
+|---|---|---|---|
+| kirli (backfill evreni, 19 Haz – 14 Ağu) | +%0,413 | 2350 | 2,74 |
+| **temiz (canlı evren, 15 Ağu sonrası)** | **+%0,025** | **276** | **0,06** |
+
+Kenar yok. Temiz pencerede kapı 70 hatta negatif (−%0,480, t=−1,94).
+
+**Bu defterdeki şu ölçümler geçersizdir:** kapı eğrisi (70→77), kapı çevirisi
+75,2, sıra bazlı kenar (1./2./3./4. sıra), volatilite dilimleri, ve kontrol
+grubunun ağırlık setinin "her kapıda negatif" olduğu bulgusu. Hepsi aynı kirli
+zeminden geliyor. **G6 dahil tüm parametre kararlarım bu zemine dayanıyordu.**
+
+### Bağımsız ikinci kanıt
+
+Panelin kıyas grafiği düzeltildikten sonra (aşağıda) canlı defter aynı şeyi
+söylüyor: 15–27 Ağustos penceresinde sermaye ağırlıklı bot bileşiği **106,4**,
+havuzun eşit ağırlıklı al-tut sepeti **116,0**. Botlar sepetin **9,6 puan
+altında**. Yani puanlama bu pencerede seçim yaparak değer üretmedi; ölçülen
+"%1,2/gün" beta'ydı, alfa değil.
+
+İki bağımsız yol — geçmiş puanların temiz penceresi ve canlı işlem defteri —
+aynı sonuca varıyor.
+
+### Yapılan
+
+`pool_symbols` artık dönem boyunca havuza girmiş sembollerin **birleşimini**
+döndürüyor (veri yüklemesi için), ve `backfill_scores` her barda havuzu
+`UniverseTimeline` ile point-in-time çözüyor. Snapshot arşivi o döneme
+uzanmıyorsa sonuç "YAKLAŞIK EVREN" diye işaretleniyor, sessizce sunulmuyor.
+
+Dört test eklendi: sonradan giren sembol öncesinde görünmez, düşen sembol
+geçmişte kalır, snapshot yoksa yaklaşık işaretlenir, ve döngü sabit sembol
+listesi kullanmaz. 503 test geçiyor.
+
+**Onarılamayan kısım:** `universe_snapshots` 15 Ağustos'tan geriye gitmiyor.
+19 Haziran – 14 Ağustos puan geçmişi yeniden üretilemez ve ölçüm amacıyla
+kullanılamaz. Bu, 3. bozulmaz kuralın ("havuz her yenilemede snapshot'lanır")
+15 Ağustos'tan önce uygulanmamış olmasının bedeli. Bundan sonraki her ölçüm
+sorgusu `bar_time >= '2026-08-15'` süzgeciyle çalışmalı.
+
+### Panelin kıyas grafiği gerçeğin tersini gösteriyordu
+
+Ana panel "Botlar" eğrisini `/portfolio/equity`'nin `total` alanından
+çiziyordu. O alan botların **mutlak toplam özsermayesidir** ve yeni bot
+eklendikçe sermaye enjeksiyonuyla basamaklanır: 15.000 → 33.653. Grafik her
+seriyi ilk noktasına göre 100'e çektiği için bu seri **224,4**'e tırmanıyor,
+kıyas **115,5**'te kalıyordu. Panel "piyasayı 109 puan geçtik" diyordu.
+
+Gerçekte botların hepsi kıyasın altındaydı. Doğru veri aynı yanıtta zaten
+normalize hâlde geliyordu (`benchmark.bots[]`) ve hiç okunmuyordu.
+
+Düzeltildi: eğri artık sermaye ağırlıklı bileşik getiri, meydan okuma botu
+ayrı seri olarak çiziliyor, ikisi de kıyasla aynı tabanda. Sayfanın kendi
+kılavuzu "kıyası geçemiyorsanız seçim değer katmıyor" diyor; grafik artık o
+soruyu doğru cevaplıyor.
+
+### `trades.pnl` giriş komisyonunu düşmüyordu
+
+Kapanışta komisyonun tamamı `trades.fees`'e yazılıyor ama kârdan yalnızca
+çıkış tarafı düşülüyordu. 160 işlemde 144,64 USDT — raporlanan kârın %9,5'i.
+Kanıt, açık pozisyonu olmayan bir botta mutabakatın kuruşuna tutması
+(bot #4: özsermaye−sermaye = 319,70 = sum(pnl) − sum(entry_fees)).
+
+Backtest motoru baştan beri doğru hesaplıyordu; ayrışma "backtest, paper ve
+canlı aynı sonucu üretir" kuralının fiilî ihlaliydi. Hesap tek bir paylaşılan
+fonksiyona alındı (`execution/accounting.py`) — kural artık sözleşmeyle değil
+yapıyla korunuyor. Göç 160 geçmiş satırı düzeltti.
+
+### Meydan okuma sayfası botun hızını 2,3 kat düşük gösteriyordu
+
+Başlangıç anı elle `2026-08-26T00:00:00Z` yazılmıştı ama bot 17:18:52'de
+fonlandı. Geçen süre 0,57 gün yerine 1,29 gün sayılıyor, gerçekleşen oran
+%1,24 yerine %0,55 çıkıyordu. Aynı hata kalan günü kısaltıp gereken oranı da
+şişiriyordu — iki hata da aynı yöne: bot olduğundan yavaş, hedef olduğundan
+uzak. Artık botun kendi `created_at`'inden türetiliyor.

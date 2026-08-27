@@ -29,10 +29,10 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from sarnic.backtest.engine import BacktestEngine, BacktestParams
+from sarnic.backtest.engine import BacktestEngine, BacktestParams, UniverseTimeline
 from sarnic.core.clock import utcnow
 from sarnic.core.logging import get_logger
-from sarnic.db.models import Score
+from sarnic.db.models import Score, UniverseSnapshot
 from sarnic.features.pipeline import build_bundle_precomputed, precompute_indicators
 from sarnic.scoring.engine import ScoringEngine
 from sarnic.strategy.definition import StrategyDefinition
@@ -69,6 +69,25 @@ async def backfill_scores(
 
     data = await engine.load_data(session, symbols)
     bars = engine.bar_times(data)
+
+    # Havuz her bar için ayrı çözülür. Sabit bir sembol listesiyle geçmişi
+    # puanlamak, bugün havuzda olan sembolleri geçmişe geri yerleştirir — ve
+    # bir sembolün bugün havuzda olmasının sebebi genellikle o dönemde
+    # yükselmiş olmasıdır. Kenar ölçümüne olmayan bir üstünlük bindirir.
+    snapshots = (
+        (
+            await session.execute(
+                select(UniverseSnapshot)
+                .where(UniverseSnapshot.taken_at <= end)
+                .order_by(UniverseSnapshot.taken_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    timeline = UniverseTimeline(list(snapshots), fallback=symbols)
+    if timeline.approximate:
+        log.warning("score_backfill_universe_approximate", note=timeline.note())
     if not bars:
         log.warning("score_backfill_no_bars", days=days, symbols=len(symbols))
         return 0
@@ -112,7 +131,12 @@ async def backfill_scores(
         rows = []
 
     for index, bar in enumerate(bars, start=1):
-        cuts = engine._cuts(data, symbols, bar)
+        # O anda havuzda olmayan sembol kesite giremez. Kesitsel puanlama
+        # yüzdelik tabanlı olduğu için bu yalnızca fazladan satır meselesi
+        # değildir: havuza sonradan giren bir sembol, o günün yüzdeliklerini
+        # de bozar.
+        pool = timeline.at(bar)
+        cuts = engine._cuts(data, pool, bar)
         if not cuts:
             continue
 
@@ -141,15 +165,29 @@ async def backfill_scores(
     return written
 
 
-async def pool_symbols(session: AsyncSession) -> list[str]:
-    """Güncel havuz — puan üretilecek sembol kümesi."""
+async def pool_symbols(session: AsyncSession, *, days: int | None = None) -> list[str]:
+    """Puan üretilecek sembollerin **birleşimi** — bir dönem boyunca havuza girmiş herkes.
+
+    Eskiden burası yalnızca **en son** snapshot'ı döndürüyor, o küme de tüm
+    geçmiş barlara uygulanıyordu. Bu, bozulmaz kural 2'nin (look-ahead yasağı)
+    doğrudan ihlaliydi: bugünün havuzu, geçmişte o havuzda olmayan sembolleri
+    içerir ve bir sembolün bugün havuzda olmasının sebebi genellikle **o
+    dönemde yükselmiş olmasıdır**. Geçmişe geri yerleştirildiğinde ölçüme
+    olmayan bir kenar bindirir.
+
+    Ölçülen bedeli: kirli pencerede kapı 75,2 kenarı +%0,413 (t=2,74), aynı
+    yöntemle temiz pencerede +%0,025 (t=0,06). Kenarın tamamı yanlılıktı.
+
+    Birleşim döndürülür çünkü veri yüklemesi tüm dönemi kapsamalı; hangi
+    sembolün hangi barda havuzda olduğu `backfill_scores` içinde bar bazlı
+    çözülür.
+    """
     from sarnic.db.models import UniverseSnapshot
 
-    snap = (
-        await session.execute(
-            select(UniverseSnapshot).order_by(UniverseSnapshot.id.desc()).limit(1)
-        )
-    ).scalar_one_or_none()
-    if snap is None:
+    stmt = select(UniverseSnapshot).order_by(UniverseSnapshot.taken_at)
+    if days is not None:
+        stmt = stmt.where(UniverseSnapshot.taken_at >= utcnow() - timedelta(days=days))
+    snaps = (await session.execute(stmt)).scalars().all()
+    if not snaps:
         return []
-    return [s["symbol"] for s in snap.symbols]
+    return sorted({entry["symbol"] for snap in snaps for entry in snap.symbols})
