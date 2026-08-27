@@ -22,6 +22,7 @@
  */
 
 import { useSyncExternalStore, useEffect, useRef, useState } from "react";
+import { animate } from "motion/react";
 
 /* ------------------------------------------------------------------ */
 /*  Hareketi azalt                                                     */
@@ -58,7 +59,6 @@ export function useReducedMotion(): boolean {
 /* ------------------------------------------------------------------ */
 
 /** Sondaki yavaşlama — hedefe yaklaşırken durur, sıçramaz. */
-const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
 
 export interface AnimatedNumber {
   /** O anki ara değer. Biçimlemek çağıranın işi. */
@@ -96,7 +96,6 @@ export function useAnimatedNumber(
   /* Sayma döngüsünün okuduğu "nereden" değeri. State değil ref: döngü
      içinde güncel kalmalı ve her karede yeniden render tetiklememeli. */
   const fromRef = useRef<number>(finite ?? 0);
-  const frameRef = useRef<number | null>(null);
   const mountedRef = useRef(false);
 
   useEffect(() => {
@@ -125,26 +124,27 @@ export function useAnimatedNumber(
     setDirection(delta > 0 ? 1 : -1);
     setRunning(true);
 
-    const started = performance.now();
-    const step = (now: number) => {
-      const t = Math.min(1, (now - started) / duration);
-      const next = from + delta * easeOut(t);
-      setValue(t === 1 ? finite : next);
-      if (t < 1) {
-        frameRef.current = requestAnimationFrame(step);
-        return;
-      }
-      fromRef.current = finite;
-      frameRef.current = null;
-      setRunning(false);
-      /* Yön bir süre daha durur ki renk ipucu sayıyla birlikte sönsün. */
-      window.setTimeout(() => setDirection(0), 240);
-    };
+    /* motion.dev yayı: sayı hedefe fizikle oturur — sona doğru yavaşlayıp
+       yumuşakça durur, mekanik ease eğrisi gibi "bitti" demez. Sertlik
+       değişimin büyüklüğünden bağımsız; büyük sıçrama da küçük tık da
+       aynı karakterde. */
+    const controls = animate(from, finite, {
+      type: "spring",
+      stiffness: 110,
+      damping: 22,
+      mass: 0.9,
+      onUpdate: (next) => setValue(next),
+      onComplete: () => {
+        fromRef.current = finite;
+        setValue(finite);
+        setRunning(false);
+        /* Yön bir süre daha durur ki renk ipucu sayıyla birlikte sönsün. */
+        window.setTimeout(() => setDirection(0), 240);
+      },
+    });
 
-    frameRef.current = requestAnimationFrame(step);
     return () => {
-      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
-      frameRef.current = null;
+      controls.stop();
       /* Yarıda kesilirse bir sonraki sayma en son GÖSTERİLEN yerden
          başlamalı; hedeften başlarsa animasyon geri sıçrar. */
       fromRef.current = finite;

@@ -41,6 +41,7 @@ import { Delta, Metric, NumCell, NumText } from "@/design/numeric";
 import { Bar, RangeDot } from "@/design/viz";
 import { Drawer, DrawerSection, KeyValue } from "@/design/drawer";
 import { ScoreCard } from "@/design/score-card";
+import { TradeShareCard } from "@/design/win-card";
 import { DataGrid } from "@/grid/data-grid";
 import type { GridColumn } from "@/grid/types";
 
@@ -563,6 +564,8 @@ function openRisk(position: Position): number | null {
 /* ------------------------------------------------------------------ */
 
 function ClosedTrades({ rows, query }: { rows: Trade[]; query: SorguDurumu }) {
+  /* Satıra tıkla → paylaşılabilir işlem kartı (PNG indirilebilir). */
+  const [paylas, setPaylas] = useState<Trade | null>(null);
   const columns = useMemo<GridColumn<Trade>[]>(
     () => [
       {
@@ -690,12 +693,14 @@ function ClosedTrades({ rows, query }: { rows: Trade[]; query: SorguDurumu }) {
   return (
     <Panel
       title="Kapanmış işlemler"
-      description="En yeniden eskiye. R sütunu işlemleri karşılaştırılabilir kılan tek ölçüdür."
+      description="En yeniden eskiye. R sütunu işlemleri karşılaştırılabilir kılan tek ölçüdür. Satıra tıklayın: paylaşılabilir işlem kartı açılır."
       padded={false}
     >
+      <TradeShareCard trade={paylas} onClose={() => setPaylas(null)} />
       <DataGrid
         rows={rows}
         columns={columns}
+        onRowClick={setPaylas}
         rowKey={(row) => String(row.id)}
         storageKey="pozisyonlar-kapali"
         searchPlaceholder="Sembol ya da çıkış sebebi…"

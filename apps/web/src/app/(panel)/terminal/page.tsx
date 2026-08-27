@@ -16,6 +16,7 @@ import { useRouter } from "next/navigation";
 import { DockviewReact, type DockviewApi, type IDockviewPanelProps } from "dockview-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Marquee } from "uicean";
+import { AnimatePresence, motion } from "motion/react";
 import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
 import { parseCommand, type PanelKind } from "@/lib/terminal-commands";
@@ -255,6 +256,35 @@ export default function TerminalPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const counterRef = useRef(0);
 
+  /* Sembol paleti: üç pazarın güncel havuzu bir kez çekilir; komut
+     satırına yazarken canlı süzülür. Öneri seçmek Puan Kartı paneli açar. */
+  const evren = useQuery({
+    queryKey: ["terminal-evren"],
+    queryFn: async () => {
+      const pazarlar = ["CRYPTO", "BIST", "US"] as const;
+      const sonuclar = await Promise.allSettled(
+        pazarlar.map((market) =>
+          api.get<{ symbols: { symbol: string }[] }>("/universe/current", { market }),
+        ),
+      );
+      const out: string[] = [];
+      for (const r of sonuclar) {
+        if (r.status === "fulfilled") out.push(...r.value.symbols.map((s) => s.symbol));
+      }
+      return out.sort();
+    },
+    staleTime: 300_000,
+  });
+  const [secili, setSecili] = useState(0);
+  const oneriler = useMemo(() => {
+    const q = command.trim().toUpperCase();
+    /* Yalnız tek kelimelik, komut olmayan girişte öner. */
+    if (!q || q.includes(" ") || parseCommand(q)?.kind === "open") return [];
+    if (["SCAN", "KILL", "BT"].some((k) => k.startsWith(q))) return [];
+    return (evren.data ?? []).filter((sym) => sym.startsWith(q)).slice(0, 8);
+  }, [command, evren.data]);
+  useEffect(() => setSecili(0), [command]);
+
   const killSwitch = useMutation({
     mutationFn: () => api.post("/system/kill-switch"),
     onSuccess: () => toast.warning("Acil durdurma çalıştırıldı", "Tüm botlar durduruldu."),
@@ -363,6 +393,12 @@ export default function TerminalPage() {
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    if (oneriler.length > 0) {
+      const sym = oneriler[Math.min(secili, oneriler.length - 1)];
+      addPanel("scorecard", `${sym} · Puan Kartı`, { symbol: sym });
+      setCommand("");
+      return;
+    }
     const parsed = parseCommand(command);
     if (!parsed) return;
 
@@ -419,7 +455,7 @@ export default function TerminalPage() {
       <div className="hidden flex-1 flex-col lg:flex">
         {/* Üst şerit: marka · komut · saat — Bloomberg chrome'u */}
         <div
-          className="flex flex-wrap items-center gap-3 px-3 py-1.5"
+          className="relative flex flex-wrap items-center gap-3 px-3 py-1.5"
           style={{ background: "var(--sn-panel)", borderBottom: "1px solid var(--sn-hairline)" }}
         >
           <span
@@ -435,7 +471,7 @@ export default function TerminalPage() {
                 letterSpacing: "0.08em",
               }}
             >
-              SARNIÇ TERMİNAL
+              HIGHWATER TERMINAL
             </span>
           </span>
           <form
@@ -456,6 +492,18 @@ export default function TerminalPage() {
                 setCommand(event.target.value);
                 setError("");
               }}
+              onKeyDown={(event) => {
+                if (oneriler.length === 0) return;
+                if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  setSecili((i) => (i + 1) % oneriler.length);
+                } else if (event.key === "ArrowUp") {
+                  event.preventDefault();
+                  setSecili((i) => (i - 1 + oneriler.length) % oneriler.length);
+                } else if (event.key === "Escape") {
+                  setCommand("");
+                }
+              }}
               placeholder="SOLUSDT G 1h · SCAN 80 · POOL · POS · LOG · KILL"
               className="sn-num w-full bg-transparent uppercase focus:outline-none"
               style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}
@@ -472,6 +520,44 @@ export default function TerminalPage() {
             </kbd>
           </form>
           <TerminalClock />
+          <AnimatePresence>
+            {oneriler.length > 0 && (
+              <motion.ul
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ type: "spring", stiffness: 260, damping: 26 }}
+                className="absolute top-full left-[190px] z-30 mt-1 w-64 overflow-hidden rounded-[var(--sn-r-sm)]"
+                style={{
+                  background: "var(--sn-raised)",
+                  border: "1px solid var(--sn-border)",
+                  boxShadow: "var(--sn-shadow-pop)",
+                }}
+              >
+                {oneriler.map((sym, i) => (
+                  <li key={sym}>
+                    <button
+                      type="button"
+                      onMouseEnter={() => setSecili(i)}
+                      onClick={() => {
+                        addPanel("scorecard", `${sym} · Puan Kartı`, { symbol: sym });
+                        setCommand("");
+                      }}
+                      className="sn-num flex w-full items-center justify-between px-2.5 py-1.5 text-left"
+                      style={{
+                        background: i === secili ? "var(--sn-brand-bg)" : "transparent",
+                        color: i === secili ? "var(--sn-brand)" : "var(--sn-ink)",
+                        fontSize: "var(--sn-t-caption)",
+                      }}
+                    >
+                      {sym}
+                      <span style={{ color: "var(--sn-ink-4)", fontSize: 10 }}>SC ⏎</span>
+                    </button>
+                  </li>
+                ))}
+              </motion.ul>
+            )}
+          </AnimatePresence>
 
           <div className="flex items-center gap-1.5">
             <span

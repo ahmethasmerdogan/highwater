@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=SARNIÇ konsolu
+Name=HIGHWATER konsolu
 Comment=Açılışta durum kartı + canlı AL/SAT akışını ayrı pencerede açar (paper — canlı para yok)
 Exec=/home/ahmet/Projects/Sarnic_Proje/scripts/open-terminal.sh konsol
 Terminal=false

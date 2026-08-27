@@ -1,7 +1,11 @@
 "use client";
 
 /**
- * SARNIÇ markası.
+ * HIGHWATER markası.
+ *
+ * İsim finansın kendi terimi: high-water mark — özsermayenin gördüğü en
+ * yüksek seviye (motorda `equity_peak` olarak zaten yaşıyor). Sarnıç
+ * mirası işarette sürer: su çizgisi + onu AŞAN ölçüm oku = high water.
  *
  * İşaret bir sarnıcın kesitidir: kubbeli hazne, içinde su seviyesi, suyun
  * üstünde yükselen ölçüm çizgisi. Sistemin kendisi de bu: birikmiş
@@ -102,7 +106,7 @@ export function LogoWordmark({
             letterSpacing: "0.02em",
           }}
         >
-          SARNIÇ
+          HIGHWATER
         </span>
         {sub && (
           <span className="block truncate" style={{ fontSize: 10, color: "var(--sn-ink-3)" }}>

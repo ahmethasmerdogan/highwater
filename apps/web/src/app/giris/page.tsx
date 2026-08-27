@@ -135,7 +135,7 @@ export default function LoginPage() {
                 className="font-semibold"
                 style={{ fontSize: "var(--sn-t-title)", color: "var(--sn-ink)", letterSpacing: "0.01em" }}
               >
-                SARNIÇ
+                HIGHWATER
               </div>
               <div style={{ fontSize: "var(--sn-t-micro)", color: "var(--sn-ink-3)" }}>
                 kağıt üstü işlem sistemi

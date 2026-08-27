@@ -13,7 +13,7 @@
  */
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   api,
@@ -31,7 +31,9 @@ import { Page, GuideSection } from "@/shell/page";
 import { Button, Dot, Empty, Panel, Tag } from "@/design/primitives";
 import { ErrorBox, LoadingRows } from "@/design/state";
 import { InfoDot } from "@/design/explain";
-import { CelebrationReveal, SuccessCard } from "@/design/celebration";
+import { SuccessCard } from "@/design/celebration";
+import { TradeShareCard, WinShowcase } from "@/design/win-card";
+import { motion } from "motion/react";
 import { IStar, ITrendUp, IWallet, IZap, Reveal } from "uicean";
 import { Delta, Metric, NumCell, NumText } from "@/design/numeric";
 import { CurveChart, type CurveSeries } from "@/design/chart";
@@ -281,7 +283,7 @@ export default function DashboardPage() {
       </div>
       </Reveal>
 
-      <GununKarnesi />
+      <GununKarnesi capital={live?.capital ?? null} />
 
       <Panel
         title="Özsermaye ve kıyas"
@@ -345,7 +347,8 @@ export default function DashboardPage() {
  * Bugün KAPANAN işlemlerin karnesi. Kutlama sözleşmesi: yalnızca
  * gerçekleşmiş kâr ışıldar; kayıp günü sakin ve net gösterilir, saklanmaz.
  */
-function GununKarnesi() {
+function GununKarnesi({ capital }: { capital: number | null }) {
+  const [paylas, setPaylas] = useState<Trade | null>(null);
   const trades = useQuery({
     queryKey: ["trades", "karne"],
     queryFn: () => api.get<Trade[]>("/trades", { limit: 300 }),
@@ -407,46 +410,73 @@ function GununKarnesi() {
       title="Günün karnesi"
       description="Bugün kapanan işlemler. Kutlama yalnızca cebe gireni sayar — açık pozisyonların kâğıt üstü değeri burada yoktur."
     >
-      <CelebrationReveal>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <SuccessCard
-            icon={<IWallet size={16} />}
-            label="Bugün cebe giren"
-            value={karne.net}
-            format={(v) => `${(v ?? 0) > 0 ? "+" : ""}${money(v)}`}
-            tone={karne.net > 0 ? "win" : karne.net < 0 ? "loss" : "flat"}
-            sub={`${num(karne.islem, 0)} kapanan işlem`}
-          />
-          <SuccessCard
-            icon={<IStar size={16} />}
-            label="En iyi işlem"
-            value={karne.enIyi.pnl}
-            format={(v) => `${(v ?? 0) > 0 ? "+" : ""}${money(v)}`}
-            tone={karne.enIyi.pnl > 0 ? "win" : "loss"}
-            sub={`${karne.enIyi.symbol} · ${karne.enIyi.pnl_r > 0 ? "+" : ""}${num(karne.enIyi.pnl_r, 2)}R`}
-          />
-          <SuccessCard
-            icon={<ITrendUp size={16} />}
-            label="İsabet"
-            value={karne.isabet}
-            format={(v) => pct(v, 0)}
-            tone={karne.isabet >= 0.5 ? "win" : "flat"}
-            sub={`${num(karne.kazanan, 0)} / ${num(karne.islem, 0)} işlem kârla kapandı`}
-          />
-          <SuccessCard
-            icon={<IZap size={16} />}
-            label="Kazanç serisi"
-            value={karne.seri}
-            format={(v) => num(v, 0)}
-            tone={karne.seri >= 3 ? "win" : "flat"}
-            sub={
-              karne.seri > 0
-                ? "üst üste kârlı kapanış"
-                : "seri kırıldı — sıradaki işlem yeni başlangıç"
-            }
-          />
+      <div className="flex flex-col gap-3">
+        {/* Kahraman kart: borsaların PnL kartı türü. Gösteriş burada yaşar. */}
+        <WinShowcase
+          label="Bugün cebe giren"
+          amount={karne.net}
+          roi={capital && capital > 0 ? karne.net / capital : null}
+          sub={`${num(karne.islem, 0)} kapanan işlem · taban: toplam sermaye`}
+          onShare={karne.enIyi.pnl > 0 ? () => setPaylas(karne.enIyi) : undefined}
+        />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {(
+            [
+              {
+                icon: <IStar size={16} />,
+                label: "En iyi işlem",
+                value: karne.enIyi.pnl,
+                format: (v: number | null | undefined) =>
+                  `${(v ?? 0) > 0 ? "+" : ""}${money(v)}`,
+                tone: karne.enIyi.pnl > 0 ? "win" : "loss",
+                sub: `${karne.enIyi.symbol} · ${karne.enIyi.pnl_r > 0 ? "+" : ""}${num(karne.enIyi.pnl_r, 2)}R · kart için tıkla`,
+                onClick: () => setPaylas(karne.enIyi),
+              },
+              {
+                icon: <ITrendUp size={16} />,
+                label: "İsabet",
+                value: karne.isabet,
+                format: (v: number | null | undefined) => pct(v, 0),
+                tone: karne.isabet >= 0.5 ? "win" : "flat",
+                sub: `${num(karne.kazanan, 0)} / ${num(karne.islem, 0)} işlem kârla kapandı`,
+                onClick: undefined,
+              },
+              {
+                icon: <IZap size={16} />,
+                label: "Kazanç serisi",
+                value: karne.seri,
+                format: (v: number | null | undefined) => num(v, 0),
+                tone: karne.seri >= 3 ? "win" : "flat",
+                sub:
+                  karne.seri > 0
+                    ? "üst üste kârlı kapanış"
+                    : "seri kırıldı — sıradaki işlem yeni başlangıç",
+                onClick: undefined,
+              },
+            ] as const
+          ).map((kart, i) => (
+            <motion.div
+              key={kart.label}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ type: "spring", stiffness: 140, damping: 22, delay: 0.08 * (i + 1) }}
+              whileHover={kart.onClick ? { y: -2 } : undefined}
+              onClick={kart.onClick}
+              style={kart.onClick ? { cursor: "pointer" } : undefined}
+            >
+              <SuccessCard
+                icon={kart.icon}
+                label={kart.label}
+                value={kart.value}
+                format={kart.format}
+                tone={kart.tone}
+                sub={kart.sub}
+              />
+            </motion.div>
+          ))}
         </div>
-      </CelebrationReveal>
+      </div>
+      <TradeShareCard trade={paylas} onClose={() => setPaylas(null)} />
       {kayipGunu && (
         <p
           className="mt-3 pl-3"

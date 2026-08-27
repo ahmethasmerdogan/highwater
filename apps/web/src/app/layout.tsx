@@ -12,7 +12,7 @@ import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "SARNIÇ",
+  title: "HIGHWATER",
   description:
     "Havuz tabanlı kesitsel puanlama ve kağıt üstü işlem sistemi. Canlı para yoktur.",
 };

@@ -110,7 +110,7 @@ class Konsol:
         password = os.getenv("SARNIC_TUI_PASSWORD")
         code = os.getenv("SARNIC_TUI_CODE")
         if not (email and password and code):
-            self.console.print(Text("SARNIÇ — giriş", style=f"bold {AMBER}"))
+            self.console.print(Text("HIGHWATER — giriş", style=f"bold {AMBER}"))
             email = input("  e-posta : ").strip()
             password = getpass.getpass("  parola  : ")
             code = input("  kod     : ").strip()
@@ -208,7 +208,9 @@ class Konsol:
             Text(),
             noktalar,
         )
-        logo = Text(LOGO, style=AMBER)
+        logo_metin = Text(LOGO, style=AMBER)
+        logo_metin.append("\n     H I G H W A T E R", style=f"bold {AMBER}")
+        logo = logo_metin
         self.console.print(Columns([logo, sag], padding=(0, 4)))
         self.console.print()
         cizgi = Text("── CANLI AKIŞ ", style=f"bold {AMBER}")
@@ -249,6 +251,12 @@ class Konsol:
             pnl = float(payload.get("pnl") or 0.0)
             r = float(payload.get("pnl_r") or 0.0)
             renk = GREEN if pnl > 0 else RED
+            if pnl > 0:
+                # Kazanç şeridi — konsolun konfetisi. Yalnız gerçekleşmiş kâr.
+                yildiz = Text()
+                yildiz.append("★ KAZANÇ ", style=f"bold {AMBER}")
+                yildiz.append("─" * 40, style=DIM)
+                self.console.print(yildiz)
             metin = Text()
             metin.append(f"{stamp}  ", style=DIM)
             metin.append("SAT  ", style=f"bold {CYAN}")

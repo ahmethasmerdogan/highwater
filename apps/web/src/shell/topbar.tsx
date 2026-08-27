@@ -102,7 +102,7 @@ export function Topbar({
           className="shrink-0 truncate font-medium"
           style={{ fontSize: "var(--sn-t-body-lg)", color: "var(--sn-ink)" }}
         >
-          {item?.label ?? "SARNIÇ"}
+          {item?.label ?? "HIGHWATER"}
         </h1>
 
         {/* ---- Komut tetikleyici ------------------------------------ */}

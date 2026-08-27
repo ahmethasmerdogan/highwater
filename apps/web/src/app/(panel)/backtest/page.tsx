@@ -23,6 +23,7 @@ import {
 import { useAuth } from "@/lib/auth";
 import { toast } from "@/lib/toast";
 import { dateOnly, dateTime, money, num, pct, pctSigned, relative, rMultiple } from "@/lib/format";
+import { Reveal } from "uicean";
 import { Page, GuideSection } from "@/shell/page";
 import {
   Alert,
@@ -155,8 +156,13 @@ export default function BacktestPage() {
         </>
       }
     >
-      {can("TRADER") && <NewBacktest onCreated={setSelectedId} />}
+      {can("TRADER") && (
+        <Reveal>
+          <NewBacktest onCreated={setSelectedId} />
+        </Reveal>
+      )}
 
+      <Reveal delay={80}>
       <Panel
         title="Koşular"
         description="Geçmişteki backtest çalıştırmaları. Bir satıra tıklayınca raporu açılır."
@@ -172,6 +178,7 @@ export default function BacktestPage() {
           {(rows) => <BacktestList rows={rows} onSelect={setSelectedId} />}
         </Async>
       </Panel>
+      </Reveal>
 
       {selectedId !== null && <BacktestReport id={selectedId} onClose={() => setSelectedId(null)} />}
 

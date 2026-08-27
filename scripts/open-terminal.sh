@@ -26,11 +26,11 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 case "$MODE" in
   tui)
     INNER="cd '$ROOT/apps/engine' && exec uv run python -m sarnic.cli tui"
-    TITLE="SARNIÇ · terminal arayüzü"
+    TITLE="HIGHWATER · terminal arayüzü"
     ;;
   konsol)
     INNER="cd '$ROOT/apps/engine' && exec uv run python -m sarnic.cli konsol"
-    TITLE="SARNIÇ · canlı akış"
+    TITLE="HIGHWATER · canlı akış"
     ;;
   log)
     # `--follow` üç birimi tek akışta birleştirir; `-n 200` açılışta bağlamı verir.

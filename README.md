@@ -1,4 +1,9 @@
-# SARNIÇ
+# HIGHWATER
+
+> Eski adıyla **SARNIÇ**. İsim finansın kendi terimi: *high-water mark* —
+> özsermayenin gördüğü en yüksek seviye (motorda `equity_peak`). İç
+> tanımlayıcılar (`sarnic` paketi, `SARNIC_*` ortam değişkenleri, servis
+> adları) şimdilik değişmedi; tam geçiş tek bir ara-değiştir işidir.
 
 Binance spot piyasasında çalışan, likidite filtresiyle 100 coinlik bir **havuz** kuran,
 bu havuzdaki coinleri 0–100 arası **puanlayan**, en yüksek puanlılara risk-tabanlı

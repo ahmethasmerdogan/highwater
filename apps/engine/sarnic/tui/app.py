@@ -98,7 +98,7 @@ class LoginScreen(ModalScreen[tuple[str, str, str]]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog"):
-            yield Label("SARNIÇ — giriş")
+            yield Label("HIGHWATER — giriş")
             yield Input(placeholder="e-posta", id="email")
             yield Input(placeholder="parola", password=True, id="password")
             yield Input(placeholder="doğrulama kodu (6 hane)", id="code", max_length=8)
@@ -848,7 +848,7 @@ class EventsScreen(BaseScreen):
 # --------------------------------------------------------------------- #
 class SarnicTUI(App[None]):
     CSS = CSS
-    TITLE = "SARNIÇ"
+    TITLE = "HIGHWATER"
 
     MODES: ClassVar = {
         "nobet": WatchScreen,

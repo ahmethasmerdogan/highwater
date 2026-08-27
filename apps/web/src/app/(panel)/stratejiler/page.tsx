@@ -16,6 +16,7 @@ import { useAuth } from "@/lib/auth";
 import { toast } from "@/lib/toast";
 import { STRATEGY_GROUPS, readPath, type FieldSpec } from "@/lib/strategy-fields";
 import { dateTime, num, relative } from "@/lib/format";
+import { Reveal } from "uicean";
 import { Page, GuideSection } from "@/shell/page";
 import {
   Async,
@@ -99,7 +100,8 @@ export default function StrategiesPage() {
       >
         {(list) => (
           <div className="flex flex-col gap-4">
-            {list.map((strategy) => (
+            {list.map((strategy, si) => (
+              <Reveal key={strategy.id} delay={si * 70}>
               <Panel
                 key={strategy.id}
                 title={strategy.name}
@@ -120,7 +122,7 @@ export default function StrategiesPage() {
                           <button
                             type="button"
                             onClick={() => setSelected({ strategy, version })}
-                            className="sn-focus flex w-full items-center gap-3 px-4 py-3 text-left transition-colors duration-[var(--sn-dur-1)] hover:bg-[var(--sn-sunken)]"
+                            className="sn-focus flex w-full items-center gap-3 px-4 py-3 text-left transition-[background-color,transform] duration-[var(--sn-dur-1)] hover:translate-x-0.5 hover:bg-[var(--sn-sunken)]"
                           >
                             <span
                               className="sn-num font-medium"
@@ -149,6 +151,7 @@ export default function StrategiesPage() {
                   </ul>
                 )}
               </Panel>
+              </Reveal>
             ))}
           </div>
         )}

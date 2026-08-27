@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=SARNIÇ terminali
+Name=HIGHWATER terminali
 Comment=Canlı bot akışını ayrı bir pencerede açar (paper — canlı para yok)
 Exec=/home/ahmet/Projects/Sarnic_Proje/scripts/open-terminal.sh tui
 Terminal=false
