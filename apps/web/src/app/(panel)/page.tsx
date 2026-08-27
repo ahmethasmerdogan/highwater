@@ -22,6 +22,7 @@ import {
   type PortfolioEquity,
   type Position,
   type SystemStatus,
+  type Trade,
 } from "@/lib/api";
 import { money, num, pct, pctSigned, price, relative, time } from "@/lib/format";
 import { humanizeEvent, type Severity } from "@/lib/humanize";
@@ -30,6 +31,7 @@ import { Page, GuideSection } from "@/shell/page";
 import { Button, Dot, Empty, Panel, Tag } from "@/design/primitives";
 import { ErrorBox, LoadingRows } from "@/design/state";
 import { InfoDot } from "@/design/explain";
+import { IFlame, IMedal, IPeak, ITrophy, SuccessCard } from "@/design/celebration";
 import { Delta, Metric, NumCell, NumText } from "@/design/numeric";
 import { CurveChart, type CurveSeries } from "@/design/chart";
 import { Bar } from "@/design/viz";
@@ -272,6 +274,8 @@ export default function DashboardPage() {
         />
       </div>
 
+      <GununKarnesi />
+
       <Panel
         title="Özsermaye ve kıyas"
         description="Botların eğrisi, havuzun eşit ağırlıklı al-ve-tut sepetiyle birlikte. İkisi de 100 tabanına endekslenmiştir; böylece farklı başlangıç tutarları karşılaştırılabilir."
@@ -323,6 +327,130 @@ export default function DashboardPage() {
 
       <OpenPositions rows={positions} query={positionsQuery} />
     </Page>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Günün karnesi — başarı kartları                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Bugün KAPANAN işlemlerin karnesi. Kutlama sözleşmesi: yalnızca
+ * gerçekleşmiş kâr ışıldar; kayıp günü sakin ve net gösterilir, saklanmaz.
+ */
+function GununKarnesi() {
+  const trades = useQuery({
+    queryKey: ["trades", "karne"],
+    queryFn: () => api.get<Trade[]>("/trades", { limit: 300 }),
+    refetchInterval: 60_000,
+  });
+
+  const karne = useMemo(() => {
+    const bugun = new Date();
+    const ayniGun = (iso: string) => {
+      const d = new Date(iso);
+      return (
+        d.getFullYear() === bugun.getFullYear() &&
+        d.getMonth() === bugun.getMonth() &&
+        d.getDate() === bugun.getDate()
+      );
+    };
+    const rows = (trades.data ?? []).filter((t) => ayniGun(t.exit_time));
+    if (rows.length === 0) return null;
+    const net = rows.reduce((s, t) => s + t.pnl, 0);
+    const kazanan = rows.filter((t) => t.pnl > 0);
+    const enIyi = rows.reduce((best, t) => (t.pnl > best.pnl ? t : best), rows[0]);
+    /* Seri: en yeni işlemden geriye, ilk kayba kadar. */
+    const sirali = [...(trades.data ?? [])].sort((a, b) =>
+      a.exit_time < b.exit_time ? 1 : -1,
+    );
+    let seri = 0;
+    for (const t of sirali) {
+      if (t.pnl > 0) seri += 1;
+      else break;
+    }
+    return {
+      islem: rows.length,
+      net,
+      kazanan: kazanan.length,
+      isabet: kazanan.length / rows.length,
+      enIyi,
+      seri,
+    };
+  }, [trades.data]);
+
+  if (trades.isError) return null; /* karne süstür; hatası şerit açmaz */
+  if (!karne) {
+    return (
+      <Panel
+        title="Günün karnesi"
+        description="Bugün kapanan işlemler. Kutlama yalnızca cebe gireni sayar — açık pozisyonların kâğıt üstü değeri burada yoktur."
+      >
+        <p style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink-3)" }}>
+          Bugün henüz kapanan işlem yok. Botlar bar kapanışlarında karar veriyor;
+          kapanan ilk işlem burada kartıyla görünecek.
+        </p>
+      </Panel>
+    );
+  }
+
+  const kayipGunu = karne.net < 0;
+  return (
+    <Panel
+      title="Günün karnesi"
+      description="Bugün kapanan işlemler. Kutlama yalnızca cebe gireni sayar — açık pozisyonların kâğıt üstü değeri burada yoktur."
+    >
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <SuccessCard
+          icon={<ITrophy />}
+          label="Bugün cebe giren"
+          value={karne.net}
+          format={(v) => `${(v ?? 0) > 0 ? "+" : ""}${money(v)}`}
+          tone={karne.net > 0 ? "win" : karne.net < 0 ? "loss" : "flat"}
+          sub={`${num(karne.islem, 0)} kapanan işlem`}
+        />
+        <SuccessCard
+          icon={<IMedal />}
+          label="En iyi işlem"
+          value={karne.enIyi.pnl}
+          format={(v) => `${(v ?? 0) > 0 ? "+" : ""}${money(v)}`}
+          tone={karne.enIyi.pnl > 0 ? "win" : "loss"}
+          sub={`${karne.enIyi.symbol} · ${karne.enIyi.pnl_r > 0 ? "+" : ""}${num(karne.enIyi.pnl_r, 2)}R`}
+          delay={80}
+        />
+        <SuccessCard
+          icon={<IPeak />}
+          label="İsabet"
+          value={karne.isabet}
+          format={(v) => pct(v, 0)}
+          tone={karne.isabet >= 0.5 ? "win" : "flat"}
+          sub={`${num(karne.kazanan, 0)} / ${num(karne.islem, 0)} işlem kârla kapandı`}
+          delay={160}
+        />
+        <SuccessCard
+          icon={<IFlame />}
+          label="Kazanç serisi"
+          value={karne.seri}
+          format={(v) => num(v, 0)}
+          tone={karne.seri >= 3 ? "win" : "flat"}
+          sub={karne.seri > 0 ? "üst üste kârlı kapanış" : "seri kırıldı — sıradaki işlem yeni başlangıç"}
+          delay={240}
+        />
+      </div>
+      {kayipGunu && (
+        <p
+          className="mt-3 pl-3"
+          style={{
+            borderLeft: "2px solid var(--sn-down)",
+            fontSize: "var(--sn-t-caption)",
+            color: "var(--sn-ink-2)",
+          }}
+        >
+          Kayıp günü — saklamıyoruz: net {money(karne.net)} USDT. Kesicilerin durumu Loglar
+          sayfasında; sistemin ölçümü Kalibrasyon sayfasında.
+        </p>
+      )}
+    </Panel>
   );
 }
 

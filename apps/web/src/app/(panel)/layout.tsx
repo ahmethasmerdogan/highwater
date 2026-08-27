@@ -19,6 +19,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { TooltipHost } from "@/design/primitives";
 import { IClose } from "@/design/icons";
+import { CelebrationWatcher } from "@/design/celebration";
 import { Sidebar } from "@/shell/sidebar";
 import { Topbar } from "@/shell/topbar";
 import { CommandPalette } from "@/shell/command-palette";
@@ -89,6 +90,9 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
         )}
 
         <div className="flex min-w-0 flex-1 flex-col">
+          {/* Kârla kapanan pozisyon: başarı bildirimi + konfeti (yalnız
+              gerçekleşmiş kâr; geçmiş olaylar kutlanmaz). */}
+          <CelebrationWatcher />
           <Topbar onOpenCommand={() => setCommandOpen(true)} onOpenMenu={() => setMenuOpen(true)} />
           {/* contain: içerikteki animasyonlar yerleşim/boyama maliyetini
               kendi kutusunda tutar — kenar çubuğu ve üst çubuk yeniden

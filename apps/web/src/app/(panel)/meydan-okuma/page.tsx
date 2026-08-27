@@ -30,6 +30,7 @@ import {
   type PortfolioMetrics,
   type SystemLoad,
 } from "@/lib/api";
+import { MilestoneTrack } from "@/design/celebration";
 import { CurveChart, type CurveSeries } from "@/design/chart";
 import { dateTime, money, num, pct, pctSigned, relative } from "@/lib/format";
 import { Page, GuideSection } from "@/shell/page";
@@ -67,6 +68,11 @@ const KUR = 48.08;
 
 /** Sahibin koyduğu süre: 30 gün. Sayaç botun fonlandığı andan işler. */
 const SURE_GUN = 30;
+
+/* Beş seviye, geometrik: 20k → 30k → 44,7k → 66,9k → 100k (her adım ~×1,5).
+   Doğrusal eşikler ilk günleri ödüllendirip son haftayı umutsuz gösterirdi;
+   bileşik bir hedefte adil merdiven geometrik olandır. */
+const SEVIYELER = [20_000, 29_907, 44_721, 66_874, 100_000];
 
 const BASLANGIC_USDT = BASLANGIC_TRY / KUR;
 const HEDEF_USDT = HEDEF_TRY / KUR;
@@ -255,7 +261,20 @@ export default function ChallengePage() {
               </div>
             </div>
 
-            <ProgressBar ratio={ilerleme} />
+            {/* Seviye çizgisi: 20k → 100k beş geometrik kademe (her seviye
+                ×1,5). Eşik geçişi localStorage'la BİR KEZ kutlanır; sayfa
+                yenilemesi konfeti yağdırmaz, gerileme sayacı dürüstçe geri
+                alır. */}
+            <div className="mt-4">
+              <MilestoneTrack
+                progress={ilerleme}
+                storageKey="meydan-seviye"
+                milestones={SEVIYELER.map((tl, i) => ({
+                  label: i === 0 ? `${num(tl / 1000, 0)}k ₺` : `SEVİYE ${i} · ${num(tl / 1000, 0)}k ₺`,
+                  at: (tl - BASLANGIC_TRY) / (HEDEF_TRY - BASLANGIC_TRY),
+                }))}
+              />
+            </div>
 
             <div
               className="mt-2 flex flex-wrap justify-between gap-2"
@@ -441,24 +460,6 @@ export default function ChallengePage() {
 
 /* ------------------------------------------------------------------ */
 
-function ProgressBar({ ratio }: { ratio: number | null }) {
-  const clamped = ratio === null ? 0 : Math.max(0, Math.min(1, ratio));
-  return (
-    <div
-      className="mt-4 h-3 w-full overflow-hidden rounded-full"
-      style={{ background: "var(--sn-sunken)" }}
-    >
-      <div
-        className="h-full rounded-full transition-[width] duration-[var(--sn-dur-3)] ease-[var(--sn-ease)]"
-        style={{
-          width: `${clamped * 100}%`,
-          background: "var(--sn-brand-solid)",
-          minWidth: clamped > 0 ? 3 : 0,
-        }}
-      />
-    </div>
-  );
-}
 
 /* ------------------------------------------------------------------ */
 

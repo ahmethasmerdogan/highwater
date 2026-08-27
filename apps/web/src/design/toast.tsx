@@ -113,7 +113,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           return (
             <div
               key={item.id}
-              className={cx("sn-fade-up pointer-events-auto flex gap-2.5 rounded-[var(--sn-r-md)] p-3")}
+              className={cx(
+                "sn-fade-up pointer-events-auto flex gap-2.5 rounded-[var(--sn-r-md)] p-3",
+                /* Başarı bildirimi hafif amber ışıltı taşır — kutlama
+                   katmanının dili. Hata/uyarı sade kalır. */
+                item.tone === "success" && "sn-glow",
+              )}
               style={{ background: "var(--sn-overlay)", boxShadow: "var(--sn-shadow-pop)" }}
               onMouseEnter={() => {
                 const timer = timers.current.get(item.id);
