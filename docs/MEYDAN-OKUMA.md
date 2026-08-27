@@ -916,3 +916,91 @@ Toplam 493 test.
 **Bunu ben kırdım.** `docker compose up -d api` redis'i yeniden başlattı. Ama
 hata hazırdı ve er geç redis'in yeniden başladığı ilk anda kendini gösterecekti;
 sebebi ben olduğum için bulunması iyi oldu.
+
+---
+
+## 1. gün durumu — 2026-08-27 05:30 UTC
+
+Bot #11 iki pozisyon taşıyor, özsermaye **418,93 USDT** (başlangıç 416, +%0,70).
+Henüz kapanmış işlem yok, yani ölçülebilir bir sonuç da yok.
+
+Aynı pencerede (26 Ağu 17:00 → 27 Ağu 04:00) tüm botlar:
+
+| bot | değişim | işlem |
+|---|---|---|
+| 3 · trend ağırlık (1h) | +%2,50 | 1 |
+| **11 · MEYDAN OKUMA** | **+%0,67** | 0 |
+| 5 · 30 dakika | +%0,64 | 0 |
+| 4 · 15 dakika | +%0,52 | 2 |
+| 1 · taban (1h) | +%0,13 | 0 |
+| 2 · seçici (1h) | +%0,10 | 0 |
+| 6 · 4 saat | −%0,07 | 0 |
+
+Havuz eşit ağırlık **+%1,47**, BTC **+%0,43**.
+
+Bot #11 kontrol botlarının beşini geçti ama havuzun altında kaldı — ve bu
+beklenen: %42 yatırımlı bir portföy havuzun betasının %42'sini alır
+(0,42 × %1,47 ≈ %0,62; gerçekleşen %0,67). Yani 12 saatte seçicilikten gelen
+katkı ölçülebilir değil. **Bir gün hiçbir şey söylemez.**
+
+### Neden maruziyet %95 değil %42,6
+
+İki pozisyonun neden küçük kaldığını tahmin etmek yerine kendi sayılarını
+çıkardım:
+
+| pozisyon | stop | riskten çıkan boyut | gerçekleşen | bağlayan |
+|---|---|---|---|---|
+| BTCUSDT | %3,35 | 248,11 | 133,60 | G5'in %32 tavanı (girişte yürürlükteydi) |
+| KITEUSDT | %10,16 | 81,87 | 41,77 | `vol_scalar` 0,50 — alt sınır |
+
+BTCUSDT G6'dan önce girdi ve `max_position_pct` girişte uygulanır; açık pozisyon
+sonradan büyütülmez. Yani G6'nın %48'i bu pozisyonda hiç görünmeyecek.
+
+### Kendi hipotezimi çürüttüm: `vol_scalar` çift sayım değil
+
+İlk okumam şuydu: KITE'ın stopu zaten ortancanın 2,5 katı (%10,16'ya karşı
+%4,10), `risk/stop` onu bir kez küçültmüş; `vol_scalar` aynı sebeple ikinci kez
+yarıya indiriyor — volatilite çift sayılıyor, kaldırılmalı.
+
+Kaldırmadan önce ölçtüm. Kapıyı geçen isimler, gerçekleşen volatiliteye göre
+dört dilim:
+
+| dilim | saatlik vol | nötr 24s getiri | t |
+|---|---|---|---|
+| Q1 (en düşük) | %0,348 | +%0,366 | **3,54** |
+| Q2 | %0,572 | −%0,015 | −0,12 |
+| Q3 | %0,857 | +%0,244 | 1,10 |
+| Q4 (en yüksek) | %1,671 | +%0,889 | 1,78 |
+
+Yüksek volatiliteli isimler ortalama getiri olarak **daha iyi**. Ama Q1'in
+standart sapması %2,65, Q4'ünki %12,8 — 4,8 katı oynaklığa karşı 2,4 katı
+getiri. Riske göre düzeltince Q1 açık ara kazanıyor ve Q4'ün üstünlüğü
+anlamlılık sınırının altında kalıyor. `vol_scalar`'ın yüksek volatiliteliyi
+yarıya indirmesi veriyle desteklenen bir kısıt. **Dokunulmadı.**
+
+Bunun sonucu şu: **maruziyet %95'e çıkmayacak ve çıkmamalı.** Boyutlandırma
+motoru güvenilmez sinyale büyük bahis oynamayı reddediyor. Maruziyeti zorla
+yukarı çekmek, verinin desteklediği bir risk kontrolünü ezmek olurdu.
+
+### Ölçüm aletindeki iki hata (sistemde değil, bende)
+
+1. **Gözcü scripti yanlış alarm verdi.** `tr -d ' '` zaman damgasındaki boşluğu
+   sildi (`2026-08-2617:00:00+00`), psql boş döndürdü, script bunu "yeni bar
+   yok" diye okudu ve "65 dakikada gelmedi" dedi. Bar gelmişti.
+
+2. **Volatilite sorgusunda referans yanlıştı.** Piyasa ortalamasını tüm havuz
+   yerine yalnızca kapıyı geçenler üzerinden çıkarmıştım; ortalama mekanik
+   olarak sıfıra iniyordu. Aynı kapı için bilinen değerle (+%0,377) karşılaştırıp
+   yakaladım — sonuç +%0,371 çıkınca sorgunun düzeldiği doğrulandı.
+   **Her ölçüm sorgusu bilinen bir değerle sağlamalanmalı.**
+
+3. **`positions.realized_pnl` kapalı pozisyonun kârı değildir.** Yalnızca kısmi
+   çıkış biriktiricisidir; tam kapanışta toplam `trades.pnl`'e yazılır. Bu alanı
+   toplayan bir sorgu 161 işlemin 160'ında sıfır görür. Doğru kaynak `trades`.
+
+### Hız
+
+Hedef 2.080 USDT (100.000 ₺ / 48,08). Kalan 28,8 gün için gereken bileşik günlük
+oran **%5,73**. Bot #11'in fiilî işlem süresi yarım gün ve gerçekleşen oran
+%1,4/gün — ama bu yarım günün neredeyse tamamı betadır, seçicilik değil.
+Daha önce ölçülen en iyi gözlem %1,20/gün idi. Aradaki fark kapanmadı.
