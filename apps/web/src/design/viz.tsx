@@ -41,7 +41,7 @@ export function Bar({
   return (
     <span
       className={cx("inline-block shrink-0 overflow-hidden rounded-full align-middle", className)}
-      style={{ width, height, background: "var(--sn-sunken)" }}
+      style={{ width, height, background: "var(--sn-sunken)", contain: "strict" }}
       aria-hidden
     >
       <span

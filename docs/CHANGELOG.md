@@ -1732,3 +1732,41 @@ kullanıcı yönetimi, audit log, kill switch.
 
 **Açık kalan:** Sunucu özellikleri (OS/RAM/CPU), panelin dışarı açılıp açılmayacağı, kullanıcı
 sayısı ve Discord kanal yapısı — Faz 0 başlarken netleşecek.
+
+## 2026-08-27 — Panel kuyruğu, çok pazar, kalibrasyon dürüstlüğü, Bloomberg TUI
+
+Ultracode panel denetiminin 41 maddesinin tamamı uygulandı (üç commit):
+hata durumları artık yalan söylemiyor, kural 6 sözleşmenin kendisinde
+(num sütunu = sn-num), açık tema kontrastı WCAG'a çekildi, ölü kod silindi,
+gerekçe/rozet/rotalar bağlandı, meydan okuma sayfası motor metriklerine
+geçti ve hedef-yolu grafiği eklendi. Motor: /scores/by-id, benchmark
+?since, /calibration Redis önbelleği, huniye açık koruma adımı.
+
+Çok pazar: BIST (İş Yatırım, 56 sembol) ve ABD (Yahoo, 80 sembol) günlük
+barla aktif — Market/TradingCalendar soyutlaması, pazar-farkında
+yıllıklandırma ve bar hizalama, takvim-farkında veri kalitesi, pazar
+başına havuz snapshot'ı, sentetik defterle paper. İki yeni bot (#12, #13)
+çalışıyor; ilk kararları ilk snapshot SONRASI barda (28.08) — point-in-time
+kuralı yeni pazarda da taviz vermiyor. Bilinçli yapılmayanlar
+OPEN-QUESTIONS §Çok-pazar'da: ham seri + corporate_actions mimarisi,
+hisse havuz filtreleri (yalnız ciro), 1h hisse verisi (meşru kaynak yok).
+
+Kalibrasyon: gate_edge'e gün-kümelenmiş t eklendi; ham t bağımsızlık
+varsayıp ~%70 şişkin ölçülüyordu. Panel hükmü artık kümelenmiş t ile.
+Meydan okuma G7: sekiz hipotezin sekizi çürüdüğü için puanlama/çıkış
+DONUK; tek ölçülebilir kaldıraç olan maruziyet açıldı (vol_target
+0,6→1,05 = havuz medyanı). Bu beta'yı büyütür, kanıtlanmış kenar değil —
+defterde açıkça yazılı.
+
+TUI Bloomberg'e çıkarıldı: 596 satırlık iskelet → beş ekranlı terminal
+(nöbet/sembol/filo/pozisyon/olay), web ile birebir komut dilbilgisi,
+tr-TR sayılar, yerel saat, sunucu CRITICAL'ının ezilmemesi, API
+düşünce — basan (sıfır uydurmayan) durum çubuğu. En kritik düzeltme:
+`r` tuşu devre kesiciyle durmuş botu artık sebebini göstermeden
+başlatamıyor. Panel hareket katmanı: takılı tint hatası, tek matchMedia
+aboneliği (~700 dinleyici → 1), reduced-motion artık her şeyi kapsıyor
+(1 ms — none değil), tint bütçesi, biçimleyici önbelleği.
+
+Bilinçli yapılmadı: TUI'de meydan okuma ekranı (sabitlerin API'ye
+taşınması kararı bekliyor), kalibrasyon ekranı (panel daha iyi anlatıyor),
+hisse paper stop dolumu için ortak gapfill (temkinli fark belgelendi).

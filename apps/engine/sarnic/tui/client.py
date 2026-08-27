@@ -95,16 +95,77 @@ class ApiClient:
     async def status(self) -> dict:
         return await self.get("/system/status")
 
-    async def scores(self, limit: int = 12) -> list[dict]:
-        return await self.get("/scores", limit=limit)
+    async def scores(
+        self,
+        limit: int = 12,
+        config_hash: str | None = None,
+        timeframe: str | None = None,
+        min_score: float = 0.0,
+    ) -> list[dict]:
+        params: dict[str, Any] = {"limit": limit, "min_score": min_score}
+        # Kimlik verilmezse uç bot sırasına göre İLK sıralamayı seçer —
+        # tablo hangi sıralamayı gösterdiğini söyleyemez. Hep kimlikle çağır.
+        if config_hash:
+            params["config_hash"] = config_hash
+        if timeframe:
+            params["timeframe"] = timeframe
+        return await self.get("/scores", **params)
+
+    async def score_configs(self) -> list[dict]:
+        return await self.get("/scores/configs")
+
+    async def score_detail(self, symbol: str, config_hash: str | None = None) -> dict:
+        params = {"config_hash": config_hash} if config_hash else {}
+        return await self.get(f"/scores/{symbol}", **params)
+
+    async def score_history(
+        self, symbol: str, days: int = 7, config_hash: str | None = None
+    ) -> list[dict]:
+        params: dict[str, Any] = {"days": days}
+        if config_hash:
+            params["config_hash"] = config_hash
+        return await self.get(f"/scores/{symbol}/history", **params)
+
+    async def sr_levels(self, symbol: str) -> dict:
+        return await self.get(f"/symbols/{symbol}/sr")
+
+    async def patterns(self, symbol: str) -> dict:
+        return await self.get(f"/symbols/{symbol}/patterns")
 
     async def positions(self) -> list[dict]:
         return await self.get("/positions")
 
+    async def trades(self, limit: int = 50) -> list[dict]:
+        return await self.get("/trades", limit=limit)
+
+    async def orders(self, limit: int = 50) -> list[dict]:
+        return await self.get("/orders", limit=limit)
+
     async def bots(self) -> list[dict]:
         return await self.get("/bots")
 
+    async def bot_events(self, bot_id: int, limit: int = 30) -> list[dict]:
+        return await self.get(f"/bots/{bot_id}/events", limit=limit)
+
+    async def universe(self) -> dict:
+        return await self.get("/universe/current")
+
+    async def system_load(self) -> dict:
+        return await self.get("/system/load")
+
     async def portfolio(self) -> dict:
+        """Nöbet çubuğunun kaynağı: /portfolio/live.
+
+        /portfolio/metrics her bot için kazanma oranı / profit factor /
+        çıkış dağılımı hesaplar — 5 sn'de bir çağrılamayacak kadar pahalı,
+        üstelik çubuktaki getiri oradan YANLIŞ toplanıyordu (bot
+        ortalaması, sermaye ağırlıklı değil). /portfolio/live tam bu iş
+        için var ve doğru alanları hazır verir.
+        """
+        return await self.get("/portfolio/live")
+
+    async def metrics(self) -> dict:
+        """Filo ekranı için ayrıntılı bot metrikleri (pahalı — 30 sn'de bir)."""
         return await self.get("/portfolio/metrics")
 
     async def kill_switch(self, code: str) -> dict:
@@ -115,6 +176,12 @@ class ApiClient:
 
     async def start_bot(self, bot_id: int) -> dict:
         return await self.post(f"/bots/{bot_id}/start")
+
+    async def stop_bot(self, bot_id: int) -> dict:
+        return await self.post(f"/bots/{bot_id}/stop")
+
+    async def kill_bot(self, bot_id: int) -> dict:
+        return await self.post(f"/bots/{bot_id}/kill")
 
     # ------------------------------------------------------------------ #
     async def ws_url(self) -> str:
@@ -148,6 +215,27 @@ class ApiClient:
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 30.0)
                 await self.refresh()
+
+
+def human_error(exc: Exception) -> str:
+    """Ham `httpx` metni (peşindeki MDN linkiyle) loga basılmaz — DESIGN
+    §9'un sabit `HH:MM:SS SEVİYE mesaj` biçimini kırıyordu."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        code = exc.response.status_code
+        detail = _detail(exc.response, "")
+        eslem = {
+            401: "oturum düştü — yeniden giriş gerekiyor",
+            403: "bu işlem için yetkiniz yok",
+            404: "kayıt bulunamadı",
+            409: "bot bu durumda değil",
+        }
+        mesaj = eslem.get(code, f"sunucu {code} döndürdü")
+        return f"{mesaj}{f' — {detail}' if detail and code not in (401,) else ''}"
+    if isinstance(exc, httpx.ConnectError | httpx.ConnectTimeout):
+        return "API'ye ulaşılamıyor — servis kapalı olabilir"
+    if isinstance(exc, httpx.ReadTimeout):
+        return "API yanıt vermedi (zaman aşımı)"
+    return str(exc) or exc.__class__.__name__
 
 
 def _detail(resp: httpx.Response, fallback: str) -> str:

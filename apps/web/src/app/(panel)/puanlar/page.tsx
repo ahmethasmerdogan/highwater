@@ -172,10 +172,14 @@ export default function ScoresPage() {
         cell: (row) => (
           <span className="inline-flex items-center gap-2">
             <Bar value={row.families?.[family.id]} max={30} color={family.color} width={26} height={3} />
+            {/* Tint bütçesi: yalnız "Puan" sütunu yanar. Yedi sütunun aynı
+                anda yanıp sönmesi sinyali gürültüye boğuyordu (~600 eş
+                zamanlı animasyon). */}
             <NumCell
               value={row.families?.[family.id]}
               text={num(row.families?.[family.id], 1)}
               size="sm"
+              tint={false}
             />
           </span>
         ),
@@ -192,6 +196,7 @@ export default function ScoresPage() {
           if (total === 0) return <NumText text="—" size="sm" />;
           return (
             <NumCell
+              tint={false}
               value={total}
               text={`${total > 0 ? "+" : ""}${num(total, 1)}`}
               size="sm"

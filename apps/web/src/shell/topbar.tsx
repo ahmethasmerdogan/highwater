@@ -60,19 +60,32 @@ export function Topbar({
 
   return (
     <header className="shrink-0" style={{ borderBottom: "1px solid var(--sn-hairline)" }}>
-      {/* ---- Bağlantı şeridi --------------------------------------- */}
-      {offline && (
-        <div
-          className="flex h-7 items-center gap-2 px-4"
-          style={{ background: "var(--sn-warn-bg)", color: "var(--sn-warn)", fontSize: "var(--sn-t-caption)" }}
-        >
-          <IWarn size={13} />
-          <span className="font-medium">Canlı veri kesildi</span>
-          <span style={{ opacity: 0.8 }}>
-            · yeniden bağlanılıyor. Aşağıdaki sayılar son bilinen değerlerdir.
-          </span>
+      {/* ---- Bağlantı şeridi ---------------------------------------
+          Koşullu render yerine hep basılı + grid-rows geçişi: şerit
+          açılırken tüm sayfayı 28px aşağı ZIPLATMAK yerine yumuşakça
+          iter; kapanışı da aynı yoldan döner. */}
+      <div
+        className="grid transition-[grid-template-rows] duration-[var(--sn-dur-3)] ease-[var(--sn-ease)]"
+        style={{ gridTemplateRows: offline ? "1fr" : "0fr" }}
+        aria-hidden={!offline}
+      >
+        <div className="overflow-hidden">
+          <div
+            className="flex h-7 items-center gap-2 px-4"
+            style={{
+              background: "var(--sn-warn-bg)",
+              color: "var(--sn-warn)",
+              fontSize: "var(--sn-t-caption)",
+            }}
+          >
+            <IWarn size={13} />
+            <span className="font-medium">Canlı veri kesildi</span>
+            <span style={{ opacity: 0.8 }}>
+              · yeniden bağlanılıyor. Aşağıdaki sayılar son bilinen değerlerdir.
+            </span>
+          </div>
         </div>
-      )}
+      </div>
 
       <div className="flex h-12 items-center gap-3 px-3" style={{ background: "var(--sn-panel)" }}>
         {/* Mobil menü düğmesi */}

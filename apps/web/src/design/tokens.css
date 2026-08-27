@@ -273,17 +273,18 @@
 /* Hareketi azalt: animasyon kapanır, sayı anında hedefe oturur.
    `design/motion.ts` aynı tercihi JS tarafında da okur. */
 @media (prefers-reduced-motion: reduce) {
-  /* Adlandırılmış animasyonlarla yetinme: `transition-colors` ve viz
-     çubukları da hareket üretir. Kök altındaki her şeyi kapat —
-     `motion.ts` aynı tercihi JS tarafında okuyor. */
+  /* Adlandırılmış animasyonlarla yetinme: Tailwind `animate-ping` (Loglar
+     sayfasında sonsuz nabız) ve 18 `transition-*` yardımcısı da hareket
+     üretir. Süre `none` DEĞİL 1 ms: `animationend` bekleyen kod (Radix
+     çıkış animasyonları) `none` altında hiç tetiklenmez ve kip kapanmaz
+     olurdu. `motion.ts` aynı tercihi JS tarafında okuyor. */
   .sn-root *,
-  .sn-tint-up,
-  .sn-tint-down,
-  .sn-fade-up,
-  .sn-slide-in,
-  .sn-skeleton {
-    animation: none !important;
-    transition-duration: 0.01ms !important;
+  .sn-root *::before,
+  .sn-root *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
   }
 }
 

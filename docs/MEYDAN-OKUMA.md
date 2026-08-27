@@ -1107,3 +1107,25 @@ fonlandı. Geçen süre 0,57 gün yerine 1,29 gün sayılıyor, gerçekleşen or
 %1,24 yerine %0,55 çıkıyordu. Aynı hata kalan günü kısaltıp gereken oranı da
 şişiriyordu — iki hata da aynı yöne: bot olduğundan yavaş, hedef olduğundan
 uzak. Artık botun kendi `created_at`'inden türetiliyor.
+
+## G7 — 2026-08-27 16:20 · maruziyet açıldı (vol_target 0,6 → 1,05)
+
+Gece koşan sekiz hipotezin SEKİZİ de eyleme dönük kısmıyla çürüdü
+(ağırlık araması çoklu-karşılaştırmadan sağ çıkmadı; tutuş/dilim/rejim
+önerileri look-ahead evrenine dayanıyordu). Temiz penceredeki kenar:
++%0,025/24s, t=0,06 — yani ölçülebilir kenar YOK. Bu yüzden puanlama ve
+çıkış parametreleri donduruldu; onlara dokunan her değişiklik gürültü
+kovalamak olurdu.
+
+Tek gerçek büyüklük kaldıracı maruziyetti: tavan %95 iken fiili %40,3 —
+vol_target=0,6, havuz medyan volatilitesi 1,05'in yanında her boyutu
+~0,57 ile çarpıyor ve sembollerin %35'inde 0,5 tabanına yapışıyordu.
+G7 = G6 + vol_target 1,05. Beklenen: maruziyet ~%75-90'a çıkar.
+
+DÜRÜST KAYIT: bu, kanıtlanmış bir kenarı değil BETA'yı iki katına
+çıkarır. Piyasa yükselirse hedefe yaklaşmayı hızlandırır, düşerse kaybı
+aynı oranda büyütür. Sentezin hedef değerlendirmesi değişmedi: 29 günde
+5 kat için günlük bileşik %5,68 gerekiyor; en iyimser senaryo (tam
+maruziyet + Ağustos hızında piyasa) ~786 USDT = hedefin %38'i. Hedef
+istatistiksel olarak ulaşılabilir değil; sistemin birincil çıktısı ölçüm
+ve bu satırlar o ölçümün kaydı.

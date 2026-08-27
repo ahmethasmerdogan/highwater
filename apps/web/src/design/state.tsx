@@ -15,11 +15,20 @@ import { Empty, Skeleton, type Tone } from "./primitives";
 
 /* ------------------------------------------------------------------ */
 
-export function LoadingRows({ rows = 6, className }: { rows?: number; className?: string }) {
+export function LoadingRows({
+  rows = 6,
+  rowHeight = 14,
+  className,
+}: {
+  rows?: number;
+  /* Gerçek satır yüksekliğiyle eşleşirse iskelet → veri geçişi zıplamaz. */
+  rowHeight?: number;
+  className?: string;
+}) {
   return (
     <div className={cx("flex flex-col gap-2 p-3", className)}>
       {Array.from({ length: rows }).map((_, index) => (
-        <Skeleton key={index} h={14} w={`${100 - (index % 3) * 12}%`} />
+        <Skeleton key={index} h={rowHeight} w={`${100 - (index % 3) * 12}%`} />
       ))}
     </div>
   );

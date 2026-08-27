@@ -14,12 +14,21 @@ const LOCALE = "tr-TR";
 /** Sayı yok / hesaplanamadı. Ekranda boşluk bırakmak yerine bunu basıyoruz. */
 export const EMPTY = "—";
 
+/* `toLocaleString` her çağrıda yeni bir Intl.NumberFormat kurar; panel
+   saniyede yüzlerce sayı basıyor. Basamak sayısına göre önbellek. */
+const FORMATTERS = new Map<number, Intl.NumberFormat>();
+
 export function num(value: number | null | undefined, digits = 2): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return EMPTY;
-  return value.toLocaleString(LOCALE, {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  });
+  let fmt = FORMATTERS.get(digits);
+  if (!fmt) {
+    fmt = new Intl.NumberFormat(LOCALE, {
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    });
+    FORMATTERS.set(digits, fmt);
+  }
+  return fmt.format(value);
 }
 
 /**

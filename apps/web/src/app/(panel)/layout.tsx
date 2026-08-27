@@ -90,7 +90,12 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
 
         <div className="flex min-w-0 flex-1 flex-col">
           <Topbar onOpenCommand={() => setCommandOpen(true)} onOpenMenu={() => setMenuOpen(true)} />
-          <main className="sn-scroll flex-1 overflow-y-auto">{children}</main>
+          {/* contain: içerikteki animasyonlar yerleşim/boyama maliyetini
+              kendi kutusunda tutar — kenar çubuğu ve üst çubuk yeniden
+              boyanmaz. */}
+          <main className="sn-scroll flex-1 overflow-y-auto" style={{ contain: "layout paint" }}>
+            {children}
+          </main>
         </div>
 
         <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />

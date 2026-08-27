@@ -21,7 +21,7 @@
  *    okumak yetmez: sayma döngüsü JS'te dönüyor, CSS onu durduramaz.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useSyncExternalStore, useEffect, useRef, useState } from "react";
 
 /* ------------------------------------------------------------------ */
 /*  Hareketi azalt                                                     */
@@ -33,16 +33,24 @@ import { useEffect, useRef, useState } from "react";
  * Sunucuda ve ilk boyamada `false` döner ve efekt sonrası düzeltir; tersi
  * (varsayılan `true`) her yüklemede bir kare donuk sayı gösterirdi.
  */
+const REDUCED_QUERY = "(prefers-reduced-motion: reduce)";
+let reducedMql: MediaQueryList | null = null;
+
+function subscribeReduced(callback: () => void): () => void {
+  if (reducedMql === null) reducedMql = window.matchMedia(REDUCED_QUERY);
+  reducedMql.addEventListener("change", callback);
+  return () => reducedMql?.removeEventListener("change", callback);
+}
+
 export function useReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setReduced(query.matches);
-    const onChange = (event: MediaQueryListEvent) => setReduced(event.matches);
-    query.addEventListener("change", onChange);
-    return () => query.removeEventListener("change", onChange);
-  }, []);
-  return reduced;
+  /* Tek MediaQueryList, tüm çağıranlar ona abone — önceden her hook kendi
+     dinleyicisini kuruyordu (panelde ~700 dinleyici). Sunucu anlık görüntüsü
+     `false`: tersi her yüklemede bir kare donuk sayı gösterirdi. */
+  return useSyncExternalStore(
+    subscribeReduced,
+    () => (reducedMql ??= window.matchMedia(REDUCED_QUERY)).matches,
+    () => false,
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -167,7 +175,15 @@ export function useChangeTint(target: number | null | undefined): "up" | "down" 
     const before = previous.current;
     previous.current = finite;
 
-    if (reduced || before === null || finite === null || finite === before) return;
+    if (reduced || before === null || finite === null || finite === before) {
+      /* Erken dönüş TEMİZLEMEDEN dönerse hücre takılı kalır: 100→101 tint
+         kurar, süre dolmadan değer null olursa (WS kopması) eski efektin
+         temizliği zamanlayıcıyı iptal eder ve zemin bir sonraki gerçek
+         değişime kadar yeşil/kırmızı kalır. Yanlış renkli hücre, renksiz
+         hücreden tehlikelidir: "az önce arttı" der ama artmamıştır. */
+      setTint(null);
+      return;
+    }
 
     setTint(finite > before ? "up" : "down");
     const timer = window.setTimeout(() => setTint(null), 640);
