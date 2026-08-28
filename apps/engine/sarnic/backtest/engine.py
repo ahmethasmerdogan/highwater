@@ -45,6 +45,7 @@ from sarnic.risk.engine import RiskEngine, RiskState
 from sarnic.scoring.engine import ScoringEngine
 from sarnic.sizing.clusters import cluster_exposure, cluster_symbols, returns_matrix
 from sarnic.sizing.engine import SizingEngine, SizingInput
+from sarnic.sizing.leverage import LeverageSpec
 from sarnic.strategy.definition import StrategyDefinition
 
 log = get_logger(__name__)
@@ -207,6 +208,17 @@ class UniverseTimeline:
 class BacktestEngine:
     def __init__(self, definition: StrategyDefinition, params: BacktestParams) -> None:
         self.definition = definition.require_valid()
+        # Kaldıraç v1 backtest'te MODELLENMEDİ (marj akışı, borç maliyeti,
+        # bar-içi likidasyon). Sessizce kaldıraçsız koşmak kural 1'i tam da
+        # koruduğunu sandığı yerde kırardı: canlı 3× işlem yaparken backtest
+        # 1× raporlar ve karşılaştırma yalan olurdu. Açıkça reddediyoruz;
+        # kaldıraçlı stratejinin ölçüsü şimdilik yalnız canlı paper defteridir.
+        if LeverageSpec.from_sizing(self.definition.sizing).enabled:
+            raise ValueError(
+                "Kaldıraçlı strateji backtest v1'de desteklenmiyor — sonuç canlı "
+                "paper ile karşılaştırılamaz olurdu. sizing.leverage.max_leverage=1 "
+                "yapın ya da kaldıraçsız bir sürümle koşun."
+            )
         self.params = params
         self.timeframe = definition.timeframe
         self.step = TIMEFRAME_MINUTES[self.timeframe]
