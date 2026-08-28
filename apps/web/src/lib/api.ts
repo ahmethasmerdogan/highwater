@@ -304,6 +304,8 @@ export interface Bot {
   mode: string;
   state: string;
   timeframe: string;
+  /** Havuzun pazarı: CRYPTO | BIST | US. */
+  market: string;
   capital: number;
   cash: number;
   equity: number | null;

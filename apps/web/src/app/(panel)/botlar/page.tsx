@@ -29,7 +29,7 @@ import {
   Panel,
   Select,
   TextInput,
-} from "@/design";
+Tag } from "@/design";
 import { Sparkline } from "@/design/chart";
 import { DataGrid } from "@/grid/data-grid";
 import type { GridColumn } from "@/grid/types";
@@ -95,15 +95,21 @@ export default function BotsPage() {
         width: 230,
         pin: true,
         value: (row) => row.name,
-        search: (row) => `${row.name} ${row.state} ${row.timeframe}`,
+        search: (row) => `${row.name} ${row.state} ${row.timeframe} ${row.market}`,
         cell: (row) => (
-          <Link
-            href={`/botlar/${row.id}`}
-            style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}
-            className="hover:underline"
-          >
-            {row.name}
-          </Link>
+          <span className="inline-flex min-w-0 items-center gap-1.5">
+            <Link
+              href={`/botlar/${row.id}`}
+              style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}
+              className="min-w-0 truncate hover:underline"
+            >
+              {row.name}
+            </Link>
+            {/* Pazar rozeti: kripto varsayılandır ve rozet almaz — BIST/ABD
+                bir bakışta seçilsin diye işaretlenir. */}
+            {row.market === "BIST" && <Tag tone="info">BIST</Tag>}
+            {row.market === "US" && <Tag tone="info">ABD</Tag>}
+          </span>
         ),
       },
       {
