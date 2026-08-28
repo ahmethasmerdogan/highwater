@@ -336,8 +336,17 @@ class PaperAdapter:
         fee = notional * self.config.taker_fee
 
         if order.side == OrderSide.BUY:
-            if notional + fee > self._free + 1e-9:
-                return _reject(result, "yetersiz bakiye")
+            # Marj kuralı: kaldıraçlı girişte nakit yalnız MARJI (notional/lev)
+            # karşılamak zorunda; kalan borçtur. Akış yine TAM notional ile
+            # düşülür — nakit eksiye iner ve borç GÖRÜNÜR kalır (özsermaye =
+            # nakit + pozisyon değeri doğru kalır; borç saklanmaz).
+            lev = max(1.0, float(order.meta.get("leverage") or 1.0))
+            margin_required = notional / lev + fee
+            if margin_required > self._free + 1e-9:
+                return _reject(
+                    result,
+                    "yetersiz bakiye" if lev <= 1.0 else "yetersiz marj",
+                )
             self._free -= notional + fee
             self._positions[order.symbol] = (
                 self._positions.get(order.symbol, 0.0) + outcome.filled_qty
