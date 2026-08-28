@@ -390,6 +390,11 @@ class Position(Base):
         ForeignKey("scores.id", ondelete="SET NULL"), default=None
     )
     breakeven_locked: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: Girişin kaldıracı (1 = spot). Sahibin kararıyla kapsama girdi
+    #: (2026-08-27); borç maliyeti kapanışta komisyonlara tahakkuk eder.
+    leverage: Mapped[Decimal] = mapped_column(
+        Numeric(6, 2), default=Decimal("1"), server_default="1"
+    )
     mfe: Mapped[Decimal] = mapped_column(Numeric(14, 8), default=0)
     mae: Mapped[Decimal] = mapped_column(Numeric(14, 8), default=0)
     entry_fees: Mapped[Decimal] = mapped_column(MONEY, default=0)
@@ -422,6 +427,9 @@ class Trade(Base):
     pnl: Mapped[Decimal] = mapped_column(MONEY)
     pnl_r: Mapped[float] = mapped_column(Numeric(12, 6), default=0)
     fees: Mapped[Decimal] = mapped_column(MONEY, default=0)
+    leverage: Mapped[Decimal] = mapped_column(
+        Numeric(6, 2), default=Decimal("1"), server_default="1"
+    )
     slippage_bps: Mapped[float] = mapped_column(Numeric(12, 4), default=0)
     mfe: Mapped[Decimal] = mapped_column(Numeric(14, 8), default=0)
     mae: Mapped[Decimal] = mapped_column(Numeric(14, 8), default=0)
