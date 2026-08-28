@@ -123,6 +123,9 @@ class SizingInput:
     btc_vol_above_p90: bool = False
     step_size: float = 0.0
     min_notional: float = 0.0
+    #: Girişin kaldıracı (1 = spot davranışı). Kaldıraç RİSKİ çarpmaz;
+    #: yalnız nakit ve tek-pozisyon tavanını kaldırır (sizing/leverage.py).
+    leverage: float = 1.0
 
 
 @dataclass(slots=True)
@@ -237,9 +240,14 @@ class SizingEngine:
         steps.append({"step": "ölçekli_notional", "value": notional})
 
         # --- 6) Kısıtlar (sırayla, hepsi zorunlu) ---
+        lev = max(1.0, inp.leverage)
         caps = [
-            ("tek_pozisyon_tavanı", inp.equity * p.max_position_pct),
-            ("serbest_nakit", inp.free_cash),
+            # Kaldıraç iki tavanı kaldırır: nakit (marj yeter) ve tek pozisyon.
+            # Toplam maruziyet ve likidite tavanı OLDUĞU GİBİ kalır — kaldıraçlı
+            # strateji brüt maruziyeti kendi max_exposure_pct'siyle (>1 olabilir)
+            # bilinçli açar; burada sessizce açılmaz.
+            ("tek_pozisyon_tavanı", inp.equity * p.max_position_pct * lev),
+            ("serbest_nakit", inp.free_cash * lev),
             ("toplam_maruziyet", inp.equity * p.max_exposure_pct - inp.current_exposure),
             ("likidite_tavanı", inp.adv_1h * p.adv_fraction),
         ]
