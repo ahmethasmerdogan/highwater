@@ -220,6 +220,7 @@ class PositionOut(BaseModel):
     initial_stop: float
     score_at_entry: float
     breakeven_locked: bool
+    leverage: float = 1.0
     status: str
     last_price: float | None = None
     unrealized_pnl: float | None = None
@@ -237,6 +238,7 @@ class TradeOut(BaseModel):
     pnl: float
     pnl_r: float
     fees: float
+    leverage: float = 1.0
     slippage_bps: float
     mfe: float
     mae: float
