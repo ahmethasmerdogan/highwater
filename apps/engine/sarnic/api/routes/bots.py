@@ -58,6 +58,11 @@ async def _to_out(session, bot: Bot, prices: dict[str, float]) -> BotOut:
         mode=str(bot.mode),
         state=bot.state,
         timeframe=bot.timeframe,
+        market=str(
+            ((bot.strategy_version.definition or {}).get("universe") or {}).get(
+                "market", "CRYPTO"
+            )
+        ),
         capital=float(bot.capital),
         cash=float(bot.cash),
         equity=float(bot.cash) + exposure,

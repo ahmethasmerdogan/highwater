@@ -165,6 +165,8 @@ class BotOut(BaseModel):
     mode: str
     state: BotState
     timeframe: str
+    #: Havuzun pazarı (CRYPTO | BIST | US) — strateji tanımından türetilir.
+    market: str = "CRYPTO"
     capital: float
     cash: float
     equity: float | None = None
