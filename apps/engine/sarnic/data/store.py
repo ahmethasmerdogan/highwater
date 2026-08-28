@@ -155,7 +155,16 @@ async def load_frames(
     if start is not None:
         stmt = stmt.where(OHLCV.open_time >= start)
     elif end is not None:
-        earliest = end - timedelta(minutes=TIMEFRAME_MINUTES[timeframe] * limit)
+        # Alt sınır bar SAYISINDAN türetilir; kripto 7/24 olduğu için takvim
+        # süresi = bar sayısıdır. Seanslı pazarda (ekli sembol) değildir:
+        # 300 "gün" ≈ 206 BIST seansı çıkıyor, EMA200'ün 220 bar şartı
+        # dolmuyor ve TÜM havuz "yetersiz bar" ile puansız kalıyordu.
+        # Hafta sonu + tatil payı: pencere ×1,6 açılır; `.tail(limit)`
+        # zaten tam `limit` bara kırpar — fazla satır maliyeti önemsiz.
+        yogunluk = 1.6 if any(market_of(s).code != "CRYPTO" for s in symbols[:1]) else 1.0
+        earliest = end - timedelta(
+            minutes=TIMEFRAME_MINUTES[timeframe] * limit * yogunluk
+        )
         stmt = stmt.where(OHLCV.open_time >= earliest)
     stmt = stmt.order_by(OHLCV.symbol, OHLCV.open_time)
 
