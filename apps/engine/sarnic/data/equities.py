@@ -353,6 +353,8 @@ class EquityDataService:
         self._last_close: dict[str, float] = {}
         self._last_bar_day: dict[str, datetime] = {}
         self._refreshed_session: dict[str, datetime | None] = {"BIST": None, "US": None}
+        #: Sağlayıcı gecikmesi görüldüğünde bir sonraki deneme bu ana ertelenir.
+        self._lag_until: dict[str, datetime] = {}
 
     async def redis(self):
         if self._redis is None:
@@ -396,6 +398,9 @@ class EquityDataService:
 
     async def _due(self, market: Market) -> bool:
         """Kapanmış son seans henüz çekilmediyse çekim zamanıdır."""
+        bekleme = self._lag_until.get(market.code)
+        if bekleme is not None and utcnow() < bekleme:
+            return False
         cal = calendar_for(market.calendar)
         assert isinstance(cal, ExchangeSessionCalendar)
         son = cal.last_closed_session(utcnow())
@@ -444,7 +449,26 @@ class EquityDataService:
         await self._write_state()
         await self._snapshot_universe(market, basarili)
         await self._audit(market, [s for s, _, _ in basarili])
-        self._refreshed_session[market.code] = son_seans
+
+        # Seans ancak VERİSİ GERÇEKTEN GELDİYSE tazelendi sayılır. İş Yatırım
+        # gün sonunu gecikmeli basabiliyor: 15:08'de 798 satır yazıldı ama
+        # 28.08 satırı içlerinde yoktu; seans yine de işaretlenince döngü bir
+        # daha denemedi ve günün barı hiç gelmedi. Veri eksikse işaret KONMAZ,
+        # 15 dk sonra yeniden denenir (sağlayıcıyı 5 dk'da bir dövmemek için).
+        en_yeni = max(
+            (d for s, d in self._last_bar_day.items() if s.endswith(market.suffix)),
+            default=None,
+        )
+        if son_seans is not None and (en_yeni is None or en_yeni < son_seans):
+            log.warning(
+                "equity_session_lagging",
+                market=market.code,
+                expected=son_seans.date().isoformat(),
+                newest=en_yeni.date().isoformat() if en_yeni else None,
+            )
+            self._lag_until[market.code] = utcnow() + timedelta(minutes=15)
+        else:
+            self._refreshed_session[market.code] = son_seans
         log.info(
             "equity_market_refreshed",
             market=market.code,
