@@ -324,6 +324,8 @@ export interface Position {
   initial_stop: number;
   score_at_entry: number;
   breakeven_locked: boolean;
+  /** 1 = spot; >1 kaldıraçlı giriş (paper marj simülasyonu). */
+  leverage: number;
   status: string;
   last_price: number | null;
   unrealized_pnl: number | null;
@@ -341,6 +343,7 @@ export interface Trade {
   pnl: number;
   pnl_r: number;
   fees: number;
+  leverage: number;
   slippage_bps: number;
   mfe: number;
   mae: number;

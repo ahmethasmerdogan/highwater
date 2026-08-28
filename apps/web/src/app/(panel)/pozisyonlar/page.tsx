@@ -239,8 +239,13 @@ function OpenPositions({
         value: (row) => row.symbol,
         search: (row) => row.symbol,
         cell: (row) => (
-          <span className="sn-num" style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}>
-            {row.symbol}
+          <span className="inline-flex items-center gap-1.5">
+            <span className="sn-num" style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}>
+              {row.symbol}
+            </span>
+            {row.leverage > 1 && (
+              <Tag tone="brand" mono>{`${num(row.leverage, 0)}×`}</Tag>
+            )}
           </span>
         ),
       },
@@ -475,6 +480,15 @@ function OpenPositions({
                   {
                     label: "Girişteki puan",
                     value: <NumText text={num(selected.score_at_entry, 1)} size="sm" />,
+                  },
+                  {
+                    label: "Kaldıraç",
+                    value:
+                      selected.leverage > 1 ? (
+                        <Tag tone="brand" mono>{`${num(selected.leverage, 0)}×`}</Tag>
+                      ) : (
+                        <NumText text="1× (spot)" size="sm" />
+                      ),
                   },
                   {
                     label: "Başabaş kilidi",

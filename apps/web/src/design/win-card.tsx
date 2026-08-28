@@ -222,7 +222,8 @@ function drawCard(ctx: CanvasRenderingContext2D, trade: Trade, roi: number | nul
   ctx.fillText(trade.symbol, 48, 160);
   ctx.fillStyle = kar ? "#2ee58a" : "#ff5c74";
   ctx.font = "600 20px Geist, Arial";
-  ctx.fillText("UZUN · KAPANDI", 48, 192);
+  const lev = trade.leverage > 1 ? ` · ${num(trade.leverage, 0)}×` : "";
+  ctx.fillText(`UZUN${lev} · KAPANDI`, 48, 192);
 
   /* dev sonuç */
   ctx.fillStyle = kar ? "#2ee58a" : "#ff5c74";
