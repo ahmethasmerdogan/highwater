@@ -1129,3 +1129,19 @@ aynı oranda büyütür. Sentezin hedef değerlendirmesi değişmedi: 29 günde
 maruziyet + Ağustos hızında piyasa) ~786 USDT = hedefin %38'i. Hedef
 istatistiksel olarak ulaşılabilir değil; sistemin birincil çıktısı ölçüm
 ve bu satırlar o ölçümün kaydı.
+
+## G8 — 2026-08-27 21:10 · teyitli kaldıraç (3× tavan)
+
+Sahibin talebi: "puanı yüksek bir şeye destek-direnç ve formasyonları
+uygulayıp kaldıraçlı girebilsin." Aynen böyle kuruldu — üç teyit birden
+yoksa kaldıraç yok, giriş spot sürer:
+puan ≥ 88 (93'te 3×) · pattern_modifier > 0 · dirence ≥ 2 ATR yer.
+Stop başlangıç marjının %80'ine sığmak zorunda; sığmazsa kademe düşer.
+Borç saatlik %0,00208 tahakkuk eder ve komisyona yazılır. Brüt maruziyet
+tavanı 1,5×.
+
+DÜRÜST KAYIT: risk_pct değişmedi (işlem başına risk aynı). Kaldıraç dar
+stoplu, tam teyitli girişte nakit tavanını kaldırır — kenar yaratmaz,
+VARSA ödülünü, YOKSA cezasını büyütür. Backtest bu sürümü bilerek
+reddeder; tek ölçü bu defterin kendisidir. Devre kesiciler aynı kaldı ve
+kaldıraçla daha erken tetiklenir — bu bir hata değil, tasarım.

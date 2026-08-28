@@ -730,3 +730,26 @@ Sahip "BIST + ABD aktif olsun" dedi; spec'te olmayan şu kararlar verildi
    Motor tek para birimi varsayar; pazarlar arası toplam sermaye raporu
    bu yüzden yalnız pazar içi anlamlıdır. Panel bazı yerlerde "USD" yazar
    — kozmetik, backlog'da.
+
+
+## Kaldıraç kapsama girdi — 2026-08-27 (sahibin kararı)
+
+CLAUDE.md'nin "kaldıraç kapsam dışı" satırı bu kararla eskidi. Paper
+motorunda simüle edilir; canlı para hâlâ yok. Kararlar:
+
+1. **Risk sabit**: kaldıraç risk_pct'i ÇARPMAZ; yalnız nakit ve
+   tek-pozisyon tavanını kaldırır (`sizing/leverage.py` başlığı).
+2. **Teyit üçlüsü şart**: puan ≥ eşik + boğa formasyonu + dirence ≥ N ATR
+   yer. Üçünden biri yoksa giriş SPOT devam eder ve sebep loglanır.
+3. **Stop marja sığmalı** (varsayılan pay 0,8): sığmazsa kaldıraç düşer.
+   Böylece likidasyon ancak stopu da atlayan boşlukta mümkün — o da
+   `stop_fill_price` ile açılıştan dolar, kayıp dürüstçe kaydedilir.
+4. **Borç görünür**: marj kuralı nakdi tam notional kadar düşürür; nakit
+   eksiye iner = borç. Borç maliyeti saatlik tahakkuk eder (varsayılan
+   günlük ~%0,05) ve kapanışta komisyona eklenir.
+5. **Backtest v1 kaldıracı AÇIKÇA reddeder** — sessizce 1× koşup canlıyla
+   karşılaştırılamaz rapor üretmek kural 1'i kırardı. Backtest'e marj +
+   borç + bar-içi likidasyon modeli gelene dek kaldıraçlı stratejinin
+   ölçüsü yalnız canlı paper defteridir.
+6. Bot 11 G8: 3× tavan, kademeler [[88→2×],[93→3×]], brüt maruziyet
+   tavanı 1,5. Kısa (short) hâlâ kapsam dışı.
