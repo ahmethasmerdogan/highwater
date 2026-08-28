@@ -257,6 +257,30 @@ class BotWorker:
                 return False
 
             ctx = await self._build_context(session, symbols, bar_time, definition)
+
+            if not ctx.scores:
+                # Havuz dolu ama tek sembol bile puanlanamadı (veri gecikmesi
+                # ya da yetersiz bar). Barı tüketmek denemeyi YARINA atardı —
+                # 15:00'te tam bunu yaşadık: "0 sembol puanlandı" yazıp bar
+                # yendi. Açık pozisyonların bar-stop denetimi yine çalışır;
+                # uyarı bar başına bir kez, dönüş False → 20 sn sonra yeniden.
+                snapshot = await load_snapshot(session, bot, ctx.prices, now=bar_time)
+                if definition.universe.market != "CRYPTO":
+                    await self._bar_stop_exits(session, bot, definition, snapshot, bar_time)
+                if self._empty_universe_warned_for != bar_time:
+                    self._empty_universe_warned_for = bar_time
+                    await self._emit(
+                        session,
+                        EventKind.LOG,
+                        level="WARN",
+                        message=(
+                            f"{bar_time:%Y-%m-%d %H:%M} barında {len(symbols)} sembolden "
+                            "hiçbiri puanlanamadı (taze veri/yetersiz bar). Bar "
+                            "tüketilmedi; yeniden denenecek."
+                        ),
+                    )
+                return False
+
             await self._persist_scores(session, ctx, definition)
 
             snapshot = await load_snapshot(session, bot, ctx.prices, now=bar_time)
@@ -308,6 +332,28 @@ class BotWorker:
         bundles = await load_bundles(
             session, symbols, at=bar_time, decision_tf=definition.timeframe
         )
+        if definition.universe.market != "CRYPTO":
+            # Sağlayıcı gün sonunu gecikmeli basar (İş Yatırım T+dakikalar…
+            # saatler). Karar barının KENDİ satırı gelmemiş sembolü puanlamak,
+            # dünkü kapanışla bugünkü bar adına karar vermek olur — fiyat da
+            # sentetik defter de bayat kalır. Taze olmayan atlanır; bar
+            # tüketilmediği için 20 sn sonra yeniden denenir.
+            taze = []
+            for b in bundles:
+                base = b.indicators.get(definition.timeframe)
+                if (
+                    base is not None
+                    and base.bar_time is not None
+                    and base.bar_time.to_pydatetime().timestamp() == bar_time.timestamp()
+                ):
+                    taze.append(b)
+            # Kısmi tazelik kesiti sakatlar: İş Yatırım günü KADEMELİ basıyor
+            # ve ilk turda 5 sembol gelmişti — 5 kişilik yüzdelik sıralamayla
+            # kapı kararı vermek anlamsız. Kesitin en az %60'ı (ve ≥ 10
+            # sembol) tazelenene dek bundles BOŞ bırakılır → 0-puan yolu barı
+            # tüketmez, 20 sn sonra yeniden denenir.
+            yeterli = max(10, int(len(bundles) * 0.6))
+            bundles = taze if len(taze) >= yeterli else []
         engine = ScoringEngine(
             weights=definition.scoring.weights,
             use_pattern=definition.scoring.modifiers.get("pattern", True),
