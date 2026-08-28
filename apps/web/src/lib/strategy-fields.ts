@@ -223,6 +223,57 @@ export const STRATEGY_GROUPS: FieldGroup[] = [
     ],
   },
   {
+    key: "leverage",
+    title: "Kaldıraç (paper)",
+    description:
+      "Sahibin kararıyla kapsamda. Risk ÇARPILMAZ — kaldıraç yalnız nakit ve tek-pozisyon tavanını kaldırır. Üç teyit birden şart: yüksek puan + boğa formasyonu + dirence yer. Borç maliyeti gerçektir ve kapanışta komisyona eklenir. Backtest v1 kaldıraçlı stratejiyi AÇIKÇA reddeder.",
+    fields: [
+      {
+        path: "sizing.leverage.max_leverage",
+        label: "Azami kaldıraç",
+        kind: "number",
+        min: 1,
+        max: 5,
+        step: 0.5,
+        description: "1 = kapalı (spot). Kademeler puanla açılır; bu tavanı kimse aşamaz.",
+        warning: "Kaldıraç kanıtlanmamış kenarı da, kaybı da katlar. Devre kesiciler daha erken tetiklenir.",
+      },
+      {
+        path: "sizing.leverage.min_score",
+        label: "Kaldıraç puan eşiği",
+        kind: "number",
+        min: 80,
+        max: 100,
+        step: 0.5,
+        description: "Bu puanın altında kaldıraç hiç düşünülmez; giriş spot devam eder.",
+      },
+      {
+        path: "sizing.leverage.min_headroom_atr",
+        label: "Dirence asgari yer (ATR)",
+        kind: "number",
+        min: 0.5,
+        max: 6,
+        step: 0.5,
+        description: "En yakın direnç bu kadar ATR'den yakınsa kaldıraç verilmez — tavana yapışık fiyata borçla girilmez.",
+      },
+      {
+        path: "sizing.leverage.require_pattern",
+        label: "Formasyon teyidi şart",
+        kind: "boolean",
+        description: "Açıkken boğa formasyonu (pattern_modifier > 0) olmadan kaldıraç verilmez.",
+      },
+      {
+        path: "sizing.leverage.stop_margin_fit",
+        label: "Stop-marj sığma payı",
+        kind: "number",
+        min: 0.3,
+        max: 0.95,
+        step: 0.05,
+        description: "Stop mesafesi başlangıç marjının bu payına sığmalı; sığmazsa kaldıraç otomatik düşer. Likidasyonun panzehiri budur.",
+      },
+    ],
+  },
+  {
     key: "risk",
     title: "Risk sınırları (devre kesiciler)",
     description:
