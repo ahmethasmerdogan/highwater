@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
@@ -63,6 +63,7 @@ from sarnic.risk.engine import RiskEngine, RiskState
 from sarnic.scoring.engine import ScoreResult, ScoringEngine
 from sarnic.sizing.clusters import cluster_exposure, latest_clusters
 from sarnic.sizing.engine import SizingEngine, SizingInput
+from sarnic.sizing.leverage import LeverageSpec, borrow_cost, decide_leverage
 from sarnic.strategy.definition import StrategyDefinition
 from sarnic.universe.engine import UniverseEngine
 
@@ -84,6 +85,10 @@ class BarContext:
     prices: dict[str, float]
     realized_vol: dict[str, float]
     adv_1h: dict[str, float]
+    #: Kaldıraç teyidi (sizing/leverage.py): dirence uzaklık (ATR) ve
+    #: formasyon düzeltmesi. Kaldıraç kapalıyken de doldurulur — ucuz.
+    sr_headroom_atr: dict[str, float] = field(default_factory=dict)
+    pattern_mod: dict[str, float] = field(default_factory=dict)
     btc_below_ema200: bool = False
     btc_vol_above_p90: bool = False
 
@@ -317,6 +322,8 @@ class BotWorker:
         atr: dict[str, float] = {}
         rvol_map: dict[str, float] = {}
         adv: dict[str, float] = {}
+        sr_headroom: dict[str, float] = {}
+        pattern_mod: dict[str, float] = {}
 
         for b in bundles:
             # Karar çerçevesi botun kendi dilimidir; burada `"1h"` sabiti
@@ -335,6 +342,11 @@ class BotWorker:
                 stop = stop_from_sr(b.sr, definition.exit.stop_atr_multiple, entry=base.close)
                 if stop is not None:
                     stops[b.symbol] = stop
+                headroom = b.sr.resistance_distance_atr
+                if headroom is not None:
+                    sr_headroom[b.symbol] = headroom
+            if b.patterns is not None:
+                pattern_mod[b.symbol] = b.patterns.modifier()
 
         # Likidite tavanı için 1 saatlik ortalama quote hacmi.
         tickers = await read_tickers(await self.redis())
@@ -353,6 +365,8 @@ class BotWorker:
             prices=prices,
             realized_vol=rvol_map,
             adv_1h=adv,
+            sr_headroom_atr=sr_headroom,
+            pattern_mod=pattern_mod,
             btc_below_ema200=btc_below,
             btc_vol_above_p90=btc_vol_high,
         )
@@ -682,16 +696,34 @@ class BotWorker:
             return
 
         gross = (exit_price - position.entry_price) * result.filled_qty
-        fees = total_fees(
-            entry_fees=position.entry_fees,
-            exit_fees=result.fees,
-            realized_fees=position.realized_fees,
+        hold_hours_now = (now - position.entry_time).total_seconds() / 3600
+        # Borç maliyeti: kaldıraçlı girişte borç alınan kısım için, tutulan
+        # saat kadar. Bedava kaldıraç yalanı yok — maliyet komisyon kalemine
+        # tahakkuk eder ve net kârdan düşer.
+        borc = borrow_cost(
+            notional=position.entry_price * result.filled_qty,
+            leverage=float(position.leverage or 1.0),
+            hold_hours=hold_hours_now,
+            hourly_rate=LeverageSpec.from_sizing(
+                self._definition_of(bot).sizing
+            ).hourly_rate,
         )
-        pnl = net_pnl(
-            gross=gross,
-            entry_fees=position.entry_fees,
-            exit_fees=result.fees,
-            realized_pnl=position.realized_pnl,
+        fees = (
+            total_fees(
+                entry_fees=position.entry_fees,
+                exit_fees=result.fees,
+                realized_fees=position.realized_fees,
+            )
+            + borc
+        )
+        pnl = (
+            net_pnl(
+                gross=gross,
+                entry_fees=position.entry_fees,
+                exit_fees=result.fees,
+                realized_pnl=position.realized_pnl,
+            )
+            - borc
         )
         risk_per_unit = max(position.entry_price - position.initial_stop, 1e-12)
         pnl_r = (exit_price - position.entry_price) / risk_per_unit
@@ -715,12 +747,13 @@ class BotWorker:
                 slippage_bps=round(result.slippage_bps, 4),
                 mfe=Decimal(str(round(position.mfe, 8))),
                 mae=Decimal(str(round(position.mae, 8))),
-                hold_hours=round((now - position.entry_time).total_seconds() / 3600, 4),
+                hold_hours=round(hold_hours_now, 4),
+                leverage=Decimal(str(round(float(position.leverage or 1.0), 2))),
                 strategy_version_id=bot.strategy_version_id,
             )
         )
 
-        snapshot.cash += exit_price * result.filled_qty - result.fees
+        snapshot.cash += exit_price * result.filled_qty - result.fees - borc
         snapshot.positions = [p for p in snapshot.positions if p.id != position.id]
         bot.cash = Decimal(str(round(snapshot.cash, 8)))
 
@@ -809,12 +842,33 @@ class BotWorker:
                 )
                 continue
 
+            lev_spec = LeverageSpec.from_sizing(definition.sizing)
+            lev = decide_leverage(
+                lev_spec,
+                score=candidate.score,
+                pattern_modifier=ctx.pattern_mod.get(candidate.symbol),
+                headroom_atr=ctx.sr_headroom_atr.get(candidate.symbol),
+                entry=entry,
+                stop=stop,
+            )
+            if lev_spec.enabled and lev.leverage <= 1.0:
+                # Kaldıraç istendi ama teyit yok: giriş SPOT devam eder,
+                # sebep loglanır — sessiz varsayım yok.
+                await self._emit(
+                    session,
+                    EventKind.LOG,
+                    level="INFO",
+                    symbol=candidate.symbol,
+                    message=f"{candidate.symbol} kaldıraçsız (1×): {lev.reason}",
+                )
+
             decision = sizing.size(
                 SizingInput(
                     symbol=candidate.symbol,
                     score=candidate.score,
                     entry=entry,
                     stop=stop,
+                    leverage=lev.leverage,
                     equity=snapshot.equity,
                     free_cash=snapshot.cash,
                     current_exposure=snapshot.exposure,
@@ -839,7 +893,14 @@ class BotWorker:
                 continue
 
             await self._open_position(
-                session, bot, snapshot, ctx, candidate, decision, definition.timeframe
+                session,
+                bot,
+                snapshot,
+                ctx,
+                candidate,
+                decision,
+                definition.timeframe,
+                leverage=lev.leverage,
             )
 
     async def _open_position(
@@ -851,6 +912,7 @@ class BotWorker:
         candidate: ScoreResult,
         decision,
         timeframe: str,
+        leverage: float = 1.0,
     ) -> None:
         adapter = await self._get_adapter(session, bot)
         result = await adapter.submit(
@@ -860,7 +922,13 @@ class BotWorker:
                 type=OrderType.MARKET,
                 qty=decision.qty,
                 bot_id=bot.id,
-                meta={"realized_vol": ctx.realized_vol.get(candidate.symbol)},
+                meta={
+                    "realized_vol": ctx.realized_vol.get(candidate.symbol),
+                    # 1'den büyükse adaptör marj kuralıyla çalışır: nakit
+                    # notional/lev kadar yeter; kalan borçtur ve nakit
+                    # eksiye düşerek görünür (borç saklanmaz).
+                    "leverage": leverage,
+                },
             )
         )
         await self._record_order(session, bot, result, None)
@@ -906,6 +974,7 @@ class BotWorker:
             score_at_entry=round(candidate.score, 2),
             rationale_id=score_id,
             entry_fees=Decimal(str(round(result.fees, 8))),
+            leverage=Decimal(str(round(leverage, 2))),
             status=PositionStatus.OPEN,
         )
         session.add(position)
@@ -956,6 +1025,7 @@ class BotWorker:
             message=(
                 f"{candidate.symbol} qty {result.filled_qty:.4f} @ {entry_price:.6f} · "
                 f"stop {decision.stop:.6f} · risk %{risk_pct * 100:.1f}"
+                + (f" · {leverage:g}× kaldıraç" if leverage > 1.0 else "")
                 + (f" · R {rr:.2f}" if isinstance(rr, int | float) else "")
             ),
         )

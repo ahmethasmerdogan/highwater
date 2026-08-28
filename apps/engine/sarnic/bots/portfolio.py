@@ -35,6 +35,7 @@ class OpenPosition:
     #: Kısmi çıkışlardan birikmiş net sonuç ve ödenen komisyon.
     realized_pnl: float = 0.0
     realized_fees: float = 0.0
+    leverage: float = 1.0
 
     def notional(self, price: float) -> float:
         return self.qty * price
@@ -102,6 +103,7 @@ async def load_open_positions(session: AsyncSession, bot_id: int) -> list[OpenPo
             entry_fees=float(p.entry_fees),
             realized_pnl=float(p.realized_pnl),
             realized_fees=float(p.realized_fees),
+            leverage=float(p.leverage or 1.0),
         )
         for p in rows
     ]
