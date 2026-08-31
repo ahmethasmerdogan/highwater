@@ -251,7 +251,8 @@ class BacktestEngine:
 
     async def load_universe(self, session: AsyncSession, fallback: list[str]) -> UniverseTimeline:
         # Havuz pazar başınadır; BIST snapshot'ı kripto backtestine sızmamalı.
-        market = getattr(self.params, "market", "CRYPTO")
+        # Pazar, test edilen TANIMDAN gelir (params'ta market alanı yok).
+        market = self.definition.universe.market
         snapshots = (
             (
                 await session.execute(
@@ -824,9 +825,17 @@ class BacktestEngine:
         return out
 
     async def _fallback_symbols(self, session: AsyncSession) -> list[str]:
+        # Pazar filtresi ŞART: tablo artık BIST/ABD snapshot'ları da taşıyor
+        # (migration 0007) ve "en son snapshot" bir hisse havuzu olabiliyor.
+        # Filtresiz hâli kripto taramasına 56 BIST sembolü soktu — veri
+        # yüklenemedi, backtest sessizce yalnız BTC ile koşacaktı.
+        market = getattr(self.params, "market", None) or self.definition.universe.market
         snap = (
             await session.execute(
-                select(UniverseSnapshot).order_by(UniverseSnapshot.taken_at.desc()).limit(1)
+                select(UniverseSnapshot)
+                .where(UniverseSnapshot.market == market)
+                .order_by(UniverseSnapshot.taken_at.desc())
+                .limit(1)
             )
         ).scalar_one_or_none()
         return [s["symbol"] for s in snap.symbols] if snap else []

@@ -314,3 +314,46 @@ def test_universe_timeline_with_snapshots_notes_point_in_time():
     timeline = UniverseTimeline([FakeSnapshot(START, ["A"])], fallback=[])
     timeline.at(START + timedelta(hours=1))
     assert "point-in-time" in timeline.note()
+
+
+@pytest.mark.asyncio
+async def test_fallback_sembolleri_pazar_suzer(api_session):
+    """Son snapshot bir HİSSE havuzu olabilir (migration 0007'den beri aynı
+    tablo). Filtresiz fallback kripto taramasına 56 BIST sembolü soktu —
+    backtest sessizce yalnız BTC ile koşacaktı. Fallback tanımın pazarını
+    süzmek zorunda."""
+    from datetime import UTC, datetime, timedelta
+
+    from sarnic.backtest.engine import BacktestEngine, BacktestParams
+    from sarnic.db.models import UniverseSnapshot
+    from sarnic.strategy.definition import StrategyDefinition
+
+    simdi = datetime.now(UTC)
+    api_session.add(
+        UniverseSnapshot(
+            taken_at=simdi - timedelta(hours=2),
+            reason="scheduled",
+            market="CRYPTO",
+            config_hash="t",
+            funnel={},
+            symbols=[{"symbol": "BTCUSDT"}, {"symbol": "ETHUSDT"}],
+        )
+    )
+    # Hisse snapshot'ı DAHA YENİ — filtresiz sorgu bunu seçerdi.
+    api_session.add(
+        UniverseSnapshot(
+            taken_at=simdi - timedelta(hours=1),
+            reason="scheduled",
+            market="BIST",
+            config_hash="t",
+            funnel={},
+            symbols=[{"symbol": "THYAO.IS"}],
+        )
+    )
+    await api_session.flush()
+
+    d = StrategyDefinition()
+    assert d.universe.market == "CRYPTO"
+    engine = BacktestEngine(d, BacktestParams(start=simdi - timedelta(days=2), end=simdi))
+    semboller = await engine._fallback_symbols(api_session)
+    assert semboller == ["BTCUSDT", "ETHUSDT"], "kripto tanımına hisse havuzu sızdı"
