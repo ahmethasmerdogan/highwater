@@ -12,7 +12,7 @@
  */
 
 import Link, { useLinkStatus } from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { cx } from "@/design/cx";
 import { Dot, Tip } from "@/design/primitives";
@@ -47,6 +47,8 @@ const KEY = "sarnic.sidebar.rail";
 
 export function Sidebar() {
   const pathname = usePathname();
+  const search = useSearchParams();
+  const aktifMarket = search.get("market");
   const { can } = useAuth();
   const { state } = useLive();
   const [rail, setRail] = useState(false);
@@ -106,8 +108,16 @@ export function Sidebar() {
                 <div className="sn-label px-3 pb-1">{group.label}</div>
               )}
               {items.map((item) => {
+                /* Query'li girdiler (Havuz · BIST → /havuz?market=BIST) yol
+                   karşılaştırmasıyla ayırt edilemez; aktiflik yol + market
+                   parametresi birlikte okunarak verilir. */
+                const [itemPath, itemQuery] = item.href.split("?");
+                const itemMarket = new URLSearchParams(itemQuery ?? "").get("market");
                 const active =
-                  item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+                  item.href === "/"
+                    ? pathname === "/"
+                    : pathname.startsWith(itemPath) &&
+                      (itemPath !== "/havuz" || aktifMarket === itemMarket);
                 const Icon = item.icon;
                 const link = (
                   <Link

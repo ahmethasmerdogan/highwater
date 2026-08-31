@@ -14,7 +14,7 @@
  * tablolarda başlığın nereye yapıştığını belirsizleştirir.
  */
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { TooltipHost } from "@/design/primitives";
@@ -62,7 +62,10 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
     <TooltipHost>
       <div className="sn-root flex h-screen overflow-hidden" style={{ background: "var(--sn-bg)" }}>
         <div className="hidden md:block">
-          <Sidebar />
+          {/* useSearchParams Suspense ister (aktif pazar vurgusu). */}
+          <Suspense fallback={null}>
+            <Sidebar />
+          </Suspense>
         </div>
 
         {/* Mobil menü — kayan panel */}
@@ -75,7 +78,10 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
               aria-hidden
             />
             <div className="sn-slide-in relative h-full w-[208px]" onClick={() => setMenuOpen(false)}>
-              <Sidebar />
+              {/* useSearchParams Suspense ister (aktif pazar vurgusu). */}
+          <Suspense fallback={null}>
+            <Sidebar />
+          </Suspense>
               <button
                 type="button"
                 onClick={() => setMenuOpen(false)}

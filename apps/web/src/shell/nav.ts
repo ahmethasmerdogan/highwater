@@ -65,8 +65,20 @@ export const NAV: NavGroup[] = [
       },
       {
         href: "/havuz",
-        label: "Havuz",
-        hint: "İşlem yapılabilir coin listesi ve hangi filtrenin neyi elediği.",
+        label: "Havuz · Kripto",
+        hint: "Kripto havuzu: işlem yapılabilir coinler ve hangi filtrenin neyi elediği.",
+        icon: IPool,
+      },
+      {
+        href: "/havuz?market=BIST",
+        label: "Havuz · BIST",
+        hint: "Borsa İstanbul havuzu — günlük bar, İş Yatırım verisi, TL hacim.",
+        icon: IPool,
+      },
+      {
+        href: "/havuz?market=US",
+        label: "Havuz · ABD",
+        hint: "ABD hisse havuzu (NYSE/NASDAQ) — günlük bar, dolar hacim.",
         icon: IPool,
       },
       {
