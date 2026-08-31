@@ -1786,3 +1786,33 @@ pazartesi tam eşitleme sermaye işlemlerini yakalar. `/portfolio/metrics`
 ağır hesabı dakikada onlarca kez koşturuyordu. Bilinçli yapılmadı:
 puanlama/çıkış parametrelerine dokunulmadı (sekiz hipotezin sekizi çürük;
 dondurma kararı geçerli).
+
+## 2026-09-01 — Maraton hazırlığı: donma sigortası, menüde pazarlar, 400 $ sıfırlama
+
+Hafta sonu internet kesintisi gerçek bir tatbikat oldu: sistem kesintileri
+kendisi atlattı (29'unda işlemler, dönüşte 317 boşluk otomatik onarıldı,
+süresi dolan pozisyonlar bağlantı gelince işlendi; net hasar −38,51 USDT +
+skor sürekliliğinde delikler). Ama iki zayıflık görünür oldu ve maraton
+öncesi kapatıldı: (1) olay döngüsü donarsa içerideki gözcü de donuyor —
+artık her veri servisi dıştan bakan bir DEADMAN ipliği taşıyor: 15 dk
+nabızsızlıkta süreç kendini öldürür, systemd (StartLimitIntervalSec=0 ile
+asla pes etmeden) yeniden doğurur, açılış denetimi 2 dk içinde boşlukları
+onarır; (2) equitydata'nın TTL tazelemesi bayat kripto fiyatlarını canlı
+gibi tutuyordu — read_tickers 15 dk'dan eski kripto girdisini artık düşer
+(hisse girdileri kapalı piyasada bilerek eski kalır).
+
+Sıfırlamanın kendisi ikinci dersi verdi: reset'ten 2 dk sonra WEEKLY_LOSS
+kesicisi 8 botu durdurdu — eski taban cinsinden hafta-başı özsermayeye göre
+400 $ "−%87 haftalık kayıp" görünüyordu. Kök neden: sermaye tabanı dıştan
+değişince risk çapaları eski tabanla kıyas yapıyordu. Düzeltme: re-base anı
+botun üstünde (`config.rebased_at`), gün/hafta çapaları bu anın gerisine
+bakmaz — çapa klempe takılırsa dürüst taban yeni sermayenin kendisidir
+(`load_snapshot`, testli). 8 bot 17 dk sonra koşuya döndü; maraton fiilen
+22:33 UTC'de tam kadro başladı.
+
+MARATON (sahibin kararı): 9 botun tamamı 400 $ eşdeğerine sıfırlandı,
+30 gün komutsuz koşu; meta settings.marathon'da, hakem /maraton sayfası
+(gün yolu, tabanlanmış yarış eğrisi + havuz sepeti, sıralama). Menüye
+Havuz · Kripto/BIST/ABD girdileri ve Maraton eklendi; Meydan Okuma
+menüden çıktı (sayfası ve defteri duruyor). G-serisi challenge 410,64
+USDT'de kapandı — değerlendirmesi MEYDAN-OKUMA.md'de.

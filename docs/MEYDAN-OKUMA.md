@@ -1145,3 +1145,19 @@ stoplu, tam teyitli girişte nakit tavanını kaldırır — kenar yaratmaz,
 VARSA ödülünü, YOKSA cezasını büyütür. Backtest bu sürümü bilerek
 reddeder; tek ölçü bu defterin kendisidir. Devre kesiciler aynı kaldı ve
 kaldıraçla daha erken tetiklenir — bu bir hata değil, tasarım.
+
+## KAPANIŞ → MARATON — 2026-09-01 01:15 (TR)
+
+G-serisi meydan okuma (20.000 ₺ → 100.000 ₺) burada kapandı: son özsermaye
+410,64 USDT (başlangıç 415,97'ye göre −%1,3; 3 kapanmış işlem). Hedef
+değerlendirmesi baştan dürüsttü: istatistiksel olarak ulaşılamazdı ve
+ulaşılamadı. Defterin değeri hedef değil ÖLÇÜMdü — look-ahead'li ölçüm
+zemininin çürük çıkışı, sekiz hipotezin çürütülüşü, G1→G8 sürüm izi.
+
+Yerine MARATON: sahibin kararıyla 9 botun TAMAMI 400 $ eşdeğerine
+sıfırlandı (BIST 19.232 ₺ = 400 $ × dondurulmuş 48,08; kripto 400 USDT;
+ABD 400 $) ve 30 gün boyunca sisteme HİÇ komut verilmeyecek. Bu bir yarış
+olduğu kadar 9 kollu bir A/B'dir: taban / seçici / trend / 15m / 30m / 4h
+/ G8-kaldıraç / BIST-1d / ABD-1d. Meta tek kaynakta (`settings.marathon`),
+hakem /maraton sayfası. Eski işlem geçmişi silinmedi; maraton ölçümü
+başlangıç damgasıyla süzülür.

@@ -753,3 +753,22 @@ motorunda simüle edilir; canlı para hâlâ yok. Kararlar:
    ölçüsü yalnız canlı paper defteridir.
 6. Bot 11 G8: 3× tavan, kademeler [[88→2×],[93→3×]], brüt maruziyet
    tavanı 1,5. Kısa (short) hâlâ kapsam dışı.
+
+
+## Sermaye re-base akışı resmi değil — 2026-09-01
+
+Maraton sıfırlaması dış betikle yapıldı ve iki tasarım boşluğu bıraktı:
+
+1. **Durdurulan botun pozisyonu öksüz kalır**: stop/kill yalnız durum yazar,
+   açık pozisyonu kapatmak worker'ın işidir — worker ölünce kimse kapatmaz
+   (bot 10'un 5 gün süren BTC pozisyonunda yaşandı, elle kapatıldı).
+2. **Sermaye tabanı değişikliğinin resmi kapısı yok**: reset WEEKLY_LOSS'u
+   tetikledi çünkü risk çapaları eski tabana bakıyordu. Mekanizma artık var
+   (`config.rebased_at` + `load_snapshot` klempi, testli) ama bunu yazan
+   resmi bir admin ucu yok; betik `settings.marathon` + `rebased_at` +
+   taze EquityPoint üçünü elle yazdı.
+
+Karar gerekiyor: `POST /admin/bots/{id}/rebase` gibi tek bir uç (audit_log +
+pozisyon kapatma + rebased_at + taze özsermaye noktası tek işlemde) mi, yoksa
+re-base'in bu kadar nadir kalması mı? Maraton boyunca dokunulmayacak;
+maraton sonrası karara bağlanmalı.
