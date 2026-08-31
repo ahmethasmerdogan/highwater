@@ -933,7 +933,25 @@ async def read_tickers(redis: aioredis.Redis) -> dict[str, dict]:
     except Exception as exc:
         log.warning("ticker_cache_unavailable", error=str(exc))
         return {}
-    return {k: json.loads(v) for k, v in raw.items()}
+    out: dict[str, dict] = {}
+    simdi = utcnow()
+    for k, v in raw.items():
+        t = json.loads(v)
+        # Bayat KRİPTO fiyatı fiyat değildir: 31.08 kesintisinde equitydata'nın
+        # 30 sn'lik TTL tazelemesi hash'i ayakta tuttu ve 24 saatlik fiyatlar
+        # "canlı" gibi servis edildi — pozisyonlar bayat fiyatla değerlendi.
+        # Kripto 7/24 akar: 15 dk'dan eski kripto girdisi düşülür; çağıranlar
+        # `last_price=None` durumunu zaten taşıyor ve panel "bayat" der.
+        # Hisse girdileri (ekli sembol) kapalı piyasada bilerek eski kalır.
+        if "." not in k:
+            try:
+                yas = (simdi - datetime.fromisoformat(t["at"])).total_seconds()
+                if yas > 900:
+                    continue
+            except (KeyError, ValueError, TypeError):
+                continue
+        out[k] = t
+    return out
 
 
 async def read_book(redis: aioredis.Redis, symbol: str) -> dict | None:

@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 
 import pytest
 
@@ -327,7 +328,12 @@ class _TickerRedis:
     """
 
     def __init__(self, symbols: tuple[str, ...] = ("BTCUSDT", "ETHUSDT")) -> None:
-        self._payload = {s: json.dumps({"last_price": 100.0, "quote_volume": 5e8}) for s in symbols}
+        # `at` üretimde her girdide vardır; `read_tickers` damgasız/bayat kripto
+        # girdisini düşer (31.08 kesintisi dersi). Fikstür üretim formatını taklit eder.
+        at = datetime.now(tz=UTC).isoformat()
+        self._payload = {
+            s: json.dumps({"last_price": 100.0, "quote_volume": 5e8, "at": at}) for s in symbols
+        }
 
     async def hgetall(self, key: str) -> dict:
         return dict(self._payload)
