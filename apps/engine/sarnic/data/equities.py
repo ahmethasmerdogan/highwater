@@ -352,6 +352,7 @@ class EquityDataService:
         self._stop = asyncio.Event()
         self._http: httpx.AsyncClient | None = None
         self._last_close: dict[str, float] = {}
+        self._last_ciro: dict[str, float] = {}
         self._last_bar_day: dict[str, datetime] = {}
         self._refreshed_session: dict[str, datetime | None] = {"BIST": None, "US": None}
         self.deadman = Deadman("equitydata", threshold_seconds=1200)
@@ -445,6 +446,7 @@ class EquityDataService:
                 yazilan += await upsert_klines(session, [b.as_kline() for b in bars])
             last = max(bars, key=lambda b: b.day)
             self._last_close[last.symbol] = last.close
+            self._last_ciro[last.symbol] = last.quote_volume
             self._last_bar_day[last.symbol] = last.day
             basarili.append((last.symbol, last.close, last.quote_volume))
             # Nazik ol: iki kaynak da resmi API değil.
@@ -522,7 +524,12 @@ class EquityDataService:
                 {
                     "symbol": symbol,
                     "last_price": str(close),
-                    "quote_volume": "0",
+                    # Son SEANSIN cirosu — "0" değil. Sıfır, boyutlandırmanın
+                    # likidite tavanını (adv_1h × pay) sıfıra klemplemesi
+                    # demekti: hiçbir hisse botu hiçbir zaman pozisyon
+                    # açamıyordu ve tek iz "kısıtlar sonrası boyut sıfır"dı.
+                    # adv_1h = ciro/24 kripto ile aynı dönüşümdür.
+                    "quote_volume": str(self._last_ciro.get(symbol, 0.0)),
                     "price_change_pct": "0",
                     "high": str(close),
                     "low": str(close),

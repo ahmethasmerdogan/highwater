@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pandas as pd
+import pytest
 
 from sarnic.core.calendar import calendar_for
 from sarnic.core.markets import BIST, CRYPTO, US, bars_per_year, market_of
@@ -113,3 +114,46 @@ def test_calendar_for_is_cached_and_dispatches():
     assert calendar_for("24/7").code == "24/7"
     assert calendar_for("XIST").code == "XIST"
     assert calendar_for("24/7") is calendar_for("24/7")
+
+
+@pytest.mark.asyncio
+async def test_hisse_ticker_gercek_ciro_tasir():
+    """quote_volume="0" likidite tavanını sıfıra klempliyordu — hiçbir hisse
+    botu hiçbir zaman pozisyon açamıyordu (tek iz: "kısıtlar sonrası boyut
+    sıfır"). Ticker son seansın gerçek cirosunu taşımalı."""
+    import json
+
+    from sarnic.data.equities import EquityDataService
+
+    class _Redis:
+        def __init__(self):
+            self.hashes = {}
+            self.keys = {}
+
+        async def hset(self, key, mapping):
+            self.hashes.setdefault(key, {}).update(mapping)
+
+        async def expire(self, key, ttl):
+            pass
+
+        async def set(self, key, value, ex=None):
+            self.keys[key] = value
+
+    r = _Redis()
+
+    async def factory():
+        return r
+
+    svc = EquityDataService(factory)
+    svc._last_close = {"THYAO.IS": 302.25, "ADP.US": 286.16}
+    svc._last_ciro = {"THYAO.IS": 4.2e9, "ADP.US": 5.7e8}
+    await svc._write_state()
+
+    tickers = {k: json.loads(v) for k, v in r.hashes["sarnic:md:tickers"].items()}
+    assert float(tickers["THYAO.IS"]["quote_volume"]) == 4.2e9
+    assert float(tickers["ADP.US"]["quote_volume"]) == 5.7e8
+    # Ciro bilinmiyorsa 0 kalır — likidite tavanı temkinli tarafta.
+    svc._last_ciro = {}
+    await svc._write_state()
+    tickers = {k: json.loads(v) for k, v in r.hashes["sarnic:md:tickers"].items()}
+    assert float(tickers["ADP.US"]["quote_volume"]) == 0.0
