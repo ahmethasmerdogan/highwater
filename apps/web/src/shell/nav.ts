@@ -58,9 +58,9 @@ export const NAV: NavGroup[] = [
         icon: IPanel,
       },
       {
-        href: "/meydan-okuma",
-        label: "Meydan Okuma",
-        hint: "20.000 ₺ → 100.000 ₺ hedefi: ilerleme, denemeler ve kontrol grubuyla karşılaştırma.",
+        href: "/maraton",
+        label: "Maraton",
+        hint: "30 günlük komutsuz koşu: 9 bot, hepsi 400 $ ile — sıralama ve yarış eğrisi.",
         icon: ITarget,
       },
       {
