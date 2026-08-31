@@ -269,3 +269,50 @@ async def test_check_risk_kesici_tetiklendiginde_cokmez(monkeypatch):
     assert not verdict.allow_entry, "−%4 günlük zarar girişi bloklamalı"
     assert bot.entries_blocked_until is not None, "kesici durum değişikliği uygulanmadı"
     assert [kind for kind, _, _ in bus.events] == ["risk.circuit_breaker"]
+
+
+@pytest.mark.asyncio
+async def test_rebase_sonrasi_hafta_capasi_yeni_sermayedir(api_session):
+    """Sermaye tabanı dıştan sıfırlanınca eski özsermaye kayıp çapası olamaz.
+
+    Maratonun ikinci dakikasında yaşandı: 2985→400 sıfırlaması WEEKLY_LOSS'a
+    "−%87 haftalık kayıp" gibi göründü ve 8 botu durdurdu. `rebased_at`
+    varken hafta/gün çapası re-base'in gerisine bakmaz; dürüst taban yeni
+    sermayenin kendisidir.
+    """
+    from decimal import Decimal
+
+    from sarnic.bots.portfolio import load_snapshot
+    from sarnic.db.models import EquityPoint
+    from tests.test_api import make_bot
+
+    bot, _ = await make_bot(api_session, "rebase-test")
+    now = datetime.now(UTC)
+    hafta_basi = (now - timedelta(days=now.weekday())).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    # Eski taban: hafta başından önce 2985'lik bir nokta.
+    api_session.add(
+        EquityPoint(
+            bot_id=bot.id,
+            at=hafta_basi - timedelta(hours=2),
+            equity=Decimal("2985"),
+            cash=Decimal("2985"),
+            exposure=Decimal("0"),
+            open_positions=0,
+        )
+    )
+    bot.capital = Decimal("400")
+    bot.cash = Decimal("400")
+    await api_session.flush()
+
+    # Kontrol: re-base kaydı YOKKEN çapa eski noktadır (hata buydu).
+    zehirli = await load_snapshot(api_session, bot, {}, now=now)
+    assert zehirli.equity_start_of_week == 2985.0
+
+    # re-base kaydıyla çapa yeni sermayedir; sahte "−%87" kaybolur.
+    bot.config = {"rebased_at": (hafta_basi + timedelta(hours=1)).isoformat()}
+    await api_session.flush()
+    temiz = await load_snapshot(api_session, bot, {}, now=now)
+    assert temiz.equity_start_of_week == 400.0
+    assert temiz.equity_start_of_day == 400.0

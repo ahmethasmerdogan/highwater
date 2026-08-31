@@ -164,8 +164,22 @@ async def load_snapshot(
     )
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     week_start = day_start - timedelta(days=day_start.weekday())
-    snapshot.equity_start_of_day = await equity_at(session, bot.id, day_start, float(bot.capital))
-    snapshot.equity_start_of_week = await equity_at(session, bot.id, week_start, float(bot.capital))
+    # Sermaye tabanı dıştan değiştiyse (ör. maraton sıfırlaması) eski taban
+    # cinsinden özsermaye noktaları kayıp çapası OLAMAZ: 2985→400 sıfırlaması
+    # WEEKLY_LOSS'a "−%87 kayıp" gibi göründü ve 8 botu maratonun ikinci
+    # dakikasında durdurdu. Re-base anı bot.config.rebased_at'ta kayıtlıdır;
+    # çapalar bu anın gerisine bakmaz (re-base anına taze nokta yazılır).
+    rebase_raw = (bot.config or {}).get("rebased_at")
+    rebase_at = datetime.fromisoformat(rebase_raw) if rebase_raw else None
+
+    async def _anchor(moment: datetime) -> float:
+        # Çapa re-base'in gerisindeyse dürüst taban yeni sermayenin kendisidir.
+        if rebase_at is not None and moment <= rebase_at:
+            return float(bot.capital)
+        return await equity_at(session, bot.id, moment, float(bot.capital))
+
+    snapshot.equity_start_of_day = await _anchor(day_start)
+    snapshot.equity_start_of_week = await _anchor(week_start)
     snapshot.consecutive_losses = await consecutive_losses(
         session, bot.id, strategy_version_id=bot.strategy_version_id
     )
