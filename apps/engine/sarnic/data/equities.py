@@ -35,6 +35,7 @@ import httpx
 
 from sarnic.core.calendar import ExchangeSessionCalendar, calendar_for
 from sarnic.core.clock import utcnow
+from sarnic.core.deadman import Deadman
 from sarnic.core.logging import get_logger
 from sarnic.core.markets import BIST, US, Market
 from sarnic.data.binance import Kline
@@ -353,6 +354,7 @@ class EquityDataService:
         self._last_close: dict[str, float] = {}
         self._last_bar_day: dict[str, datetime] = {}
         self._refreshed_session: dict[str, datetime | None] = {"BIST": None, "US": None}
+        self.deadman = Deadman("equitydata", threshold_seconds=1200)
         #: Sağlayıcı gecikmesi görüldüğünde bir sonraki deneme bu ana ertelenir.
         self._lag_until: dict[str, datetime] = {}
 
@@ -374,6 +376,7 @@ class EquityDataService:
 
     # ------------------------------------------------------------------ #
     async def run(self) -> None:
+        self.deadman.start()
         log.info("equitydata_started", bist=len(BIST_SEED), us=len(US_SEED))
         # İlk açılışta iki pazarı da doldur (eksik olanı tamamlar).
         for market in (BIST, US):
@@ -384,6 +387,7 @@ class EquityDataService:
         rewrite = asyncio.create_task(self._state_rewriter())
         try:
             while not self._stop.is_set():
+                self.deadman.beat()
                 await asyncio.sleep(REFRESH_CHECK_SECONDS)
                 for market in (BIST, US):
                     try:

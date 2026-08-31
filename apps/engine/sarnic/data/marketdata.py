@@ -25,6 +25,7 @@ from sqlalchemy import delete, func, select, update
 
 from sarnic.config import settings
 from sarnic.core.clock import utcnow
+from sarnic.core.deadman import Deadman
 from sarnic.core.enums import TIMEFRAME_MINUTES, EventKind
 from sarnic.core.events import EventBus, get_event_bus
 from sarnic.core.logging import get_logger
@@ -115,6 +116,7 @@ class MarketDataService:
         self.bus = bus or get_event_bus()
         self._redis_url = redis_url or settings.redis_url
         self._redis: aioredis.Redis | None = None
+        self.deadman = Deadman("marketdata", threshold_seconds=900)
 
         self.ws_ticker = BinanceWebSocket()
         self.ws_kline = BinanceWebSocket()
@@ -784,6 +786,9 @@ class MarketDataService:
 
     # ------------------------------------------------------------------ #
     async def start(self) -> None:
+        # Deadman en önce: açılışta asılı kalmak da (ör. ölü ağda
+        # refresh_exchange_info) donmadır ve aynı sigortaya tabidir.
+        self.deadman.start()
         get_rate_limiter().set_ban_callback(
             lambda retry: asyncio.create_task(
                 self.bus.emit(EventKind.API_BANNED, level="CRITICAL", retry_after=retry)
@@ -843,6 +848,9 @@ class MarketDataService:
         """
         factories = self._task_factories()
         while not self._stop.is_set():
+            # Döngü dönüyorsa süreç canlı — internet kesik olsa bile deadman
+            # tetiklenmemeli; hedef çevrimdışılık değil DONMADIR.
+            self.deadman.beat()
             await asyncio.sleep(TASK_WATCHDOG_INTERVAL)
 
             for name, factory in factories.items():
