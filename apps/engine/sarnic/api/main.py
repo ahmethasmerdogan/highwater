@@ -184,6 +184,26 @@ def create_app() -> FastAPI:
             ),
         }
 
+    @app.get("/system/marathon", tags=["system"])
+    async def system_marathon() -> dict:
+        """Maraton meta'sı — sabitler panele buradan gelir, kopyalanmaz.
+
+        (TUI tasarım incelemesinin uyarısı: meydan okuma sabitleri panelde
+        gömülüydü ve ikinci bir arayüz açılınca kopyalanacaktı. Maraton
+        başlangıcı/tutarı tek yerde: `settings` tablosu, grup `marathon`.)
+        """
+        from sarnic.core.settings_store import load_group
+        from sarnic.db.session import session_scope
+
+        async with session_scope() as session:
+            meta = await load_group(session, "marathon")
+        return {
+            "start": meta.get("start"),
+            "days": meta.get("days", 30),
+            "stake_usd": meta.get("stake_usd", 400),
+            "note": meta.get("note", ""),
+        }
+
     @app.get("/system/load", tags=["system"])
     async def system_load() -> dict:
         """Makinenin yük durumu — hangi botun durdurulacağına karar verirken.
