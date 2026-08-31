@@ -9,7 +9,8 @@
  * hangi ölçütlerle geçtiği açılır.
  */
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   api,
@@ -65,12 +66,32 @@ const MARKET_SUMMARY: Record<Market, string> = {
 };
 
 export default function UniversePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="px-6 py-8" style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink-3)" }}>
+          Yükleniyor…
+        </div>
+      }
+    >
+      <UniverseContent />
+    </Suspense>
+  );
+}
+
+function UniverseContent() {
   const { can } = useAuth();
   const qc = useQueryClient();
   const [selected, setSelected] = useState<UniverseSymbol | null>(null);
   /* Havuz pazar başınadır: TRY cirosu USD cirosuyla aynı sıralamaya
      girmez. Sekme yalnızca görünümü değiştirir; karar yolu zaten ayrı. */
-  const [market, setMarket] = useState<Market>("CRYPTO");
+  const params = useSearchParams();
+  const router = useRouter();
+  const paramMarket = params.get("market");
+  const market: Market =
+    paramMarket === "BIST" || paramMarket === "US" ? paramMarket : "CRYPTO";
+  const setMarket = (m: Market) =>
+    router.replace(m === "CRYPTO" ? "/havuz" : `/havuz?market=${m}`, { scroll: false });
 
   const snapshot = useQuery({
     queryKey: ["universe-current", market],
