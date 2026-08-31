@@ -444,6 +444,10 @@ class EquityDataService:
                 continue
             async with session_scope() as session:
                 yazilan += await upsert_klines(session, [b.as_kline() for b in bars])
+            # Sembol başına nabız: açılış backfill'i ana döngüden ÖNCE koşar
+            # ve İş Yatırım yavaş bir gecede 20 dk'yı aşabilir — ilerleme
+            # varken deadman'in süreci öldürmesi yanlış ölüm olurdu.
+            self.deadman.beat()
             last = max(bars, key=lambda b: b.day)
             self._last_close[last.symbol] = last.close
             self._last_ciro[last.symbol] = last.quote_volume
