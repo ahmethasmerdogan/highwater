@@ -1816,3 +1816,14 @@ MARATON (sahibin kararı): 9 botun tamamı 400 $ eşdeğerine sıfırlandı,
 Havuz · Kripto/BIST/ABD girdileri ve Maraton eklendi; Meydan Okuma
 menüden çıktı (sayfası ve defteri duruyor). G-serisi challenge 410,64
 USDT'de kapandı — değerlendirmesi MEYDAN-OKUMA.md'de.
+
+Maraton gecesi üçüncü dersi de verdi: hisse botları HİÇ işlem yapamamıştı
+ve sebep bir satırdı — equitydata ticker'a `quote_volume="0"` yazıyor,
+boyutlandırmanın likidite tavanı (adv_1h × pay) sıfıra klempleniyor, tek iz
+"kısıtlar sonrası boyut sıfır" kalıyordu. Ticker artık son seansın gerçek
+cirosunu taşıyor (adv_1h = ciro/24, kripto ile aynı dönüşüm; testli).
+Düzeltmeden dakikalar sonra bot 13 sistemin İLK hisse pozisyonlarını açtı:
+ADP.US (R 2,63) ve MSFT.US (R 2,10), ikisi de %1,1 risk. Sahte WEEKLY_LOSS
+tetiğinin bıraktığı 24 saatlik giriş blokajı da temizlendi — bot 5 CRVUSDT
+ile maratonun ilk kripto pozisyonunu açtı. Maraton 3 açık pozisyonla,
+9/9 bot koşarak gece yarısını geçti.
