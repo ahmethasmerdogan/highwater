@@ -723,8 +723,17 @@ class MarketDataService:
         raporluyor ve panel temiz görünüyordu (`SYSTEM-REVIEW` §2). Denetlenmeyen
         bir dilim, sessizce durabilen bir dilimdir.
         """
+        ilk_tur = True
         while not self._stop.is_set():
-            await asyncio.sleep(self._seconds_to_next_audit())
+            if ilk_tur:
+                # Açılıştan 2 dk sonra BİR KEZ erken denetim: uzun bir
+                # kesintiden dönüldüyse boşluklar saat başını beklemeden
+                # onarılsın (24 saatlik kesinti sonrası 25 barlık delik
+                # bir saat daha açık kalmasın).
+                ilk_tur = False
+                await asyncio.sleep(120)
+            else:
+                await asyncio.sleep(self._seconds_to_next_audit())
             if self._stop.is_set():
                 return
             try:
