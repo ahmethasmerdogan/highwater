@@ -1844,3 +1844,41 @@ tek sembol gelmişken seans "tazelendi" işaretleniyordu — 2 Eylül BIST barı
 19/57 sembolle terk edilmişti; bekçi artık worker'la aynı nisabı (%60, ≥10)
 arar. Ayrıca rebase çapası re-base öncesi özsermaye noktalarını artık hangi
 günden bakılırsa bakılsın süzer (not_before).
+
+## 2026-09-03 — Fable programı: kaldıraç backtesti, strateji taraması, arayüz v2
+
+Sahibin üç isteği tek programda: arayüz sıfırdan, strateji araştırması,
+kaldıraç. Sahibin kararı (defterde ön-kayıtlı): maratondaki 9 bot 30 gün
+dokunulmaz; kabul edilen her varyant 400 $'lık YENİ kol olarak yarışa katılır.
+
+**Kaldıraç backtesti (C hattı).** Backtest artık kaldıraçlı tanımı reddetmek
+yerine PaperAdapter'ı birebir taşır: karar aynı `decide_leverage`'dan aynı
+girdilerle (S/R headroom, formasyon), marj kuralı notional/lev + komisyon ≤
+nakit (tam notional düşer, eksi nakit görünür borç), borç maliyeti kapanışta
+tutulan saat kadar, `low ≤ likidasyon fiyatı` ise LIQUIDATION ile
+`min(liq, açılış)`'tan dolum. Yol açılırken iki gizli kusur da çıktı:
+backtest maliyeti iki kez sayıyordu (15 bp fiyata + 15 bp komisyon = 30
+bp/yan, canlının iki katı; çıkışta kayma yoktu) — artık 10 bp komisyon + 5
+bp kayma iki yönde, senaryo çarpanıyla; ve havuz fallback'i pazar süzmüyordu
+(kripto taramasına 56 BIST sembolü girip backtest sessizce yalnız BTC ile
+koşacaktı). Worker'da da iki küçük delik kapandı: yeni pozisyon snapshot'a
+kaldıraçsız ekleniyordu; kısmi çıkışta dilimin borcu tahakkuk etmiyordu.
+
+**Strateji taraması (B hattı).** 25 tanım-düzeyi varyant (kapı, slot, süre,
+5 aile ablasyonu, eğilimler, düzenleyiciler, boyut, iz kontrolleri, 3
+kaldıraç spec'i) kontrol = bot 1'in gerçek tanımı, in-sample + kilitli %30
+holdout, üç şeritte. Harness veriyi bir kez yükleyip `run_scenario`'yu
+doğrudan çağırır (7 geçiş yerine 2). Sonuç ve karar MEYDAN-OKUMA'da.
+
+**Arayüz v2 (A hattı).** 21 rota → 9 niyet (Köprü, Maraton, Piyasa, Botlar,
+Pozisyonlar, Araştırma, Günlük, Terminal, Yönetim; eski adresler
+yönlendirir). Üst şerit altı okunmayan mini sayı yerine üç akış nabzı +
+filo + tıklanır DİKKAT: sayısı yeni `GET /system/attention`'dan gelir —
+/system/status bot giriş yasağındayken "alarm 0" diyordu, artık kesici,
+yasak, nabızsız worker, bayat akış, eksik seans ve kritik bildirim tek
+sıralı listede. Köprü: para dört kutu, filo dokuz kart (getiri maraton
+tabanına göre, giriş yasağı görünür), katılım-endeksli yarış, son
+işlemler. ⌘K sembol ve bot bulur; `g`+harf sayfa, `.` dikkat. Piyasa
+(havuz+puanlar+indikatörler), Araştırma (stratejiler+backtest+kalibrasyon),
+Günlük (loglar+bildirimler) ve Yönetim (dört sayfa) tek sayfada, sekmeler
+URL'de.

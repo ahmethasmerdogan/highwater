@@ -1264,3 +1264,14 @@ düşüş ≤ 1,2×). 25 karşılaştırmada şansla ~1 "kazanan" beklenir — h
 Ablasyon/eğilim grupları kabul için değil, ailelerin marjinal katkısını
 ÖLÇMEK için (indikatör sorusunun dürüst cevabı). Kaldıraç varyantlarında
 kontrol aynı tanımın 1× hâli.
+
+**Düzeltme (2026-09-03, ilk 3 sonuç görüldükten sonra, dürüstçe):** "kapı 70"
+ve "kapı 75" varyantları kontrolle birebir aynı çıktı — boyutlandırma
+kademeleri 80'den başladığı için 80 altı puan kapıdan geçse de boyut sıfır
+alıyor; iki varyant fiilen ölüydü (tasarım hatası, sonuç değil). İkisi
+kademeleri kapıya kaydırılarak (70→[[70,.75],[80,1],[85,1.25]] ·
+75→[[75,.75],[82,1],[88,1.25]]) 4. şeritte yeniden koşar; kabul kuralı
+aynen. Ayrıca kontrol holdout'ta yalnız 3 işlem üretti: 17 günlük pencerede
+%30 holdout ≈ 5 gün — kabul kuralının "holdout'ta da +0,05R" şartı bu
+örneklemle pratikte sağlanamaz; bu tarama kabul için değil ÖLÇÜM için
+okunacak, kol kabulü maratonun kendi 30 günlük verisiyle yapılacak.
