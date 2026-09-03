@@ -474,14 +474,30 @@ class EquityDataService:
         gunlu = sum(1 for d in pazarin if son_seans is not None and d >= son_seans)
         yeterli = max(10, int(len(pazarin) * 0.6))
         if son_seans is not None and gunlu < yeterli:
-            log.warning(
-                "equity_session_lagging",
-                market=market.code,
-                expected=son_seans.date().isoformat(),
-                arrived=gunlu,
-                needed=yeterli,
-            )
-            self._lag_until[market.code] = utcnow() + timedelta(minutes=15)
+            # Son HTTP cevabı tek doğruluk kaynağı değil: Yahoo kapanıştan
+            # saatler sonra günün satırını seriden GERİ ÇEKEBİLİYOR (2 Eyl
+            # gecesi yaşandı — DB 80 sembolle doluyken cevap 1 Eyl'de
+            # bitiyordu). Seansın verisi DEPODA nisabı buluyorsa seans
+            # tazelenmiştir; sağlayıcıyı bütün gece yoklamanın anlamı yok.
+            depoda = await self._session_bar_count(market, son_seans)
+            if depoda >= yeterli:
+                log.info(
+                    "equity_session_in_store",
+                    market=market.code,
+                    session=son_seans.date().isoformat(),
+                    in_store=depoda,
+                )
+                self._refreshed_session[market.code] = son_seans
+            else:
+                log.warning(
+                    "equity_session_lagging",
+                    market=market.code,
+                    expected=son_seans.date().isoformat(),
+                    arrived=gunlu,
+                    needed=yeterli,
+                    in_store=depoda,
+                )
+                self._lag_until[market.code] = utcnow() + timedelta(minutes=15)
         else:
             self._refreshed_session[market.code] = son_seans
         log.info(
@@ -492,6 +508,23 @@ class EquityDataService:
             mode="full" if tam else "incremental",
             session=son_seans.date().isoformat() if son_seans else None,
         )
+
+    async def _session_bar_count(self, market: Market, session_day) -> int:
+        """Depoda bu seansın 1d barına sahip pazar sembolü sayısı."""
+        from sqlalchemy import func, select
+
+        from sarnic.db.models import OHLCV
+
+        async with session_scope() as session:
+            return (
+                await session.execute(
+                    select(func.count(func.distinct(OHLCV.symbol))).where(
+                        OHLCV.symbol.like(f"%{market.suffix}"),
+                        OHLCV.timeframe == "1d",
+                        OHLCV.open_time == session_day,
+                    )
+                )
+            ).scalar_one()
 
     async def _has_history(self, market: Market) -> bool:
         """Pazarın deposunda anlamlı geçmiş var mı? (yeniden başlatma ≠ ilk dolum)"""
