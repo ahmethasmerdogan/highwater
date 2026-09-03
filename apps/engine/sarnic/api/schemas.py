@@ -173,6 +173,8 @@ class BotOut(BaseModel):
     open_positions: int = 0
     last_heartbeat_at: datetime | None = None
     halt_reason: str | None = None
+    #: Kesici giriş yasağının bitişi — panel 'giriş yasağında' der, saymaz.
+    entries_blocked_until: datetime | None = None
     created_at: datetime
 
 

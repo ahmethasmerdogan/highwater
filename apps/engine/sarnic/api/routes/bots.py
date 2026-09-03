@@ -69,6 +69,7 @@ async def _to_out(session, bot: Bot, prices: dict[str, float]) -> BotOut:
         open_positions=len(positions),
         last_heartbeat_at=bot.last_heartbeat_at,
         halt_reason=bot.halt_reason,
+        entries_blocked_until=bot.entries_blocked_until,
         created_at=bot.created_at,
     )
 
