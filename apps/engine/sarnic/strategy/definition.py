@@ -195,7 +195,7 @@ class StrategyDefinition:
             errors.append(f"bilinmeyen zaman dilimi: {self.timeframe}")
         saatler = self.entry.hours_utc
         if saatler is not None and (not saatler or any(not 0 <= h <= 23 for h in saatler)):
-            raise ValueError("entry.hours_utc: 0–23 arası saatlerden oluşan boş olmayan liste olmalı")
+            raise ValueError("entry.hours_utc: 0–23 arası saatlerden oluşan, boş olmayan liste")
         if not 0 <= self.entry.min_score <= 100:
             errors.append("entry.min_score 0–100 aralığında olmalı")
         if self.entry.max_positions < 1:
