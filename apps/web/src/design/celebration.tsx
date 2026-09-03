@@ -202,7 +202,7 @@ export function MilestoneTrack({
       const onceki = Number(window.localStorage.getItem(storageKey) ?? "0");
       if (gecilen > onceki) {
         window.localStorage.setItem(storageKey, String(gecilen));
-        fireConfetti(1 + gecilen * 0.4);
+        /* DESIGN-V3 §6: konfeti yok. */
       } else if (gecilen < onceki) {
         /* Gerileme dürüstçe geri alınır: aynı eşik yeniden geçilirse
            yeniden kutlanabilir. */
@@ -299,7 +299,7 @@ export function CelebrationWatcher() {
         `${event.symbol ?? "Pozisyon"} kârla kapandı`,
         `+${money(pnl)} USDT · ${r > 0 ? "+" : ""}${num(r, 2)}R cebe girdi`,
       );
-      fireConfetti(r >= 1 ? 1.8 : 1);
+      /* DESIGN-V3 §6: süs yok — kutlama yalnız bildirim. */
     }
   }, [events]);
 
