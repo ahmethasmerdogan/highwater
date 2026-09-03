@@ -772,3 +772,22 @@ Karar gerekiyor: `POST /admin/bots/{id}/rebase` gibi tek bir uç (audit_log +
 pozisyon kapatma + rebased_at + taze özsermaye noktası tek işlemde) mi, yoksa
 re-base'in bu kadar nadir kalması mı? Maraton boyunca dokunulmayacak;
 maraton sonrası karara bağlanmalı.
+
+
+## Tarama bulgularından iki karar sorusu — 2026-09-03
+
+1. **Formasyon düzenleyicisi fiilen kapının parçası.** Taramada formasyon
+   kapalıyken 317 barda yalnız 2 giriş oldu: +10'a kadar formasyon katkısı
+   olmadan 80 kapısı neredeyse geçilmiyor. Tasarım "beş ailenin puanı"
+   diyor ama pratik "formasyonu teyitli olan" demek. Bilinçli mi? Öyleyse
+   kapı belgesine yazılmalı; değilse formasyonu kapıdan ayırıp ayrı bir
+   filtre yapmak ölçülebilir bir hipotez (maraton sonrası).
+2. **Kaldıraç hiç devreye girmiyor.** Bot 11 (G8) maraton dahil 7 işlemin
+   hiçbirinde kaldıraç kullanmadı; 6 red kaydının hepsi "puan < eşik 88"
+   (puanlar 75–77). Backtestte üç spec de (88 / 80 / 80-2×) kontrolle
+   birebir aynı: 13 girişin hiçbiri teyit üçlüsünü aynı anda sağlamadı.
+   Kaldıracın katkısı ölçülemiyor çünkü hiç tetiklenmiyor. Seçenek:
+   ölçüm amaçlı bir "G9 sonda kolu" (400 $, min_score 80, üçlü aynen) —
+   her red sebebini loglar, birkaç günde üçlünün hangi ayağının
+   tıkadığını gösterir. Kabul kuralı gereği bunu ben eklemem; sahibin
+   kararı ("G9 ekle" derse aynı akşam koşar).
