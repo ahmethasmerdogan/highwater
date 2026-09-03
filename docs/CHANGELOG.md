@@ -1870,15 +1870,18 @@ kaldıraç spec'i) kontrol = bot 1'in gerçek tanımı, in-sample + kilitli %30
 holdout, üç şeritte. Harness veriyi bir kez yükleyip `run_scenario`'yu
 doğrudan çağırır (7 geçiş yerine 2). Sonuç ve karar MEYDAN-OKUMA'da.
 
-**Arayüz v2 (A hattı).** 21 rota → 9 niyet (Köprü, Maraton, Piyasa, Botlar,
-Pozisyonlar, Araştırma, Günlük, Terminal, Yönetim; eski adresler
-yönlendirir). Üst şerit altı okunmayan mini sayı yerine üç akış nabzı +
-filo + tıklanır DİKKAT: sayısı yeni `GET /system/attention`'dan gelir —
-/system/status bot giriş yasağındayken "alarm 0" diyordu, artık kesici,
-yasak, nabızsız worker, bayat akış, eksik seans ve kritik bildirim tek
-sıralı listede. Köprü: para dört kutu, filo dokuz kart (getiri maraton
-tabanına göre, giriş yasağı görünür), katılım-endeksli yarış, son
-işlemler. ⌘K sembol ve bot bulur; `g`+harf sayfa, `.` dikkat. Piyasa
-(havuz+puanlar+indikatörler), Araştırma (stratejiler+backtest+kalibrasyon),
-Günlük (loglar+bildirimler) ve Yönetim (dört sayfa) tek sayfada, sekmeler
-URL'de.
+**Arayüz v3 (A hattı) — sıfırdan.** İlk deneme (v2) yalnız mimariyi
+düzeltip görsel dili korudu; sahibi bunu haklı olarak reddetti. v3 önce
+araştırma yaptı (DESIGN-V3.md): sistem işletilmez, OKUNUR — bir gözlemevi.
+Görsel dil uicean'ın kendisi: eski palet silindi, her `--sn-*` uicean
+token'ının takma adı; gölge yok, hairline var; vurgu mavi (yeşil/kırmızı
+yalnız yön); açık ve koyu eşit vatandaş. Yerleşim grameri değişti: sol ray
+yok — üst gezinme (dokuz niyet) + metinli akış şeridi ("Kripto · 2 sa
+önce", filo, tıklanır Dikkat, özsermaye/bugün) + sayfa manşeti + ledger
+blokları (büyük harf etiket, hairline) + sağdan Sheet. Köprü bir gazete:
+makine yazımı "Bugün" hikâyesi, dört figür tek blokta, filo defter tablosu,
+katılım-endeksli yarış. Piyasa'da puan noktalı ölçek + kapı çizgisi; Maraton
+lig tablosu + hafta şeridi; Botlar kol defteri ve tek Durum bloğu; Araştırma
+rapor anatomisi; Günlük gün başlıklı akış; Yönetim'de Görünüm (kip, vurgu,
+yazı tipi). Konfeti gitti; kutlama yalnız bildirim. 13 sayfa açık ve koyu
+temada tarayıcı denetiminden geçti.
