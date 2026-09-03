@@ -17,6 +17,7 @@ import {
 } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
+import { motion, useReducedMotion } from "motion/react";
 import { cx } from "./cx";
 
 /* ================================================================== */
@@ -49,9 +50,17 @@ export function Panel({
   className?: string;
 }) {
   /* DESIGN-V3 "ledger bloğu": büyük harf etiket + hairline + yüzey. Kart
-     değil, defter sayfası: başlık küçük ve sessiz, içerik büyük. */
+     değil, defter sayfası: başlık küçük ve sessiz, içerik büyük.
+     Hareket (motion.dev): bloklar yay ile yerine oturur, üzerine gelince
+     kenar çizgisi markaya döner ve 1px yükselir — gölge değil, çizgi. */
+  const reduced = useReducedMotion();
   return (
-    <section
+    <motion.section
+      initial={reduced ? false : { opacity: 0, y: 10 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-40px" }}
+      transition={{ type: "spring", stiffness: 260, damping: 28, mass: 0.8 }}
+      whileHover={reduced ? undefined : { y: -1, borderColor: "var(--sn-brand-line)" }}
       className={cx("overflow-hidden rounded-2xl border border-line bg-surface", className)}
     >
       {(title || actions || description) && (
@@ -73,7 +82,7 @@ export function Panel({
       {footer && (
         <div className="border-t border-line px-5 py-2.5 text-[12px] text-ink-3">{footer}</div>
       )}
-    </section>
+    </motion.section>
   );
 }
 
