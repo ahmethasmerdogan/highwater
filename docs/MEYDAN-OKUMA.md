@@ -1224,3 +1224,25 @@ hiç devreye girmemiş). Canlı defterdeki geri-veriş sızıntısı gerçek ama
 bu pencere/örneklemle hangi sıkılığın doğru olduğu ayırt edilemiyor.
 Maraton 30 günlük veri üretsin; soru tekrar açılabilir. Donmuş kalmak
 da bir ölçüm sonucudur.
+
+## FABLE PROGRAMI ÖN-KAYDI — 2026-09-03 (sahibin kararı)
+
+Üç hat: (A) arayüz sıfırdan, (B) strateji araştırması, (C) kaldıraç.
+**Sahibin kararı:** maratondaki 9 bot 30 gün DOKUNULMAZ; B ve C'den çıkan her
+şey 400 $'lık YENİ bot kolu olarak yarışa katılır. Eski ölçüm bozulmaz,
+yeni kollar aynı tabloda ölçülür.
+
+**Yeni kol kabul kuralı (önceden bağlayıcı):**
+1. Aynı kod yolu (kural 1) — bir "araştırma sürümü" yazılmaz; yeni özellik
+   look-ahead property testiyle gelir (kural 2).
+2. Backtest temiz pencerede (≥15 Ağu) **in-sample VE kilitli %30 holdout**
+   ayrı ayrı koşar; kabul için İKİSİNDE de beklenti_R ≥ kontrol + 0,05R ve
+   maks düşüş ≤ kontrol × 1,2. Yalnız in-sample'da kazanan reddedilir.
+3. Kontrol = mevcut "taban" tanımı (bot 1 ailesi); kaldıraç kolları için
+   kontrol = aynı tanımın 1× hâli (kaldıracın KENDİ katkısı ölçülür).
+4. Kaldıraç backtesti ancak backtest motoru marj + saatlik borç + bar-içi
+   likidasyon modelini PaperAdapter ile BİREBİR taşıdığında geçerlidir;
+   o güne dek kaldıraç kolları yalnız canlı paper defteriyle ölçülür.
+5. Kabul edilen kol: 400 $ (BIST için 400 × 48,08), `rebased_at` = katılım
+   anı, maraton tablosunda "katılım günü" etiketiyle görünür.
+6. Reddedilen varyantlar da deftere yazılır — çürütme de sonuçtur.
