@@ -1431,3 +1431,19 @@ sütunu (migration) gerekir. Sıradaki iş bu.
 maraton örneklemi negatif. Ölçülebilir yol: (a) F'nin geçen varyantını
 canlıya taşımak, (b) G'nin net-getiri/düşüş tablosuna göre risk %3 + 2×
 kolu ("G10") açmak, (c) kısa tarafı yol haritasına almak.
+
+## DENEY KOLLARI — 2026-09-04 (sahibin anlayışı: kağıtta cüretkâr ol, kaybedeni ele)
+
+Hepsi bot 3 (sv 53) kopyası, 400 $, katılım damgalı, `config.deney=true`;
+kesiciler her kolda açık ("kaybederken kontrollü"):
+- **bot 15 · yarı-Kelly (G10):** risk %3, 2× trio'suz; günlük kesici −%6.
+- **bot 16 · tam-Kelly (G11):** risk %5, 3× trio'suz; günlük −%8, haftalık
+  −%15, düşüş −%25, 4 ardışık zarar.
+- **bot 17 · uzun tutma (T1):** max_hold 168 sa (TIME çıkışları +3,5R
+  gözlemi).
+- **bot 18 · kısmi kâr (P1):** +1R'de %50 sat — F şeridinde ön-kayıtlı
+  kuralı geçen tek varyant; canlı yürütme bugün worker'a girdi
+  (migration 0009).
+Eleme kuralı: bir kol 14 günde kontrolünün (bot 3) altında VE mutlak
+zararda ise durdurulur ve arşive gider; kalanlar maraton tablosunda
+yarışır. Kaynak kollara dokunulmaz.
