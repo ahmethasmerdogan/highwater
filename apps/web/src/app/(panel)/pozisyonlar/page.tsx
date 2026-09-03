@@ -1,13 +1,11 @@
 "use client";
 
 /**
- * Pozisyonlar — açık pozisyonlar, kapanmış işlemler ve emir defteri.
+ * POZİSYONLAR v3 — DESIGN-V3 §4.5.
  *
- * Sayfanın taşıdığı asıl fikir **R**'dir: bir işlemin sonucu, o işlemde
- * göze alınan riske bölünür. İki işlemin TL kârını doğrudan karşılaştırmak
- * yanıltıcıdır — biri büyük pozisyonla küçük hareket, öbürü küçük
- * pozisyonla büyük hareket yakalamış olabilir. Bu yüzden R sütunu her
- * tabloda vardır ve gizlenemez.
+ * Manşet · Özet (maliyet figürleri, tek blokta) · sekmeler URL'de
+ * (`?tab=acik|islemler|emirler`). Sayfanın asıl fikri **R**: sonuç, göze
+ * alınan riske bölünür; R sütunu her tabloda vardır ve gizlenemez.
  */
 
 import { Suspense, useMemo, useState } from "react";
@@ -41,6 +39,9 @@ import { Panel, Tag, Tip } from "@/design/primitives";
 import { ExitReasonPill, OrderStatusPill } from "@/design/pills";
 import { ErrorBox } from "@/design/state";
 import { Delta, Metric, NumCell, NumText } from "@/design/numeric";
+/* uicean `RangeBar` 44px'lik yeşil çizgili hedef çubuğudur — hücreye
+   sığmaz ve yeşil yön anlamı taşır; stop mesafesi ve puan için token'lı
+   `Bar` kalır, çekmecede `RangeDot`. */
 import { Bar, RangeDot } from "@/design/viz";
 import { Drawer, DrawerSection, KeyValue } from "@/design/drawer";
 import { ScoreCard } from "@/design/score-card";
@@ -75,11 +76,7 @@ function sorguHatasi(query: SorguDurumu): string {
 export default function PositionsPage() {
   return (
     <Suspense
-      fallback={
-        <div className="px-6 py-8" style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink-3)" }}>
-          Yükleniyor…
-        </div>
-      }
+      fallback={<div className="px-8 py-8 text-[13px] text-ink-3">Yükleniyor…</div>}
     >
       <PositionsContent />
     </Suspense>
@@ -124,35 +121,25 @@ function PositionsContent() {
   return (
     <Page
       title="Pozisyonlar"
-      summary="Şu an piyasada duran pozisyonlar, kapanmış işlemler ve gönderilen emirler."
+      summary="Piyasada duran pozisyonlar, kapanmış işlemler ve gönderilen emirler."
+      stamp={open.dataUpdatedAt ? `${relative(new Date(open.dataUpdatedAt).toISOString())} tazelendi` : undefined}
       guide={
         <>
-          <GuideSection title="Ne gösteriyor">
-            <p>
-              Botların açtığı her pozisyon ve kapanan her işlem burada. Emirler sekmesi, gönderilen
-              ama dolmayan ya da reddedilen emirleri de gösterir — reddedilen bir emir sessizce
-              kaybolmaz.
-            </p>
-          </GuideSection>
           <GuideSection title="Nasıl okunur">
             <p>
-              <strong>R (risk birimi)</strong> bu sayfadaki en önemli sütundur. Bir işlemin sonucu,
-              o işlemde göze alınan riske bölünür: +2R, riskin iki katı kazanç demektir.
+              <strong>R (risk birimi)</strong> en önemli sütundur: sonuç, o işlemde göze alınan
+              riske bölünür. +2R, riskin iki katı kazanç demektir.
             </p>
             <p>
-              <strong>Stop</strong> her zaman girişin altındadır ve aşağı indirilmez. Yukarı
-              taşınabilir: başabaşa çekme ve iz süren stop kârın bir kısmını kilitler.
-            </p>
-            <p>
-              <strong>MFE / MAE</strong> işlemin en iyi ve en kötü anını gösterir. Yüksek MFE ile
-              düşük sonuç, kârın geri verildiği anlamına gelir — çıkış kuralı gözden geçirilmeli.
+              <strong>Stop</strong> her zaman girişin altındadır ve aşağı indirilmez; başabaşa
+              çekme ve iz süren stop kârın bir kısmını kilitler. <strong>MFE / MAE</strong> işlemin
+              en iyi ve en kötü anıdır.
             </p>
           </GuideSection>
           <GuideSection title="Ne yapabilirim">
             <p>
-              Maliyet payı %30&apos;u geçiyorsa strateji fazla işlem yapıyor demektir. Aşağıdaki
-              maliyet bölümü bunu ölçer; komisyon ve kaymanın brüt kârın ne kadarını yediğini
-              gösterir.
+              Maliyet payı %30&apos;u geçiyorsa strateji fazla işlem yapıyor demektir. Kapanmış bir
+              işlemin satırına tıklayıp paylaşılabilir kartını alabilirsiniz.
             </p>
           </GuideSection>
         </>
@@ -198,47 +185,47 @@ function CostPanel() {
   const measured = data.measured_spread;
 
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <Metric
-        label="Brüt kâr/zarar"
-        value={data.gross_pnl}
-        format={(value) => money(value)}
-        sub={`${num(data.trades, 0)} kapanmış işlem`}
-      />
-      <Metric
-        label="Komisyon"
-        value={-Math.abs(data.fees)}
-        format={(value) => money(value)}
-        accent="var(--sn-warn)"
-        sub={
-          data.avg_slippage_bps !== null
-            ? `ortalama kayma ${bps(data.avg_slippage_bps)}`
-            : "kayma ölçülmedi"
-        }
-      />
-      <Metric
-        label="Net kâr/zarar"
-        value={data.net_pnl}
-        format={(value) => money(value)}
-        accent={data.net_pnl >= 0 ? "var(--sn-up)" : "var(--sn-down)"}
-        sub="cebe giren"
-      />
-      <Metric
-        label="Maliyet payı"
-        value={data.cost_ratio}
-        format={(value) => (value === null || value === undefined ? "—" : pct(value, 1))}
-        accent={heavy ? "var(--sn-down)" : undefined}
-        sub={
-          data.cost_ratio === null
-            ? "brüt zararda — pay hesaplanmaz"
-            : heavy
-              ? "%30 üstü: strateji fazla işlem yapıyor"
-              : measured?.one_way_bps !== undefined
-                ? `komisyonun payı · ölçülen tek yön ${bps(measured.one_way_bps)}`
-                : "brüt kârın komisyona giden kısmı"
-        }
-      />
-    </div>
+    <Panel title="Özet" description="Kapanmış işlemlerin toplamı ve maliyetin brüt kârdan aldığı pay.">
+      <div className="grid grid-cols-2 gap-x-6 gap-y-4 lg:grid-cols-4">
+        <Metric
+          label="Brüt kâr/zarar"
+          value={data.gross_pnl}
+          format={(value) => money(value)}
+          sub={`${num(data.trades, 0)} kapanmış işlem`}
+        />
+        <Metric
+          label="Komisyon"
+          value={-Math.abs(data.fees)}
+          format={(value) => money(value)}
+          sub={
+            data.avg_slippage_bps !== null
+              ? `ortalama kayma ${bps(data.avg_slippage_bps)}`
+              : "kayma ölçülmedi"
+          }
+        />
+        <Metric
+          label="Net kâr/zarar"
+          value={data.net_pnl}
+          format={(value) => money(value)}
+          sub="cebe giren"
+        />
+        <Metric
+          label="Maliyet payı"
+          value={data.cost_ratio}
+          format={(value) => (value === null || value === undefined ? "—" : pct(value, 1))}
+          accent={heavy ? "var(--sn-warn)" : undefined}
+          sub={
+            data.cost_ratio === null
+              ? "brüt zararda — pay hesaplanmaz"
+              : heavy
+                ? "%30 üstü: strateji fazla işlem yapıyor"
+                : measured?.one_way_bps !== undefined
+                  ? `komisyonun payı · ölçülen tek yön ${bps(measured.one_way_bps)}`
+                  : "brüt kârın komisyona giden kısmı"
+          }
+        />
+      </div>
+    </Panel>
   );
 }
 
@@ -268,7 +255,7 @@ function OpenPositions({
         search: (row) => row.symbol,
         cell: (row) => (
           <span className="inline-flex items-center gap-1.5">
-            <span className="sn-num" style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}>
+            <span className="sn-num text-[13px] text-ink">
               {row.symbol}
             </span>
             {row.leverage > 1 && (
@@ -286,9 +273,7 @@ function OpenPositions({
         hint: "Pozisyonun açık kaldığı süre.",
         value: (row) => new Date(row.entry_time).getTime(),
         cell: (row) => (
-          <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>
-            {relative(row.entry_time)}
-          </span>
+          <span className="sn-num text-[12.5px] text-ink-2">{relative(row.entry_time)}</span>
         ),
       },
       {
@@ -422,11 +407,7 @@ function OpenPositions({
           const durmus = bot && bot.state !== "PAPER_RUNNING" && bot.state !== "DEGRADED";
           return (
             <span className="inline-flex max-w-full items-center gap-1.5">
-              <span
-                className="truncate"
-                style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}
-                title={bot?.name ?? `Bot ${row.bot_id}`}
-              >
+              <span className="truncate text-[12.5px] text-ink-2" title={bot?.name ?? `Bot ${row.bot_id}`}>
                 {bot?.name ?? `Bot ${row.bot_id}`}
               </span>
               {durmus && <Tag tone="warn">bot durdu</Tag>}
@@ -450,7 +431,7 @@ function OpenPositions({
     <>
       <Panel
         title="Açık pozisyonlar"
-        description="Piyasada duran her pozisyon. Satıra tıklayın: sayılar ve girişteki puan kartı açılır."
+        description="Satıra tıklayın: sayılar ve girişteki puan kartı."
         padded={false}
       >
         <DataGrid
@@ -491,9 +472,7 @@ function OpenPositions({
           <>
             <div className="flex items-baseline gap-3">
               <Delta value={selected.unrealized_pnl} format={(value) => money(value)} size="hero" />
-              <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}>
-                gerçekleşmemiş
-              </span>
+              <span className="text-[12.5px] text-ink-3">gerçekleşmemiş</span>
             </div>
 
             <DrawerSection
@@ -572,9 +551,7 @@ function GirisGerekcesi({ rationaleId, symbol }: { rationaleId: number | null; s
   if (rationaleId === null) {
     return (
       <DrawerSection title="Giriş gerekçesi">
-        <p style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}>
-          Bu pozisyon için gerekçe kaydı yok (eski bir giriş olabilir).
-        </p>
+        <p className="text-[12.5px] text-ink-3">Bu pozisyon için gerekçe kaydı yok (eski bir giriş olabilir).</p>
       </DrawerSection>
     );
   }
@@ -584,23 +561,18 @@ function GirisGerekcesi({ rationaleId, symbol }: { rationaleId: number | null; s
       hint="Pozisyon açıldığı andaki puan kartı — bugünkü puan değil."
     >
       {q.isError ? (
-        <p style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}>
-          Gerekçe getirilemedi.
-        </p>
+        <p className="text-[12.5px] text-ink-3">Gerekçe getirilemedi.</p>
       ) : q.data ? (
         <>
           <ScoreCard rationale={q.data.rationale} compact />
           <div className="mt-2">
-            <Link
-              href={`/piyasa?sembol=${symbol}`}
-              style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-brand)" }}
-            >
-              Puanlar sayfasında aç →
+            <Link href={`/piyasa?sembol=${symbol}`} className="text-[12.5px] text-brand hover:underline">
+              Piyasa sayfasında aç →
             </Link>
           </div>
         </>
       ) : (
-        <p style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}>Yükleniyor…</p>
+        <p className="text-[12.5px] text-ink-3">Yükleniyor…</p>
       )}
     </DrawerSection>
   );
@@ -644,7 +616,7 @@ function ClosedTrades({ rows, query }: { rows: Trade[]; query: SorguDurumu }) {
         value: (row) => row.symbol,
         search: (row) => `${row.symbol} ${row.exit_reason}`,
         cell: (row) => (
-          <span className="sn-num" style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}>
+          <span className="sn-num text-[13px] text-ink">
             {row.symbol}
           </span>
         ),
@@ -655,9 +627,7 @@ function ClosedTrades({ rows, query }: { rows: Trade[]; query: SorguDurumu }) {
         width: 148,
         value: (row) => new Date(row.exit_time).getTime(),
         cell: (row) => (
-          <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>
-            {dateTime(row.exit_time)}
-          </span>
+          <NumText text={dateTime(row.exit_time)} size="sm" />
         ),
       },
       {
@@ -702,9 +672,7 @@ function ClosedTrades({ rows, query }: { rows: Trade[]; query: SorguDurumu }) {
         num: true,
         value: (row) => row.hold_hours,
         cell: (row) => (
-          <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>
-            {duration(row.hold_hours)}
-          </span>
+          <span className="sn-num text-[12.5px] text-ink-2">{duration(row.hold_hours)}</span>
         ),
       },
       {
@@ -761,7 +729,7 @@ function ClosedTrades({ rows, query }: { rows: Trade[]; query: SorguDurumu }) {
   return (
     <Panel
       title="Kapanmış işlemler"
-      description="En yeniden eskiye. R sütunu işlemleri karşılaştırılabilir kılan tek ölçüdür. Satıra tıklayın: paylaşılabilir işlem kartı açılır."
+      description="En yeniden eskiye. Satıra tıklayın: paylaşılabilir işlem kartı."
       padded={false}
     >
       <TradeShareCard trade={paylas} onClose={() => setPaylas(null)} />
@@ -799,9 +767,7 @@ function Orders({ rows, query }: { rows: Order[]; query: SorguDurumu }) {
         pin: true,
         value: (row) => new Date(row.created_at).getTime(),
         cell: (row) => (
-          <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>
-            {dateTime(row.created_at)}
-          </span>
+          <NumText text={dateTime(row.created_at)} size="sm" />
         ),
       },
       {
@@ -811,7 +777,7 @@ function Orders({ rows, query }: { rows: Order[]; query: SorguDurumu }) {
         value: (row) => row.symbol,
         search: (row) => `${row.symbol} ${row.status} ${row.reject_reason ?? ""}`,
         cell: (row) => (
-          <span className="sn-num" style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}>
+          <span className="sn-num text-[13px] text-ink">
             {row.symbol}
           </span>
         ),
@@ -883,11 +849,9 @@ function Orders({ rows, query }: { rows: Order[]; query: SorguDurumu }) {
         value: (row) => row.reject_reason,
         cell: (row) =>
           row.reject_reason ? (
-            <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-down)" }}>
-              {row.reject_reason}
-            </span>
+            <span className="text-[12.5px] text-ink-2">{row.reject_reason}</span>
           ) : (
-            <span style={{ color: "var(--sn-ink-4)" }}>—</span>
+            <NumText text="—" size="sm" />
           ),
       },
     ],
@@ -905,7 +869,7 @@ function Orders({ rows, query }: { rows: Order[]; query: SorguDurumu }) {
   return (
     <Panel
       title="Emirler"
-      description="Gönderilen her emir — dolmuş, kısmi dolmuş ya da reddedilmiş."
+      description="Dolmuş, kısmi dolmuş ya da reddedilmiş — reddedilen emir sessizce kaybolmaz."
       padded={false}
     >
       <DataGrid
@@ -923,5 +887,3 @@ function Orders({ rows, query }: { rows: Order[]; query: SorguDurumu }) {
     </Panel>
   );
 }
-
-
