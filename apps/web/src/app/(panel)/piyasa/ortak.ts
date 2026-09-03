@@ -18,16 +18,6 @@ export function sumModifiers(modifiers: Record<string, number> | undefined): num
 }
 
 /**
- * Puanın rengi. Yeşil/kırmızı **kullanılmaz**: puan bir yön değil bir
- * sıralamadır. Yoğunluk marka ailesinde değişir.
- */
-export function scoreColor(score: number): string {
-  if (score >= 70) return "var(--sn-brand-solid)";
-  if (score >= 50) return "var(--sn-border-strong)";
-  return "var(--sn-border)";
-}
-
-/**
  * Seçenek etiketlerinin ORTAK önekini ayıklar (yalnızca ` · ` sınırında).
  * "Havuz Momentum · taban" ile "Havuz Momentum · seçici" → "taban" / "seçici".
  */

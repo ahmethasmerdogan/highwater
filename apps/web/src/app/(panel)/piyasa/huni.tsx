@@ -207,13 +207,10 @@ function Blacklist() {
       {entries.length === 0 ? (
         <p style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}>Kara liste boş.</p>
       ) : (
-        <ul className="rounded-[var(--sn-r-sm)]" style={{ border: "1px solid var(--sn-border)" }}>
-          {entries.map((entry, index) => (
-            <li
-              key={entry.symbol}
-              className="flex items-center gap-3 px-3.5 py-2"
-              style={index > 0 ? { borderTop: "1px solid var(--sn-hairline)" } : undefined}
-            >
+        /* Kutu değil hairline satırlar — kutunun içinde kutu olmaz. */
+        <ul className="border-t border-line">
+          {entries.map((entry) => (
+            <li key={entry.symbol} className="flex items-center gap-3 border-b border-line py-2 hover:bg-inset/60">
               <span className="sn-num" style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink)" }}>
                 {entry.symbol}
               </span>

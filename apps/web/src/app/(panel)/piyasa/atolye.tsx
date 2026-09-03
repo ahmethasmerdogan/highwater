@@ -123,7 +123,8 @@ function EditableField({
   );
 
   return (
-    <div className="rounded-[var(--sn-r-sm)] px-3 py-2.5" style={{ border: "1px solid var(--sn-border)" }}>
+    /* Kutu değil hairline satır: sayfa (Sheet) zaten bir yüzeydir. */
+    <div className="border-b border-line py-3">
       {field.kind === "tiers" ? (
         /* Kademe listesi bu formda düzenlenmez: sayı kutusuna zorlamak
            [[80,0.75]] yapısını bozardı. Görünür ama salt okunur. */
