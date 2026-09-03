@@ -257,22 +257,13 @@ export function TextMetric({
   info?: ReactNode;
 }) {
   return (
-    <div
-      className="relative overflow-hidden rounded-[var(--sn-r-md)] px-4 py-3"
-      style={{ background: "var(--sn-panel)", border: "1px solid var(--sn-hairline)" }}
-    >
-      {accent && (
-        <span
-          aria-hidden
-          className="absolute top-0 left-0 h-full w-[2px]"
-          style={{ background: accent }}
-        />
-      )}
-      <div className="flex items-center gap-1.5">
-        <span className="sn-label">{label}</span>
+    <div className="min-w-0 py-1">
+      <div className="flex items-center gap-1.5 text-[11.5px] font-semibold tracking-[0.06em] text-ink-3 uppercase">
+        {accent && <span aria-hidden className="inline-block size-1.5 rounded-full" style={{ background: accent }} />}
+        <span>{label}</span>
         {info}
       </div>
-      <div className="mt-1.5" style={{ fontSize: "var(--sn-t-display)", color: tone ?? "var(--sn-ink)" }}>
+      <div className="mt-2" style={{ fontSize: "var(--sn-t-display)", color: tone ?? "var(--sn-ink)" }}>
         {value}
       </div>
       {sub && (
@@ -314,41 +305,29 @@ export function Metric({
   value: number | null | undefined;
   format: (value: number | null | undefined) => string;
   sub?: ReactNode;
-  /** Değerin altındaki ikincil yönlü sayı. */
+  /** Değerin yanındaki ikincil yönlü sayı. */
   delta?: ReactNode;
-  /** Sol kenar şeridi rengi — kartı bir aileye bağlar. */
+  /** Geriye uyumluluk: v3'te kenar şeridi yok; verilirse etiket noktası olur. */
   accent?: string;
   animateOnMount?: boolean;
   info?: ReactNode;
 }) {
+  /* DESIGN-V3 "figür": sessiz etiket, büyük mono sayı, tek satır altyazı.
+     Yüzey yok — figürler ledger bloğunun içinde yan yana durur; kendi
+     kutusu olan figür, dört kutu yan yana gelince "kart yığını" olur. */
   return (
-    <div
-      className="relative overflow-hidden rounded-[var(--sn-r-md)] px-4 py-3"
-      style={{
-        background: "var(--sn-panel)",
-        border: "1px solid var(--sn-hairline)",
-      }}
-    >
-      {accent && (
-        <span
-          aria-hidden
-          className="absolute top-0 left-0 h-full w-[2px]"
-          style={{ background: accent }}
-        />
-      )}
-      <div className="flex items-center gap-1.5">
-        <span className="sn-label">{label}</span>
+    <div className="min-w-0 py-1">
+      <div className="flex items-center gap-1.5 text-[11.5px] font-semibold tracking-[0.06em] text-ink-3 uppercase">
+        {accent && <span aria-hidden className="inline-block size-1.5 rounded-full" style={{ background: accent }} />}
+        <span>{label}</span>
         {info}
       </div>
-      <div className="mt-1.5 flex items-baseline gap-2">
+      <div className="mt-2 flex items-baseline gap-2">
         <Num value={value} format={format} size="display" animate animateOnMount={animateOnMount} />
         {delta}
       </div>
       {sub && (
-        <div
-          className="mt-1 text-[length:var(--sn-t-caption)]"
-          style={{ color: "var(--sn-ink-3)", fontVariantNumeric: "tabular-nums" }}
-        >
+        <div className="mt-1 text-[12px] text-ink-3" style={{ fontVariantNumeric: "tabular-nums" }}>
           {sub}
         </div>
       )}

@@ -48,46 +48,30 @@ export function Panel({
   padded?: boolean;
   className?: string;
 }) {
+  /* DESIGN-V3 "ledger bloğu": büyük harf etiket + hairline + yüzey. Kart
+     değil, defter sayfası: başlık küçük ve sessiz, içerik büyük. */
   return (
     <section
-      className={cx("rounded-[var(--sn-r-md)] overflow-hidden", className)}
-      style={{ background: "var(--sn-panel)", border: "1px solid var(--sn-hairline)" }}
+      className={cx("overflow-hidden rounded-2xl border border-line bg-surface", className)}
     >
-      {(title || actions) && (
-        <header
-          className="flex items-start justify-between gap-4 px-4 py-3"
-          style={{ borderBottom: description ? "none" : "1px solid var(--sn-hairline)" }}
-        >
+      {(title || actions || description) && (
+        <header className="flex items-start justify-between gap-4 border-b border-line px-5 pt-4 pb-3">
           <div className="min-w-0">
             {title && (
-              <h2
-                className="truncate font-medium"
-                style={{ fontSize: "var(--sn-t-title)", color: "var(--sn-ink)" }}
-              >
+              <h2 className="truncate text-[11.5px] font-semibold tracking-[0.06em] text-ink-3 uppercase">
                 {title}
               </h2>
             )}
             {description && (
-              <p
-                className="mt-1 max-w-[72ch]"
-                style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}
-              >
-                {description}
-              </p>
+              <p className="mt-1 max-w-[72ch] text-[13px] leading-snug text-ink-2">{description}</p>
             )}
           </div>
           {actions && <div className="flex shrink-0 items-center gap-1.5">{actions}</div>}
         </header>
       )}
-      {description && <Divider />}
-      <div className={padded ? "p-4" : undefined}>{children}</div>
+      <div className={padded ? "p-5" : undefined}>{children}</div>
       {footer && (
-        <>
-          <Divider />
-          <div className="px-4 py-2.5" style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}>
-            {footer}
-          </div>
-        </>
+        <div className="border-t border-line px-5 py-2.5 text-[12px] text-ink-3">{footer}</div>
       )}
     </section>
   );

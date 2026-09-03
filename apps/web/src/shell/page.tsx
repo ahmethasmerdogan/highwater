@@ -1,21 +1,16 @@
 "use client";
 
 /**
- * Sayfa iskeleti.
+ * Sayfa manşeti (masthead) — DESIGN-V3 §3.
  *
- * Eski panelde her sayfanın tepesinde açılıp kapanan bir "Bu sayfa ne işe
- * yarar?" kutusu vardı ve açıkken ekranın yarısını yiyordu; kapalıyken de
- * kimse açmıyordu. Aynı bilgi burada iki yere bölündü:
- *
- *   * tek cümlelik **özet** başlığın hemen altında, her zaman görünür;
- *   * ayrıntı, başlıktaki "nasıl okunur" düğmesinin arkasında.
- *
- * Böylece bilgi kaybolmuyor ama veriyle yer değiştirmiyor.
+ * Her sayfa aynı üç şeyle açılır: başlık, tek cümle duruş, "tazelendi"
+ * damgası. Kılavuz bir düğmenin arkasında (uicean Collapsible değil,
+ * çünkü manşetin altında bir yüzey değil bir metin bloğu açılır).
+ * İçerik 12 sütunluk ızgarada, azami 1440px; boşluk cömert.
  */
 
 import { useState, type ReactNode } from "react";
 import { cx } from "@/design/cx";
-import { Button } from "@/design/primitives";
 import { IInfo } from "@/design/icons";
 
 export function Page({
@@ -25,77 +20,60 @@ export function Page({
   guide,
   children,
   wide = false,
+  stamp,
 }: {
   title: string;
   /** Tek cümle: bu sayfa ne gösteriyor? Boş bırakılmaz. */
   summary: string;
   actions?: ReactNode;
-  /** "Nasıl okunur" panelinin içeriği. */
+  /** "Nasıl okunur" içeriği. */
   guide?: ReactNode;
   children: ReactNode;
   wide?: boolean;
+  /** Sağ üstte küçük zaman damgası / not ("12 sn önce tazelendi"). */
+  stamp?: ReactNode;
 }) {
   const [guideOpen, setGuideOpen] = useState(false);
 
   return (
-    <div className={cx("mx-auto w-full px-4 py-4", wide ? "max-w-none" : "max-w-[1560px]")}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className={cx("mx-auto w-full px-5 py-6 sm:px-8", wide ? "max-w-none" : "max-w-[1440px]")}>
+      <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
         <div className="min-w-0">
-          <h1
-            className="font-semibold"
-            style={{ fontSize: "var(--sn-t-title-lg)", color: "var(--sn-ink)", letterSpacing: "-0.01em" }}
-          >
-            {title}
-          </h1>
-          <p
-            className="mt-1 max-w-[86ch]"
-            style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}
-          >
-            {summary}
-          </p>
+          <h1 className="text-[22px] font-semibold tracking-[-0.01em] text-ink">{title}</h1>
+          <p className="mt-1 max-w-[78ch] text-[13.5px] leading-snug text-ink-2">{summary}</p>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-2">
+          {stamp && <span className="text-[12px] text-ink-3">{stamp}</span>}
           {guide && (
-            <Button
-              size="sm"
-              variant="quiet"
-              icon={<IInfo size={14} />}
+            <button
+              type="button"
               onClick={() => setGuideOpen((open) => !open)}
               aria-expanded={guideOpen}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12.5px] text-ink-2 transition-colors hover:bg-inset hover:text-ink"
             >
+              <IInfo size={14} />
               Nasıl okunur
-            </Button>
+            </button>
           )}
           {actions}
         </div>
-      </div>
+      </header>
 
       {guide && guideOpen && (
-        <div
-          className="sn-fade-up mt-3 rounded-[var(--sn-r-md)] p-4"
-          style={{ background: "var(--sn-panel)", border: "1px solid var(--sn-hairline)" }}
-        >
-          {guide}
-        </div>
+        <div className="sn-fade-up mt-4 rounded-2xl border border-line bg-elev px-5 py-4">{guide}</div>
       )}
 
-      <div className="mt-4 flex flex-col gap-4">{children}</div>
+      <div className="mt-6 flex flex-col gap-5">{children}</div>
     </div>
   );
 }
 
-/** Kılavuz içindeki bir bölüm: küçük başlık + serbest metin. */
+/** Kılavuz içindeki bir bölüm: küçük büyük-harf başlık + serbest metin. */
 export function GuideSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="mt-4 first:mt-0">
-      <h3 className="sn-label">{title}</h3>
-      <div
-        className="mt-1.5 flex flex-col gap-1.5"
-        style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink-2)", lineHeight: 1.55, maxWidth: "84ch" }}
-      >
-        {children}
-      </div>
+      <h3 className="text-[11.5px] font-semibold tracking-[0.06em] text-ink-3 uppercase">{title}</h3>
+      <div className="mt-1.5 flex max-w-[84ch] flex-col gap-1.5 text-[13px] leading-[1.55] text-ink-2">{children}</div>
     </section>
   );
 }
-
