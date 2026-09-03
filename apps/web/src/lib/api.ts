@@ -312,6 +312,8 @@ export interface Bot {
   open_positions: number;
   last_heartbeat_at: string | null;
   halt_reason: string | null;
+  /** Kesici giriş yasağının bitişi; gelecekteyse bot giriş yasağındadır. */
+  entries_blocked_until: string | null;
   created_at: string;
 }
 
@@ -683,4 +685,33 @@ export interface LivePnl {
   }[];
   /** Fiyatı bilinmeyen semboller — varsa gerçekleşmemiş k/z eksiktir. */
   stale_symbols: string[];
+}
+
+/* ---- Dikkat yüzeyi (GET /system/attention) ------------------------ */
+export type AttentionLevel = "CRITICAL" | "WARN" | "INFO";
+export interface AttentionItem {
+  id: string;
+  level: AttentionLevel;
+  kind: string;
+  title: string;
+  detail: string;
+  href: string;
+  bot_id?: number;
+  market?: string;
+  until?: string;
+}
+export interface FeedStatus {
+  market: "CRYPTO" | "BIST" | "US";
+  symbol: string;
+  timeframe: string;
+  last_bar_at: string | null;
+  age_seconds: number | null;
+  ok: boolean;
+  detail: string;
+}
+export interface Attention {
+  at: string;
+  items: AttentionItem[];
+  feeds: FeedStatus[];
+  fleet: { running: number; total: number; blocked: number; halted: number };
 }

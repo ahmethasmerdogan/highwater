@@ -1,196 +1,75 @@
 /**
- * Menü haritası — tek kaynak.
+ * Menü haritası — tek kaynak (v2).
  *
- * Yan menü, komut paleti ve sayfa başlığı buradan okur. İki yerde tutulan
- * bir menü kaçınılmaz olarak ayrışır.
- *
- * Gruplama **kullanıcının niyetine** göre, veri modeline göre değil:
- * "şu an ne oluyor?" (İzleme), "para nerede?" (İşlem), "kim ne yaptı?"
- * (Ekip), "nasıl davransın?" (Yönetim).
+ * 21 rotadan 9 hedefe: her hedef bir NİYET. "Ne oluyor?" → Köprü,
+ * "yarış nerede?" → Maraton, "piyasa ne diyor?" → Piyasa, "botlar ne
+ * yapıyor?" → Botlar, "para nerede?" → Pozisyonlar, "sınayalım" →
+ * Araştırma, "ne oldu?" → Günlük, "elimle bakayım" → Terminal, "nasıl
+ * davransın?" → Yönetim. Eski üç Havuz girdisi, Puanlar ve İndikatörler tek
+ * Piyasa'da; Stratejiler/Backtest/Kalibrasyon tek Araştırma'da; Loglar ve
+ * Bildirimler tek Günlük'te. Eski adresler yönlendirir (LEGACY).
  */
 
 import type { ComponentType } from "react";
 import type { Role } from "@/lib/api";
 import {
   IBacktest,
-  IBell,
   IBot,
   IChat,
-  IIndicator,
   ILog,
   IPanel,
-  IPlug,
   IPool,
   IPosition,
-  IPulse,
-  IScore,
   ISettings,
-  IStrategy,
   ITarget,
   ITerminal,
-  IUsers,
   type IconProps,
 } from "@/design/icons";
 
 export interface NavItem {
   href: string;
   label: string;
-  /** Komut paletinde ve menü ipucunda görünen tek cümle. */
+  /** Komut paletinde ve ray ipucunda görünen tek cümle. */
   hint: string;
   icon: ComponentType<IconProps>;
   /** Bu sayfayı görebilecek roller. Verilmezse herkes görür; ADMIN daima görür. */
   roles?: Role[];
+  /** Klavye kısayolu (g + harf). */
+  key?: string;
 }
 
-export interface NavGroup {
-  label: string;
-  items: NavItem[];
-}
-
-export const NAV: NavGroup[] = [
-  {
-    label: "İzleme",
-    items: [
-      {
-        href: "/",
-        label: "Panel",
-        hint: "Sistemin tek ekranda özeti: özsermaye, açık pozisyonlar, havuz ve uyarılar.",
-        icon: IPanel,
-      },
-      {
-        href: "/maraton",
-        label: "Maraton",
-        hint: "30 günlük komutsuz koşu: 9 bot, hepsi 400 $ ile — sıralama ve yarış eğrisi.",
-        icon: ITarget,
-      },
-      {
-        href: "/havuz",
-        label: "Havuz · Kripto",
-        hint: "Kripto havuzu: işlem yapılabilir coinler ve hangi filtrenin neyi elediği.",
-        icon: IPool,
-      },
-      {
-        href: "/havuz?market=BIST",
-        label: "Havuz · BIST",
-        hint: "Borsa İstanbul havuzu — günlük bar, İş Yatırım verisi, TL hacim.",
-        icon: IPool,
-      },
-      {
-        href: "/havuz?market=US",
-        label: "Havuz · ABD",
-        hint: "ABD hisse havuzu (NYSE/NASDAQ) — günlük bar, dolar hacim.",
-        icon: IPool,
-      },
-      {
-        href: "/puanlar",
-        label: "Puanlar",
-        hint: "Havuzdaki coinlerin 0–100 puanı ve her puanın gerekçesi.",
-        icon: IScore,
-      },
-      {
-        href: "/kalibrasyon",
-        label: "Kalibrasyon",
-        hint: "Puanlama gerçekten işe yarıyor mu? Sistemin dürüstlük organı.",
-        icon: IPulse,
-      },
-      {
-        href: "/loglar",
-        label: "Loglar",
-        hint: "Botun, puanlamanın ve havuzun ne yaptığı — okunur cümlelerle.",
-        icon: ILog,
-      },
-      {
-        href: "/terminal",
-        label: "Terminal",
-        hint: "Çok panelli çalışma alanı: grafik, puan kartı, tarama.",
-        icon: ITerminal,
-        roles: ["TRADER"],
-      },
-    ],
-  },
-  {
-    label: "İşlem",
-    items: [
-      {
-        href: "/botlar",
-        label: "Botlar",
-        hint: "Çalışan botlar, durumları ve performansları.",
-        icon: IBot,
-        roles: ["TRADER"],
-      },
-      {
-        href: "/pozisyonlar",
-        label: "Pozisyonlar",
-        hint: "Açık pozisyonlar, kapanmış işlemler ve emir defteri.",
-        icon: IPosition,
-      },
-      {
-        href: "/stratejiler",
-        label: "Stratejiler",
-        hint: "Kural kümeleri ve sürümleri.",
-        icon: IStrategy,
-        roles: ["TRADER"],
-      },
-      {
-        href: "/backtest",
-        label: "Backtest",
-        hint: "Stratejiyi geçmiş veride sına ve kıyaslarla karşılaştır.",
-        icon: IBacktest,
-        roles: ["TRADER"],
-      },
-      {
-        href: "/indikatorler",
-        label: "İndikatörler",
-        hint: "Sembol bazında göstergeler, destek/direnç ve formasyonlar.",
-        icon: IIndicator,
-        roles: ["TRADER"],
-      },
-    ],
-  },
-  {
-    label: "Ekip",
-    items: [
-      { href: "/sohbet", label: "Sohbet", hint: "Ekip içi mesajlaşma.", icon: IChat },
-      {
-        href: "/bildirimler",
-        label: "Bildirimler",
-        hint: "Sistemin sana söylediği her şey, açıklamasıyla birlikte.",
-        icon: IBell,
-      },
-    ],
-  },
-  {
-    label: "Yönetim",
-    items: [
-      {
-        href: "/kullanicilar",
-        label: "Kullanıcılar",
-        hint: "Hesaplar, yetkiler ve oturumlar.",
-        icon: IUsers,
-        roles: [],
-      },
-      {
-        href: "/entegrasyonlar",
-        label: "Entegrasyonlar",
-        hint: "Discord bildirim kanalları.",
-        icon: IPlug,
-        roles: [],
-      },
-      {
-        href: "/ayarlar",
-        label: "Ayarlar",
-        hint: "Havuz filtreleri, risk sınırları ve motor parametreleri.",
-        icon: ISettings,
-        roles: [],
-      },
-    ],
-  },
+export const NAV: NavItem[] = [
+  { href: "/", label: "Köprü", hint: "Tek bakışta: filo, para, dikkat isteyenler.", icon: IPanel, key: "k" },
+  { href: "/maraton", label: "Maraton", hint: "30 günlük komutsuz koşu — sıralama ve yarış eğrisi.", icon: ITarget, key: "m" },
+  { href: "/piyasa", label: "Piyasa", hint: "Havuz, puanlar ve sembol ayrıntısı — üç pazar tek ekranda.", icon: IPool, key: "p" },
+  { href: "/botlar", label: "Botlar", hint: "Kollar, durumları, kesicileri ve neden yaptıkları.", icon: IBot, roles: ["TRADER"], key: "b" },
+  { href: "/pozisyonlar", label: "Pozisyonlar", hint: "Açık pozisyonlar, kapanmış işlemler, emirler.", icon: IPosition, key: "z" },
+  { href: "/arastirma", label: "Araştırma", hint: "Stratejiler, backtest ve kalibrasyon — ölçüm organı.", icon: IBacktest, roles: ["TRADER"], key: "a" },
+  { href: "/gunluk", label: "Günlük", hint: "Olay akışı, bildirimler, veri kalitesi, denetim.", icon: ILog, key: "g" },
+  { href: "/terminal", label: "Terminal", hint: "Çok panelli çalışma alanı — komut satırıyla.", icon: ITerminal, roles: ["TRADER"], key: "t" },
+  { href: "/sohbet", label: "Sohbet", hint: "Ekip içi mesajlaşma.", icon: IChat },
+  { href: "/yonetim", label: "Yönetim", hint: "Kullanıcılar, entegrasyonlar, ayarlar, hesap.", icon: ISettings, roles: [], key: "y" },
 ];
+
+/** Eski adresler → yeni hedefler. Yer imleri ve Discord linkleri kırılmasın. */
+export const LEGACY: Record<string, string> = {
+  "/havuz": "/piyasa",
+  "/puanlar": "/piyasa?gorunum=puanlar",
+  "/indikatorler": "/piyasa",
+  "/kalibrasyon": "/arastirma?tab=kalibrasyon",
+  "/stratejiler": "/arastirma?tab=stratejiler",
+  "/backtest": "/arastirma?tab=backtest",
+  "/loglar": "/gunluk",
+  "/bildirimler": "/gunluk?tab=bildirimler",
+  "/kullanicilar": "/yonetim?tab=kullanicilar",
+  "/entegrasyonlar": "/yonetim?tab=entegrasyonlar",
+  "/ayarlar": "/yonetim?tab=ayarlar",
+  "/hesap": "/yonetim?tab=hesap",
+  "/meydan-okuma": "/maraton",
+};
 
 /** Yolun hangi menü öğesine denk geldiğini bulur — başlık ve ipucu için. */
 export function findNavItem(pathname: string): NavItem | undefined {
-  return NAV.flatMap((group) => group.items)
-    /* En uzun eşleşme kazanır: "/botlar/3" → "/botlar", "/" değil. */
-    .filter((item) => (item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)))
+  return NAV.filter((item) => (item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)))
     .sort((a, b) => b.href.length - a.href.length)[0];
 }
