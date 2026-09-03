@@ -53,8 +53,14 @@ log = get_logger(__name__)
 # §11 maliyet senaryoları — üçü birden raporlanır.
 COST_SCENARIOS: tuple[tuple[str, float], ...] = (("base", 1.0), ("1.5x", 1.5), ("2x", 2.0))
 
-# Taban maliyet: taker %0.1 + 5 bps kayma = 15 bps tek yön.
-BASE_COST_BPS = 15.0
+# Maliyet modeli PaperAdapter ile BİREBİR: taker komisyonu 10 bp (notional
+# üzerinden) + 5 bp ters yönlü kayma (fiyata), ikisi de senaryo çarpanıyla
+# ölçeklenir (PaperConfig.scaled). Eskiden 15 bp fiyata + 15 bp komisyon =
+# 30 bp/yan sayılıyordu — canlının iki katı; mutlak sonuçlar kötümser,
+# göreli kıyaslar geçerliydi. `cost_bps` = komisyon bp; kayma = yarısı.
+FEE_BPS = 10.0
+SLIP_RATIO = 0.5  # kayma bp = cost_bps × SLIP_RATIO  (5/10)
+BASE_COST_BPS = FEE_BPS  # geriye uyumluluk: adı koruyan çağrılar
 
 
 @dataclass(slots=True)
@@ -576,9 +582,14 @@ class BacktestEngine:
         cost_bps: float,
         trades: list[dict],
     ) -> float:
-        """Pozisyonu kapatır, `trades` listesine yazar, nakde dönen tutarı verir."""
+        """Pozisyonu kapatır, `trades` listesine yazar, nakde dönen tutarı verir.
+
+        Çıkışta da ters yönlü kayma uygulanır (PaperAdapter SELL'de de uygular).
+        """
+        price = price * (1 - cost_bps * SLIP_RATIO / 10_000)
         gross = price * position.qty
         fee = gross * cost_bps / 10_000
+        hold_hours = (at - position.entry_time).total_seconds() / 3600
         proceeds = gross - fee
         pnl = net_pnl(
             gross=(price - position.entry_price) * position.qty,
@@ -598,10 +609,10 @@ class BacktestEngine:
                 "pnl": round(pnl, 8),
                 "pnl_r": round((price - position.entry_price) / risk_per_unit, 6),
                 "fees": round(total_fees(entry_fees=position.entry_fees, exit_fees=fee), 8),
-                "slippage_bps": round(cost_bps, 4),
+                "slippage_bps": round(cost_bps * SLIP_RATIO, 4),
                 "mfe": round(position.mfe, 6),
                 "mae": round(position.mae, 6),
-                "hold_hours": round((at - position.entry_time).total_seconds() / 3600, 4),
+                "hold_hours": round(hold_hours, 4),
                 "score_at_entry": round(position.score_at_entry, 2),
             }
         )
@@ -679,7 +690,7 @@ class BacktestEngine:
             if not decision.accepted:
                 continue
 
-            fill = entry * (1 + cost_bps / 10_000)
+            fill = entry * (1 + cost_bps * SLIP_RATIO / 10_000)
             gross = fill * decision.qty
             fee = gross * cost_bps / 10_000
             if gross + fee > cash:
