@@ -714,9 +714,26 @@ class BotWorker:
         # ve nakit hiç geri gelmez. Doğrusu: kalanla açık kal, sonucu biriktir,
         # bir sonraki turda tekrar dene. Çıkış koşulu hâlâ geçerlidir.
         if kalan > 1e-9:
+            # Satılan dilimin borç maliyeti burada tahakkuk eder — aksi hâlde
+            # kapanışta yalnız KALAN miktarın borcu ödenir ve dilimin girişten
+            # bu yana taşıdığı borç sessizce silinirdi (kaldıraçlı kollar için
+            # gerçek bir muhasebe deliği; 1× pozisyonda sıfırdır).
+            dilim_lev = float(position.leverage or 1.0)
+            dilim_borc = (
+                borrow_cost(
+                    notional=position.entry_price * result.filled_qty,
+                    leverage=dilim_lev,
+                    hold_hours=(now - position.entry_time).total_seconds() / 3600,
+                    hourly_rate=LeverageSpec.from_sizing(
+                        self._definition_of(bot).sizing
+                    ).hourly_rate,
+                )
+                if dilim_lev > 1.0
+                else 0.0
+            )
             position.qty = kalan
-            position.realized_pnl += dilim_pnl
-            position.realized_fees += result.fees
+            position.realized_pnl += dilim_pnl - dilim_borc
+            position.realized_fees += result.fees + dilim_borc
             await session.execute(
                 Position.__table__.update()
                 .where(Position.id == position.id)
@@ -726,7 +743,7 @@ class BotWorker:
                     realized_fees=Decimal(str(round(position.realized_fees, 8))),
                 )
             )
-            snapshot.cash += exit_price * result.filled_qty - result.fees
+            snapshot.cash += exit_price * result.filled_qty - result.fees - dilim_borc
             bot.cash = Decimal(str(round(snapshot.cash, 8)))
             await self._emit(
                 session,
