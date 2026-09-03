@@ -1050,6 +1050,7 @@ class BotWorker:
                 stop=decision.stop,
                 initial_stop=decision.stop,
                 score_at_entry=candidate.score,
+                leverage=leverage,
                 breakeven_locked=False,
                 entry_fees=result.fees,
             )
