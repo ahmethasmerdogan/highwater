@@ -112,15 +112,21 @@ async def score_configs(session: SessionDep, user: CurrentUser) -> list[dict]:
         return []
 
     counts: dict[tuple[str, str], tuple[int, float]] = {}
+    markets: dict[tuple[str, str], str] = {}
     for (h, tf), bar in son_barlar.items():
         row = (
             await session.execute(
-                select(func.count(), func.max(Score.score)).where(
+                select(func.count(), func.max(Score.score), func.min(Score.symbol)).where(
                     Score.config_hash == h, Score.timeframe == tf, Score.bar_time == bar
                 )
             )
         ).one()
         counts[(h, tf)] = (row[0], float(row[1] or 0.0))
+        # Pazar: kesitteki herhangi bir sembolün ekinden (kesit tek pazardır).
+        ornek = row[2] or ""
+        markets[(h, tf)] = (
+            "BIST" if ornek.endswith(".IS") else "US" if ornek.endswith(".US") else "CRYPTO"
+        )
 
     labeled = [(key, label) for key, label in await _config_labels(session) if key in counts]
     # Bir bota bağlanamayan sıralama (silinmiş/değişmiş bot) gizlenmez —
@@ -133,6 +139,7 @@ async def score_configs(session: SessionDep, user: CurrentUser) -> list[dict]:
             "config_hash": h,
             "timeframe": tf,
             "label": label,
+            "market": markets[(h, tf)],
             "symbols": counts[(h, tf)][0],
             "top_score": round(counts[(h, tf)][1], 2),
             "bar_time": son_barlar[(h, tf)].isoformat(),
