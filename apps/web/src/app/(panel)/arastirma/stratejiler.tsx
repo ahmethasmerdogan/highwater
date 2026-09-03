@@ -1,12 +1,13 @@
 "use client";
 
 /**
- * Stratejiler — kural kümeleri ve sürümleri.
+ * Araştırma › Stratejiler — kural kümeleri ve sürümleri.
  *
  * Bir strateji doğrudan düzenlenmez: her değişiklik **yeni bir sürüm**
- * doğurur ve eskisi silinmez. Bunun sebebi geçmişe dönük testlerin
- * dayanağını korumaktır — çalışan bir botun kurallarını sessizce
- * değiştirmek, o botun geçmiş sonuçlarını anlamsız kılardı.
+ * doğurur ve eskisi silinmez. Geçmişe dönük testlerin dayanağı budur.
+ *
+ * Seçili sürüm URL'de yaşar (`?strateji=<id>&surum=<id>`): sayfa
+ * yenilenince ya da bağlantı paylaşılınca aynı çekmece açılır.
  */
 
 import { useState } from "react";
@@ -17,7 +18,7 @@ import { toast } from "@/lib/toast";
 import { STRATEGY_GROUPS, readPath, type FieldSpec } from "@/lib/strategy-fields";
 import { dateTime, num, relative } from "@/lib/format";
 import { Reveal } from "uicean";
-import { Page, GuideSection } from "@/shell/page";
+import { GuideSection } from "@/shell/page";
 import {
   Async,
   Button,
@@ -32,11 +33,52 @@ import {
   TextInput,
 } from "@/design";
 
-export default function StrategiesPage() {
-  const { can } = useAuth();
-  const [selected, setSelected] = useState<{ strategy: Strategy; version: StrategyVersion } | null>(
-    null,
+export const STRATEJILER_SUMMARY =
+  "Puan ağırlıkları, giriş eşikleri, boyutlandırma ve çıkış kurallarından oluşan kural kümeleri.";
+
+export function StratejilerGuide() {
+  return (
+    <>
+      <GuideSection title="Ne gösteriyor">
+        <p>
+          Bir strateji, botun nasıl karar vereceğini belirleyen tüm ayarları taşır: hangi ailenin
+          puana ne kadar katkı vereceği, hangi puandan itibaren giriş yapılacağı, pozisyonun ne
+          kadar büyük olacağı ve ne zaman çıkılacağı.
+        </p>
+      </GuideSection>
+      <GuideSection title="Nasıl okunur">
+        <p>
+          <strong>Strateji doğrudan düzenlenmez.</strong> Bir ayarı değiştirdiğinizde yeni bir sürüm
+          doğar ve eski sürüm olduğu gibi kalır. Bot her zaman belirli bir sürümü çalıştırır; yeni
+          sürüme geçmesi için botu o sürüme almanız gerekir.
+        </p>
+        <p>
+          <strong>Dondurulmuş</strong> bir sürüm bir daha değiştirilemez. Geçmişe dönük testlerin
+          dayanağı budur: donuk sürüm, sonucun hangi kurallarla üretildiğinin kanıtıdır.
+        </p>
+      </GuideSection>
+      <GuideSection title="Ne yapabilirim">
+        <p>
+          Bir sürüme tıklayınca tüm alanları açıklamalarıyla birlikte görürsünüz. Kurgu değişikliği
+          yapmak için İndikatörler sayfasındaki strateji atölyesini kullanın; oradan kaydettiğinizde
+          yeni sürüm doğar.
+        </p>
+      </GuideSection>
+    </>
   );
+}
+
+export default function StratejilerTab({
+  strategyId,
+  versionId,
+  onSelect,
+}: {
+  strategyId: number | null;
+  versionId: number | null;
+  /** Çekmeceyi açar (`strateji`, `surum`) ya da kapatır (`null`, `null`). */
+  onSelect: (strategyId: number | null, versionId: number | null) => void;
+}) {
+  const { can } = useAuth();
   const [createOpen, setCreateOpen] = useState(false);
 
   const query = useQuery({
@@ -44,113 +86,85 @@ export default function StrategiesPage() {
     queryFn: () => api.get<Strategy[]>("/strategies"),
   });
 
+  /* Seçim URL'den türetilir; sürüm verilmemişse en yenisi açılır. */
+  const strategy = (query.data ?? []).find((entry) => entry.id === strategyId) ?? null;
+  const version =
+    strategy === null
+      ? null
+      : (strategy.versions.find((entry) => entry.id === versionId) ??
+        [...strategy.versions].sort((a, b) => b.version - a.version)[0] ??
+        null);
+
+  const createButton = can("TRADER") ? (
+    <Button size="sm" variant="primary" onClick={() => setCreateOpen(true)}>
+      Yeni strateji
+    </Button>
+  ) : undefined;
+
   return (
-    <Page
-      title="Stratejiler"
-      summary="Puan ağırlıkları, giriş eşikleri, boyutlandırma ve çıkış kurallarından oluşan kural kümeleri."
-      actions={
-        can("TRADER") ? (
-          <Button size="sm" variant="primary" onClick={() => setCreateOpen(true)}>
-            Yeni strateji
-          </Button>
-        ) : undefined
-      }
-      guide={
-        <>
-          <GuideSection title="Ne gösteriyor">
-            <p>
-              Bir strateji, botun nasıl karar vereceğini belirleyen tüm ayarları taşır: hangi
-              ailenin puana ne kadar katkı vereceği, hangi puandan itibaren giriş yapılacağı,
-              pozisyonun ne kadar büyük olacağı ve ne zaman çıkılacağı.
-            </p>
-          </GuideSection>
-          <GuideSection title="Nasıl okunur">
-            <p>
-              <strong>Strateji doğrudan düzenlenmez.</strong> Bir ayarı değiştirdiğinizde yeni bir
-              sürüm doğar ve eski sürüm olduğu gibi kalır. Bot her zaman belirli bir sürümü
-              çalıştırır; yeni sürüme geçmesi için botu o sürüme almanız gerekir.
-            </p>
-            <p>
-              <strong>Dondurulmuş</strong> bir sürüm bir daha değiştirilemez. Geçmişe dönük
-              testlerin dayanağı budur: donuk sürüm, sonucun hangi kurallarla üretildiğinin
-              kanıtıdır.
-            </p>
-          </GuideSection>
-          <GuideSection title="Ne yapabilirim">
-            <p>
-              Bir sürüme tıklayınca tüm alanları açıklamalarıyla birlikte görürsünüz. Kurgu
-              değişikliği yapmak için İndikatörler sayfasındaki strateji atölyesini kullanın;
-              oradan kaydettiğinizde yeni sürüm doğar.
-            </p>
-          </GuideSection>
-        </>
-      }
-    >
+    <>
+      {createButton && <div className="flex justify-end">{createButton}</div>}
+
       <Async
         query={query}
         empty={{
           title: "Henüz strateji yok",
           hint: "Bot kurabilmek için önce bir strateji ve en az bir sürüm gerekir. Yeni strateji varsayılan ayarlarla oluşturulur.",
-          action: can("TRADER") ? (
-            <Button size="sm" variant="primary" onClick={() => setCreateOpen(true)}>
-              İlk stratejiyi oluştur
-            </Button>
-          ) : undefined,
+          action: createButton,
         }}
       >
         {(list) => (
           <div className="flex flex-col gap-4">
-            {list.map((strategy, si) => (
-              <Reveal key={strategy.id} delay={si * 70}>
-              <Panel
-                key={strategy.id}
-                title={strategy.name}
-                description={`${strategy.versions.length} sürüm · ${relative(strategy.created_at)} oluşturuldu`}
-                padded={false}
-              >
-                {strategy.versions.length === 0 ? (
-                  <Empty
-                    title="Bu stratejinin sürümü yok"
-                    hint="Sürüm oluşturulana kadar bu strateji bir bota bağlanamaz."
-                  />
-                ) : (
-                  <ul>
-                    {[...strategy.versions]
-                      .sort((a, b) => b.version - a.version)
-                      .map((version) => (
-                        <li key={version.id} style={{ borderTop: "1px solid var(--sn-hairline)" }}>
-                          <button
-                            type="button"
-                            onClick={() => setSelected({ strategy, version })}
-                            className="sn-focus flex w-full items-center gap-3 px-4 py-3 text-left transition-[background-color,transform] duration-[var(--sn-dur-1)] hover:translate-x-0.5 hover:bg-[var(--sn-sunken)]"
-                          >
-                            <span
-                              className="sn-num font-medium"
-                              style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}
+            {list.map((entry, index) => (
+              <Reveal key={entry.id} delay={index * 70}>
+                <Panel
+                  title={entry.name}
+                  description={`${entry.versions.length} sürüm · ${relative(entry.created_at)} oluşturuldu`}
+                  padded={false}
+                >
+                  {entry.versions.length === 0 ? (
+                    <Empty
+                      title="Bu stratejinin sürümü yok"
+                      hint="Sürüm oluşturulana kadar bu strateji bir bota bağlanamaz."
+                    />
+                  ) : (
+                    <ul>
+                      {[...entry.versions]
+                        .sort((a, b) => b.version - a.version)
+                        .map((item) => (
+                          <li key={item.id} style={{ borderTop: "1px solid var(--sn-hairline)" }}>
+                            <button
+                              type="button"
+                              onClick={() => onSelect(entry.id, item.id)}
+                              className="sn-focus flex w-full items-center gap-3 px-4 py-3 text-left transition-[background-color,transform] duration-[var(--sn-dur-1)] hover:translate-x-0.5 hover:bg-[var(--sn-sunken)]"
                             >
-                              Sürüm {version.version}
-                            </span>
-                            <Tag tone={version.frozen ? "brand" : "neutral"}>
-                              {version.frozen ? "dondurulmuş" : "düzenlenebilir"}
-                            </Tag>
-                            <span
-                              className="sn-num"
-                              style={{ fontSize: "var(--sn-t-micro)", color: "var(--sn-ink-3)" }}
-                            >
-                              {version.definition_hash.slice(0, 12)}
-                            </span>
-                            <span
-                              className="ml-auto"
-                              style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}
-                            >
-                              {dateTime(version.created_at)}
-                            </span>
-                          </button>
-                        </li>
-                      ))}
-                  </ul>
-                )}
-              </Panel>
+                              <span
+                                className="sn-num font-medium"
+                                style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}
+                              >
+                                Sürüm {item.version}
+                              </span>
+                              <Tag tone={item.frozen ? "brand" : "neutral"}>
+                                {item.frozen ? "dondurulmuş" : "düzenlenebilir"}
+                              </Tag>
+                              <span
+                                className="sn-num"
+                                style={{ fontSize: "var(--sn-t-micro)", color: "var(--sn-ink-3)" }}
+                              >
+                                {item.definition_hash.slice(0, 12)}
+                              </span>
+                              <span
+                                className="sn-num ml-auto"
+                                style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}
+                              >
+                                {dateTime(item.created_at)}
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                    </ul>
+                  )}
+                </Panel>
               </Reveal>
             ))}
           </div>
@@ -164,16 +178,12 @@ export default function StrategiesPage() {
         </div>
       </Panel>
 
-      {selected && (
-        <VersionDrawer
-          strategy={selected.strategy}
-          version={selected.version}
-          onClose={() => setSelected(null)}
-        />
+      {strategy && version && (
+        <VersionDrawer strategy={strategy} version={version} onClose={() => onSelect(null, null)} />
       )}
 
       <CreateStrategyModal open={createOpen} onClose={() => setCreateOpen(false)} />
-    </Page>
+    </>
   );
 }
 
@@ -288,7 +298,7 @@ function VersionDrawer({
               </div>
               <div className="flex justify-between gap-3 py-1">
                 <span style={{ color: "var(--sn-ink-2)" }}>Oluşturulma</span>
-                <span>{dateTime(version.created_at)}</span>
+                <span className="sn-num">{dateTime(version.created_at)}</span>
               </div>
             </div>
           </DrawerSection>

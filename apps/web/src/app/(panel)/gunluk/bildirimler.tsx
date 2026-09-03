@@ -1,14 +1,11 @@
 "use client";
 
 /**
- * Bildirimler.
+ * Günlük › Bildirimler.
  *
  * Kural: **ham JSON gösterilmez.** Motor bildirimleri bir yük nesnesiyle
- * yazar; bu sayfa o nesneyi etiketli alanlara çevirir ve her bildirimin
+ * yazar; burası o nesneyi etiketli alanlara çevirir ve her bildirimin
  * altına üç soruyu cevaplar — ne oldu, ne anlama geliyor, ne yapmalıyım.
- *
- * Bir bildirim okunduğunda kullanıcı ne yapacağını biliyorsa iş görmüştür;
- * `{"breaker": "STALE_DATA", "level": "WARN"}` okuyorsa görmemiştir.
  */
 
 import { useMemo, useState } from "react";
@@ -22,8 +19,8 @@ import {
   payloadFields,
   type Severity,
 } from "@/lib/humanize";
-import { dateTime, relative } from "@/lib/format";
-import { Page, GuideSection } from "@/shell/page";
+import { dateOnly, dateTime, relative } from "@/lib/format";
+import { GuideSection } from "@/shell/page";
 import {
   Async,
   Button,
@@ -40,7 +37,39 @@ import {
 } from "@/design";
 import { cx } from "@/design/cx";
 import { ICheck, IInfo, IWarning, IZap, Reveal } from "uicean";
-import { dateOnly } from "@/lib/format";
+
+export const BILDIRIMLER_SUMMARY =
+  "Sistemin size söylediği her şey — makine diliyle değil, ne yapmanız gerektiğiyle birlikte.";
+
+export function BildirimlerGuide() {
+  return (
+    <>
+      <GuideSection title="Ne gösteriyor">
+        <p>
+          Bot bir pozisyon açtığında ya da kapattığında, bir devre kesici tetiklendiğinde, havuz
+          güncellendiğinde ya da veri akışı bozulduğunda buraya bir bildirim düşer.
+        </p>
+      </GuideSection>
+      <GuideSection title="Nasıl okunur">
+        <p>
+          Her bildirimin başlığı <strong>ne olduğunu</strong> söyler. Tıklayınca{" "}
+          <strong>ne anlama geldiği</strong>, ilgili değerler ve gerekiyorsa{" "}
+          <strong>ne yapmanız gerektiği</strong> açılır. Ham teknik döküm gösterilmez; değerler
+          etiketli alanlar hâlinde durur.
+        </p>
+        <p>
+          Soldaki renkli işaret önem düzeyidir. Kırmızı ve turuncu olanlar müdahale gerektirebilir.
+        </p>
+      </GuideSection>
+      <GuideSection title="Ne yapabilirim">
+        <p>
+          Okunmamışları süzüp yalnızca yenilere bakabilirsiniz. Aynı olayın Discord&apos;a da
+          gitmesini isterseniz Entegrasyonlar sayfasından kanal eşlemesi yapın.
+        </p>
+      </GuideSection>
+    </>
+  );
+}
 
 const SEVERITY_TONE: Record<Severity, Tone> = {
   error: "down",
@@ -49,7 +78,7 @@ const SEVERITY_TONE: Record<Severity, Tone> = {
   info: "neutral",
 };
 
-export default function NotificationsPage() {
+export default function BildirimlerTab() {
   const qc = useQueryClient();
   const [filter, setFilter] = useState<"hepsi" | "okunmamis">("hepsi");
   const [severite, setSeverite] = useState<Severity | "hepsi">("hepsi");
@@ -124,50 +153,7 @@ export default function NotificationsPage() {
   };
 
   return (
-    <Page
-      title="Bildirimler"
-      summary="Sistemin size söylediği her şey — makine diliyle değil, ne yapmanız gerektiğiyle birlikte."
-      actions={
-        unreadCount > 0 ? (
-          <Button
-            size="sm"
-            variant="neutral"
-            disabled={markAll.isPending}
-            onClick={() => markAll.mutate()}
-          >
-            Tümünü okundu işaretle
-          </Button>
-        ) : undefined
-      }
-      guide={
-        <>
-          <GuideSection title="Ne gösteriyor">
-            <p>
-              Bot bir pozisyon açtığında ya da kapattığında, bir devre kesici tetiklendiğinde,
-              havuz güncellendiğinde ya da veri akışı bozulduğunda buraya bir bildirim düşer.
-            </p>
-          </GuideSection>
-          <GuideSection title="Nasıl okunur">
-            <p>
-              Her bildirimin başlığı <strong>ne olduğunu</strong> söyler. Tıklayınca{" "}
-              <strong>ne anlama geldiği</strong>, ilgili değerler ve gerekiyorsa{" "}
-              <strong>ne yapmanız gerektiği</strong> açılır. Ham teknik döküm gösterilmez;
-              değerler etiketli alanlar hâlinde durur.
-            </p>
-            <p>
-              Soldaki renkli işaret önem düzeyidir. Kırmızı ve turuncu olanlar müdahale
-              gerektirebilir.
-            </p>
-          </GuideSection>
-          <GuideSection title="Ne yapabilirim">
-            <p>
-              Okunmamışları süzüp yalnızca yenilere bakabilirsiniz. Aynı olayın Discord&apos;a da
-              gitmesini isterseniz Entegrasyonlar sayfasından kanal eşlemesi yapın.
-            </p>
-          </GuideSection>
-        </>
-      }
-    >
+    <>
       <div className="flex flex-wrap items-center gap-2">
         <Segmented
           value={filter}
@@ -189,6 +175,17 @@ export default function NotificationsPage() {
             { value: "info", label: SEVERITY_LABEL.info },
           ]}
         />
+        {unreadCount > 0 && (
+          <Button
+            size="sm"
+            variant="neutral"
+            className="ml-auto"
+            disabled={markAll.isPending}
+            onClick={() => markAll.mutate()}
+          >
+            Tümünü okundu işaretle
+          </Button>
+        )}
       </div>
 
       <Panel padded={false}>
@@ -220,120 +217,20 @@ export default function NotificationsPage() {
                         letterSpacing: "0.04em",
                         textTransform: "uppercase",
                         color: "var(--sn-ink-3)",
+                        fontVariantNumeric: "tabular-nums",
                       }}
                     >
                       {grup.baslik}
                     </div>
                     <ul>
-                      {grup.items.map((item) => {
-                        const human = humanizeNotification(item);
-                        const unread = !item.read_at;
-                        const tone = SEVERITY_TONE[human.severity];
-                        const kapaniyor = leaving.has(item.id);
-                        const renk =
-                          tone === "down"
-                            ? "var(--sn-down)"
-                            : tone === "warn"
-                              ? "var(--sn-warn)"
-                              : tone === "up"
-                                ? "var(--sn-up)"
-                                : "var(--sn-info)";
-                        const zemin =
-                          tone === "down"
-                            ? "var(--sn-down-bg)"
-                            : tone === "warn"
-                              ? "var(--sn-warn-bg)"
-                              : tone === "up"
-                                ? "var(--sn-up-bg)"
-                                : "var(--sn-sunken)";
-                        const Ikon =
-                          human.severity === "error"
-                            ? IZap
-                            : human.severity === "warn"
-                              ? IWarning
-                              : human.severity === "success"
-                                ? ICheck
-                                : IInfo;
-                        return (
-                          <li
-                            key={item.id}
-                            className="grid transition-[grid-template-rows,opacity] duration-[var(--sn-dur-3)] ease-[var(--sn-ease)]"
-                            style={{
-                              gridTemplateRows: kapaniyor ? "0fr" : "1fr",
-                              opacity: kapaniyor ? 0 : 1,
-                              borderTop: "1px solid var(--sn-hairline)",
-                            }}
-                          >
-                            <div className="overflow-hidden">
-                              <button
-                                type="button"
-                                onClick={() => open(item)}
-                                className={cx(
-                                  "sn-focus relative flex w-full items-start gap-3 px-4 py-3 text-left",
-                                  "transition-colors duration-[var(--sn-dur-1)] hover:bg-[var(--sn-sunken)]",
-                                )}
-                              >
-                                {/* Okunmamış rayı: sol kenarda 2px amber. */}
-                                {unread && (
-                                  <span
-                                    aria-hidden
-                                    className="absolute top-2 bottom-2 left-0 w-[2px] rounded-r"
-                                    style={{ background: "var(--sn-brand-solid)" }}
-                                  />
-                                )}
-                                <span
-                                  aria-hidden
-                                  className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--sn-r-sm)]"
-                                  style={{ background: zemin, color: renk }}
-                                >
-                                  <Ikon size={15} />
-                                </span>
-                                <span className="min-w-0 flex-1">
-                                  <span className="flex flex-wrap items-center gap-2">
-                                    <span
-                                      style={{
-                                        fontSize: "var(--sn-t-body)",
-                                        color: "var(--sn-ink)",
-                                        fontWeight: unread ? 550 : 400,
-                                      }}
-                                    >
-                                      {human.title}
-                                    </span>
-                                    <span
-                                      style={{
-                                        fontSize: "var(--sn-t-micro)",
-                                        color: "var(--sn-ink-3)",
-                                      }}
-                                    >
-                                      {CATEGORY_LABEL[human.category]}
-                                    </span>
-                                  </span>
-                                  <span
-                                    className="mt-0.5 line-clamp-2 block"
-                                    style={{
-                                      fontSize: "var(--sn-t-caption)",
-                                      color: "var(--sn-ink-2)",
-                                      lineHeight: 1.45,
-                                    }}
-                                  >
-                                    {item.body || human.detail || "—"}
-                                  </span>
-                                </span>
-                                <span
-                                  className="shrink-0 text-right whitespace-nowrap"
-                                  style={{
-                                    fontSize: "var(--sn-t-caption)",
-                                    color: "var(--sn-ink-3)",
-                                    fontVariantNumeric: "tabular-nums",
-                                  }}
-                                >
-                                  {relative(item.created_at)}
-                                </span>
-                              </button>
-                            </div>
-                          </li>
-                        );
-                      })}
+                      {grup.items.map((item) => (
+                        <NotificationRow
+                          key={item.id}
+                          item={item}
+                          leaving={leaving.has(item.id)}
+                          onOpen={() => open(item)}
+                        />
+                      ))}
                     </ul>
                   </Reveal>
                 ))}
@@ -344,7 +241,117 @@ export default function NotificationsPage() {
       </Panel>
 
       <NotificationDrawer notification={selected} onClose={() => setSelected(null)} />
-    </Page>
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+function NotificationRow({
+  item,
+  leaving,
+  onOpen,
+}: {
+  item: Notification;
+  leaving: boolean;
+  onOpen: () => void;
+}) {
+  const human = humanizeNotification(item);
+  const unread = !item.read_at;
+  const tone = SEVERITY_TONE[human.severity];
+  const renk =
+    tone === "down"
+      ? "var(--sn-down)"
+      : tone === "warn"
+        ? "var(--sn-warn)"
+        : tone === "up"
+          ? "var(--sn-up)"
+          : "var(--sn-info)";
+  const zemin =
+    tone === "down"
+      ? "var(--sn-down-bg)"
+      : tone === "warn"
+        ? "var(--sn-warn-bg)"
+        : tone === "up"
+          ? "var(--sn-up-bg)"
+          : "var(--sn-sunken)";
+  const Ikon =
+    human.severity === "error"
+      ? IZap
+      : human.severity === "warn"
+        ? IWarning
+        : human.severity === "success"
+          ? ICheck
+          : IInfo;
+
+  return (
+    <li
+      className="grid transition-[grid-template-rows,opacity] duration-[var(--sn-dur-3)] ease-[var(--sn-ease)]"
+      style={{
+        gridTemplateRows: leaving ? "0fr" : "1fr",
+        opacity: leaving ? 0 : 1,
+        borderTop: "1px solid var(--sn-hairline)",
+      }}
+    >
+      <div className="overflow-hidden">
+        <button
+          type="button"
+          onClick={onOpen}
+          className={cx(
+            "sn-focus relative flex w-full items-start gap-3 px-4 py-3 text-left",
+            "transition-colors duration-[var(--sn-dur-1)] hover:bg-[var(--sn-sunken)]",
+          )}
+        >
+          {/* Okunmamış rayı: sol kenarda 2px amber. */}
+          {unread && (
+            <span
+              aria-hidden
+              className="absolute top-2 bottom-2 left-0 w-[2px] rounded-r"
+              style={{ background: "var(--sn-brand-solid)" }}
+            />
+          )}
+          <span
+            aria-hidden
+            className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--sn-r-sm)]"
+            style={{ background: zemin, color: renk }}
+          >
+            <Ikon size={15} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex flex-wrap items-center gap-2">
+              <span
+                style={{
+                  fontSize: "var(--sn-t-body)",
+                  color: "var(--sn-ink)",
+                  fontWeight: unread ? 550 : 400,
+                }}
+              >
+                {human.title}
+              </span>
+              <span style={{ fontSize: "var(--sn-t-micro)", color: "var(--sn-ink-3)" }}>
+                {CATEGORY_LABEL[human.category]}
+              </span>
+            </span>
+            <span
+              className="mt-0.5 line-clamp-2 block"
+              style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)", lineHeight: 1.45 }}
+            >
+              {item.body || human.detail || "—"}
+            </span>
+          </span>
+          <span
+            className="shrink-0 text-right whitespace-nowrap"
+            style={{
+              fontSize: "var(--sn-t-caption)",
+              color: "var(--sn-ink-3)",
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            {relative(item.created_at)}
+          </span>
+        </button>
+      </div>
+    </li>
   );
 }
 
@@ -436,7 +443,13 @@ function NotificationDrawer({
           <Field label="Önem" value={SEVERITY_LABEL[human.severity]} />
           <Field
             label="Okunma"
-            value={notification.read_at ? dateTime(notification.read_at) : "Okunmadı"}
+            value={
+              notification.read_at ? (
+                <span className="sn-num">{dateTime(notification.read_at)}</span>
+              ) : (
+                "Okunmadı"
+              )
+            }
           />
         </div>
       </DrawerSection>

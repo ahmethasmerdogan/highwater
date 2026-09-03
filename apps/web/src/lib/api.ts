@@ -489,11 +489,18 @@ export interface Backtest {
   created_at: string;
 }
 
+/** Backtest işlem kaydı — motor serbest sözlük döndürür; bilinen alanlar adlandırıldı. */
+export interface BacktestTrade {
+  leverage?: number | null;
+  borrow_cost?: number | null;
+  [key: string]: unknown;
+}
+
 export interface BacktestResult {
   cost_scenario: string;
   metrics: Record<string, number | null | Record<string, number>>;
   equity_curve: [string, number][];
-  trades: Record<string, unknown>[];
+  trades: BacktestTrade[];
   benchmarks: {
     name: string;
     equity_curve: [string, number][];

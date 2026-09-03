@@ -1,22 +1,18 @@
 "use client";
 
 /**
- * Kalibrasyon — sistemin dürüstlük organı.
+ * Araştırma › Kalibrasyon — sistemin dürüstlük organı.
  *
- * Bu sayfa tek bir soruya cevap verir: **puanlama gerçekten ileri getiriyi
- * öngörüyor mu?** Cevap "hayır" olabilir ve sayfa bunu büyük puntoyla
- * yazar; süslemez, yumuşatmaz.
- *
- * Bir puanlama sisteminin var olma gerekçesi buradaki grafiklerdir. İlişki
- * düz çıkıyorsa sistem değer katmıyordur ve bunu saklamak, sistemi
- * kullanmaktan daha zararlıdır.
+ * Tek bir soruya cevap verir: **puanlama gerçekten ileri getiriyi öngörüyor
+ * mu?** Cevap "hayır" olabilir ve sekme bunu büyük puntoyla yazar; süslemez,
+ * yumuşatmaz.
  */
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type Calibration } from "@/lib/api";
 import { num, pct, pctSigned, signed } from "@/lib/format";
-import { Page, GuideSection } from "@/shell/page";
+import { GuideSection } from "@/shell/page";
 import {
   Async,
   Explain,
@@ -34,6 +30,46 @@ import { FAMILY_BY_ID } from "@/design/series";
 import { SimpleTable, type SimpleColumn } from "@/grid/simple-table";
 import { cx } from "@/design/cx";
 
+export const KALIBRASYON_SUMMARY =
+  "Puanlama gerçekten işe yarıyor mu? Cevap ölçülür ve olumsuz olabilir.";
+
+export function KalibrasyonGuide() {
+  return (
+    <>
+      <GuideSection title="Ne gösteriyor">
+        <p>
+          Sistem her puanı hesapladığında kaydeder, sonra o coinin ileriki getirisiyle eşleştirir.
+          Bu sekme o eşleşmeleri toplar ve tek bir soruyu sorar: yüksek puan alan coinler gerçekten
+          daha iyi getiri sağladı mı?
+        </p>
+      </GuideSection>
+      <GuideSection title="Nasıl okunur">
+        <p>
+          <strong>Desil grafiği</strong> ana görseldir. Puanlar en düşükten en yükseğe on dilime
+          bölünür ve her dilimin ortalama getirisi çizilir. Puanlama çalışıyorsa çubuklar soldan
+          sağa artmalıdır.
+        </p>
+        <p>
+          Çubukların üstündeki ince çizgiler <strong>güven aralığıdır</strong>. Aralıklar birbirini
+          bolca kesiyorsa fark gürültü olabilir — gerçek bir sinyal değil.
+        </p>
+        <p>
+          <strong>Sıra korelasyonu</strong> puan sıralamasıyla getiri sıralamasının uyumunu tek
+          sayıya indirir. Finansal veride 0,03–0,05 bile anlamlıdır; büyük değerler genellikle bir
+          hata işaretidir.
+        </p>
+      </GuideSection>
+      <GuideSection title="Ne yapabilirim">
+        <p>
+          İlişki düzse ağırlıkları değiştirip yeniden denemeyin — aynı veri üzerinde arama yapmak,
+          sonunda o veriye uyan bir kombinasyon bulmanızı sağlar ve bu bir keşif değil ezberdir.
+          Bunun yerine hipotezi değiştirin ve kilitli döneme dokunmadan yeniden test edin.
+        </p>
+      </GuideSection>
+    </>
+  );
+}
+
 const HORIZONS = [
   { value: "4h", label: "4 saat" },
   { value: "24h", label: "24 saat" },
@@ -47,7 +83,7 @@ const WINDOWS = [
   { value: "730", label: "2 yıl" },
 ];
 
-export default function CalibrationPage() {
+export default function KalibrasyonTab() {
   const [horizon, setHorizon] = useState("24h");
   const [days, setDays] = useState("180");
 
@@ -58,65 +94,26 @@ export default function CalibrationPage() {
   });
 
   return (
-    <Page
-      title="Kalibrasyon"
-      summary="Puanlama gerçekten işe yarıyor mu? Bu sayfa cevabı ölçer ve cevap olumsuz olabilir."
-      actions={
-        <div className="flex flex-wrap items-center gap-3">
-          <span
-            className="flex items-center gap-1"
-            style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}
-          >
-            Ufuk
-            <InfoDot text="Puan hesaplandıktan kaç saat sonraki getiriye bakılacağı." />
-          </span>
-          <Segmented size="sm" value={horizon} onChange={setHorizon} options={HORIZONS} />
-          <span
-            className="flex items-center gap-1"
-            style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}
-          >
-            Pencere
-            <InfoDot text="Kaç günlük gözlem kullanılacağı. Kısa pencere daha güncel ama daha gürültülüdür." />
-          </span>
-          <Segmented size="sm" value={days} onChange={setDays} options={WINDOWS} />
-        </div>
-      }
-      guide={
-        <>
-          <GuideSection title="Ne gösteriyor">
-            <p>
-              Sistem her puanı hesapladığında kaydeder, sonra o coinin ileriki getirisiyle
-              eşleştirir. Bu sayfa o eşleşmeleri toplar ve tek bir soruyu sorar: yüksek puan alan
-              coinler gerçekten daha iyi getiri sağladı mı?
-            </p>
-          </GuideSection>
-          <GuideSection title="Nasıl okunur">
-            <p>
-              <strong>Desil grafiği</strong> ana görseldir. Puanlar en düşükten en yükseğe on
-              dilime bölünür ve her dilimin ortalama getirisi çizilir. Puanlama çalışıyorsa
-              çubuklar soldan sağa artmalıdır.
-            </p>
-            <p>
-              Çubukların üstündeki ince çizgiler <strong>güven aralığıdır</strong>. Aralıklar
-              birbirini bolca kesiyorsa fark gürültü olabilir — gerçek bir sinyal değil.
-            </p>
-            <p>
-              <strong>Sıra korelasyonu</strong> puan sıralamasıyla getiri sıralamasının uyumunu
-              tek sayıya indirir. Finansal veride 0,03–0,05 bile anlamlıdır; büyük değerler
-              genellikle bir hata işaretidir.
-            </p>
-          </GuideSection>
-          <GuideSection title="Ne yapabilirim">
-            <p>
-              İlişki düzse ağırlıkları değiştirip yeniden denemeyin — aynı veri üzerinde arama
-              yapmak, sonunda o veriye uyan bir kombinasyon bulmanızı sağlar ve bu bir keşif
-              değil ezberdir. Bunun yerine hipotezi değiştirin ve kilitli döneme dokunmadan
-              yeniden test edin.
-            </p>
-          </GuideSection>
-        </>
-      }
-    >
+    <>
+      <div className="flex flex-wrap items-center gap-3">
+        <span
+          className="flex items-center gap-1"
+          style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}
+        >
+          Ufuk
+          <InfoDot text="Puan hesaplandıktan kaç saat sonraki getiriye bakılacağı." />
+        </span>
+        <Segmented size="sm" value={horizon} onChange={setHorizon} options={HORIZONS} />
+        <span
+          className="flex items-center gap-1"
+          style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}
+        >
+          Pencere
+          <InfoDot text="Kaç günlük gözlem kullanılacağı. Kısa pencere daha güncel ama daha gürültülüdür." />
+        </span>
+        <Segmented size="sm" value={days} onChange={setDays} options={WINDOWS} />
+      </div>
+
       <Async query={query}>
         {(cal) => (
           <>
@@ -263,7 +260,7 @@ export default function CalibrationPage() {
 
             <IcSeries cal={cal} />
 
-            <Panel title="Bu sayfa neden var">
+            <Panel title="Bu sekme neden var">
               <div className="grid gap-4 md:grid-cols-2">
                 <Explain id="kalibrasyon" />
                 <div className="flex flex-col gap-4">
@@ -275,7 +272,7 @@ export default function CalibrationPage() {
           </>
         )}
       </Async>
-    </Page>
+    </>
   );
 }
 
@@ -284,19 +281,15 @@ export default function CalibrationPage() {
 /* ------------------------------------------------------------------ */
 
 /**
- * Sonucu tek cümleyle, büyük puntoyla söyler.
- *
- * Kullanıcı grafikleri yorumlamak zorunda kalmamalı: sistemin kendi hükmü
- * en üstte durur.
+ * Sonucu tek cümleyle, büyük puntoyla söyler. Kullanıcı grafikleri
+ * yorumlamak zorunda kalmamalı: sistemin kendi hükmü en üstte durur.
  */
 function Verdict({ cal }: { cal: Calibration }) {
   const insufficient = !cal.sufficient;
   const positive = cal.monotonic && (cal.spearman ?? 0) > 0;
 
-  /* Dağılım geneli düz olsa bile sistemin ALDIĞI bölge ayrışıyor olabilir.
-     Başlık yalnızca Spearman'a bakınca gövdedeki kapı cümlesiyle çelişen bir
-     hüküm veriyordu: "öngörü gücü gösteremiyor" yazarken hemen altında
-     "kapının üstü havuzu anlamlı biçimde geçiyor" diyordu. */
+  /* Dağılım geneli düz olsa bile sistemin ALDIĞI bölge ayrışıyor olabilir;
+     başlık yalnızca Spearman'a bakınca kapı cümlesiyle çelişiyordu. */
   const gateWorks =
     cal.gate_n >= 20 &&
     (cal.gate_edge ?? 0) > 0 &&
@@ -398,7 +391,7 @@ function DecileTable({ cal }: { cal: Calibration }) {
       num: true,
       term: "guven_araligi",
       cell: (row) => (
-        <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>
+        <span className="sn-num" style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>
           {pct(row.ci_low, 2)} … {pct(row.ci_high, 2)}
         </span>
       ),
@@ -434,10 +427,8 @@ function DecileTable({ cal }: { cal: Calibration }) {
 /* ------------------------------------------------------------------ */
 
 /**
- * Sıfır ortada; sola negatif, sağa pozitif.
- *
- * Ölçek ±0,10'a sabit: her ailenin kendi ölçeğine göre çizilmesi, 0,002'lik
- * bir katsayıyı 0,08'lik bir katsayı kadar uzun gösterirdi.
+ * Sıfır ortada; sola negatif, sağa pozitif. Ölçek ±0,10'a sabit: her
+ * ailenin kendi ölçeğine göre çizilmesi 0,002'yi 0,08 kadar uzun gösterirdi.
  */
 function FamilyIc({ familyIc }: { familyIc: Record<string, number | null> }) {
   const SCALE = 0.1;
@@ -489,8 +480,7 @@ function FamilyIc({ familyIc }: { familyIc: Record<string, number | null> }) {
 
 /**
  * Spearman ve üst−alt dilim farkı **tüm dağılıma** bakar. Sistem ise
- * yalnızca giriş kapısının üstünü alır; alt dilimleri hiç satın almaz. Bu
- * iki ölçüm farklı şeyler söyleyebilir ve söylüyor da.
+ * yalnızca giriş kapısının üstünü alır; alt dilimleri hiç satın almaz.
  */
 function GateEdge({ cal }: { cal: Calibration }) {
   if (cal.gate === null || cal.gate_n < 20 || cal.gate_edge === null) return null;
@@ -498,8 +488,7 @@ function GateEdge({ cal }: { cal: Calibration }) {
   const edge = cal.gate_edge;
   const t = cal.gate_edge_t;
   /* Karar KÜMELENMİŞ t'ye göre: aynı günün barları aynı piyasa dalgasını
-     paylaşır; ham t bağımsızlık varsayıp ~%70 şişkin çıkıyordu (ölçüldü:
-     2,61 → 1,52). Kümelenmiş değer yoksa ham t'ye düşülür. */
+     paylaşır; ham t bağımsızlık varsayıp şişkin çıkar. */
   const tDaily = cal.gate_edge_t_daily ?? null;
   const tKarar = tDaily ?? t;
   const strong = tKarar !== null && Math.abs(tKarar) >= 2;

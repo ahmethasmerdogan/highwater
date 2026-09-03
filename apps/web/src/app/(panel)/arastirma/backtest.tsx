@@ -1,14 +1,14 @@
 "use client";
 
 /**
- * Backtest — stratejiyi geçmiş veride sınama.
+ * Araştırma › Backtest — stratejiyi geçmiş veride sınama.
  *
- * Bu sayfanın en önemli işi sonucu **güzel göstermek değil, dürüst
- * göstermektir.** Bu yüzden her rapor üç kıyasla birlikte gelir, kırmızı
- * bayraklar gizlenmez ve havuz fotoğrafı olmayan dönemler damgalanır.
+ * Bu sekmenin en önemli işi sonucu **güzel göstermek değil, dürüst
+ * göstermektir.** Her rapor üç kıyasla gelir, kırmızı bayraklar gizlenmez
+ * ve havuz fotoğrafı olmayan dönemler damgalanır.
  *
  * Aynı puanlama ve boyutlandırma kodu çalışır; "backtest sürümü" diye ayrı
- * bir kod yoktur. Değişen tek şey emirlerin nereye gittiğidir.
+ * bir kod yoktur. Seçili koşu URL'de yaşar (`?run=<id>`).
  */
 
 import { useMemo, useState } from "react";
@@ -18,13 +18,14 @@ import {
   type Backtest,
   type BacktestDetail,
   type BacktestResult,
+  type BacktestTrade,
   type Strategy,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { toast } from "@/lib/toast";
 import { dateOnly, dateTime, money, num, pct, pctSigned, relative, rMultiple } from "@/lib/format";
 import { Reveal } from "uicean";
-import { Page, GuideSection } from "@/shell/page";
+import { GuideSection } from "@/shell/page";
 import {
   Alert,
   Async,
@@ -51,6 +52,45 @@ import { CurveChart, type CurveSeries } from "@/design/chart";
 import { DataGrid } from "@/grid/data-grid";
 import { SimpleTable, type SimpleColumn } from "@/grid/simple-table";
 import type { GridColumn } from "@/grid/types";
+
+export const BACKTEST_SUMMARY =
+  "Stratejiyi geçmiş veride çalıştır ve sonucu kıyaslarla karşılaştır.";
+
+export function BacktestGuide() {
+  return (
+    <>
+      <GuideSection title="Ne gösteriyor">
+        <p>
+          Seçtiğiniz strateji sürümü geçmiş barlar üzerinde bar bar yürütülür. Puanlama,
+          boyutlandırma ve risk kodu canlıdakiyle <strong>aynıdır</strong> — değişen tek şey
+          emirlerin gerçek borsa yerine simülasyona gitmesidir.
+        </p>
+      </GuideSection>
+      <GuideSection title="Nasıl okunur">
+        <p>
+          <strong>Bir backtest sonucu bir vaat değildir.</strong> Geçmişte iyi çalışmış olmak
+          gelecekte çalışacağını göstermez ve iyi görünen sonuçların çoğu, farkında olmadan yapılmış
+          arama sonucudur.
+        </p>
+        <p>
+          Bu yüzden her rapor <strong>üç kıyasla</strong> gelir. En önemlisi rastgele portföydür:
+          aynı sıklıkta ama rastgele seçilen coinlerle kurulan portföy. Puanlama onu geçemiyorsa,
+          kazancın kaynağı sıralama değil, sadece sık işlem yapmanın mekanik etkisidir.
+        </p>
+        <p>
+          <strong>Kırmızı bayraklar</strong> sonuç fazla iyi göründüğünde basılır — çok yüksek
+          Sharpe, çok az işlem, sıfıra yakın düşüş. Bunlar neredeyse her zaman hata işaretidir.
+        </p>
+      </GuideSection>
+      <GuideSection title="Ne yapabilirim">
+        <p>
+          Kilitli dönemi ayar denemelerinde kullanmayın; yalnızca son doğrulama için açın. Kaç deneme
+          yaptığınızı kaydedin — kaç kez denendiği bilinmeden sonucun anlamı ölçülemez.
+        </p>
+      </GuideSection>
+    </>
+  );
+}
 
 /** Ölçüt adlarının Türkçe karşılığı ve açıklaması. */
 const SENARYO_ETIKET: Record<string, string> = {
@@ -106,9 +146,15 @@ const METRIC_INFO: Record<string, { label: string; hint: string; format: "pct" |
   total_fees: { label: "Toplam komisyon", hint: "Ödenen komisyonlar.", format: "money" },
 };
 
-export default function BacktestPage() {
+export default function BacktestTab({
+  run,
+  onRun,
+}: {
+  run: number | null;
+  /** Raporu açar (`id`) ya da kapatır (`null`). */
+  onRun: (id: number | null) => void;
+}) {
   const { can } = useAuth();
-  const [selectedId, setSelectedId] = useState<number | null>(null);
 
   const list = useQuery({
     queryKey: ["backtests"],
@@ -117,70 +163,32 @@ export default function BacktestPage() {
   });
 
   return (
-    <Page
-      title="Backtest"
-      summary="Stratejiyi geçmiş veride çalıştır ve sonucu kıyaslarla karşılaştır."
-      guide={
-        <>
-          <GuideSection title="Ne gösteriyor">
-            <p>
-              Seçtiğiniz strateji sürümü geçmiş barlar üzerinde bar bar yürütülür. Puanlama,
-              boyutlandırma ve risk kodu canlıdakiyle <strong>aynıdır</strong> — değişen tek şey
-              emirlerin gerçek borsa yerine simülasyona gitmesidir.
-            </p>
-          </GuideSection>
-          <GuideSection title="Nasıl okunur">
-            <p>
-              <strong>Bir backtest sonucu bir vaat değildir.</strong> Geçmişte iyi çalışmış olmak
-              gelecekte çalışacağını göstermez ve iyi görünen sonuçların çoğu, farkında olmadan
-              yapılmış arama sonucudur.
-            </p>
-            <p>
-              Bu yüzden her rapor <strong>üç kıyasla</strong> gelir. En önemlisi rastgele
-              portföydür: aynı sıklıkta ama rastgele seçilen coinlerle kurulan portföy. Puanlama
-              onu geçemiyorsa, kazancın kaynağı sıralama değil, sadece sık işlem yapmanın mekanik
-              etkisidir.
-            </p>
-            <p>
-              <strong>Kırmızı bayraklar</strong> sonuç fazla iyi göründüğünde basılır — çok yüksek
-              Sharpe, çok az işlem, sıfıra yakın düşüş. Bunlar neredeyse her zaman hata
-              işaretidir.
-            </p>
-          </GuideSection>
-          <GuideSection title="Ne yapabilirim">
-            <p>
-              Kilitli dönemi ayar denemelerinde kullanmayın; yalnızca son doğrulama için açın. Kaç
-              deneme yaptığınızı kaydedin — kaç kez denendiği bilinmeden sonucun anlamı ölçülemez.
-            </p>
-          </GuideSection>
-        </>
-      }
-    >
+    <>
       {can("TRADER") && (
         <Reveal>
-          <NewBacktest onCreated={setSelectedId} />
+          <NewBacktest onCreated={onRun} />
         </Reveal>
       )}
 
       <Reveal delay={80}>
-      <Panel
-        title="Koşular"
-        description="Geçmişteki backtest çalıştırmaları. Bir satıra tıklayınca raporu açılır."
-        padded={false}
-      >
-        <Async
-          query={list}
-          empty={{
-            title: "Henüz backtest yok",
-            hint: "Yukarıdaki formdan bir koşu başlatın. Sonuçlar hazır olduğunda burada listelenir.",
-          }}
+        <Panel
+          title="Koşular"
+          description="Geçmişteki backtest çalıştırmaları. Bir satıra tıklayınca raporu açılır."
+          padded={false}
         >
-          {(rows) => <BacktestList rows={rows} onSelect={setSelectedId} />}
-        </Async>
-      </Panel>
+          <Async
+            query={list}
+            empty={{
+              title: "Henüz backtest yok",
+              hint: "Yukarıdaki formdan bir koşu başlatın. Sonuçlar hazır olduğunda burada listelenir.",
+            }}
+          >
+            {(rows) => <BacktestList rows={rows} onSelect={onRun} />}
+          </Async>
+        </Panel>
       </Reveal>
 
-      {selectedId !== null && <BacktestReport id={selectedId} onClose={() => setSelectedId(null)} />}
+      {run !== null && <BacktestReport id={run} onClose={() => onRun(null)} />}
 
       <Panel title="Neden bu kadar çok uyarı var">
         <div className="grid gap-4 md:grid-cols-2">
@@ -188,7 +196,7 @@ export default function BacktestPage() {
           <Explain id="kirmizi_bayrak" />
         </div>
       </Panel>
-    </Page>
+    </>
   );
 }
 
@@ -381,7 +389,7 @@ function BacktestList({ rows, onSelect }: { rows: Backtest[]; onSelect: (id: num
         cell: (row) => {
           const params = row.params as { start?: string; end?: string };
           return (
-            <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>
+            <span className="sn-num" style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>
               {dateOnly(params.start)} — {dateOnly(params.end)}
             </span>
           );
@@ -414,15 +422,16 @@ function BacktestList({ rows, onSelect }: { rows: Backtest[]; onSelect: (id: num
         id: "duration",
         header: "Süre",
         width: 118,
+        num: true,
         cell: (row) =>
           row.finished_at && row.started_at ? (
-            <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>
-              {num(
+            <NumText
+              size="sm"
+              text={`${num(
                 (new Date(row.finished_at).getTime() - new Date(row.started_at).getTime()) / 1000,
                 0,
-              )}{" "}
-              sn
-            </span>
+              )} sn`}
+            />
           ) : (
             <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}>
               {relative(row.started_at)}
@@ -475,9 +484,8 @@ function BacktestReport({ id, onClose }: { id: number; onClose: () => void }) {
       }
     >
       {query.isError ? (
-        /* Uç 404 dönerse `data` hiç dolmaz; `isError` okunmadığı için kart
-           sonsuza kadar "Yükleniyor…" yazıyordu. Bekleme ile başarısızlık
-           aynı görünmemeli. */
+        /* Uç 404 dönerse `data` hiç dolmaz; bekleme ile başarısızlık aynı
+           görünmemeli. */
         <ErrorBox
           title="Rapor getirilemedi"
           hint="Koşu silinmiş olabilir ya da API'ye ulaşılamıyor."
@@ -583,9 +591,6 @@ function ReportBody({
       )}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {/* `slice(0, 8)` her zaman son iki ölçütü (expectancy_r, total_fees)
-            düşürüyordu; filtre `null` gelenleri de sayıyordu. Izgara zaten
-            4 sütuna sarıyor — kesme yok, yalnızca gerçek sayılar. */}
         {Object.entries(METRIC_INFO)
           .filter(([key]) => typeof result.metrics[key] === "number")
           .map(([key, info]) => {
@@ -719,9 +724,23 @@ function BenchmarkTable({ result }: { result: BacktestResult }) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  İşlem defteri                                                      */
+/* ------------------------------------------------------------------ */
 
-function TradeLedger({ trades }: { trades: Record<string, unknown>[] }) {
-  const columns = useMemo<GridColumn<Record<string, unknown>>[]>(
+function TradeLedger({ trades }: { trades: BacktestTrade[] }) {
+  /* Çıkış sebebi lejantı: defterde geçen her sebep ve kaç kez geçtiği.
+     Yeni bir sebep (ör. LIQUIDATION) çıktığında burada kendiliğinden
+     belirir; `ExitReasonPill` tanımadığı kodu ham basar, gizlemez. */
+  const reasons = useMemo(() => {
+    const tally = new Map<string, number>();
+    trades.forEach((row) => {
+      const reason = String(row.exit_reason ?? "");
+      if (reason) tally.set(reason, (tally.get(reason) ?? 0) + 1);
+    });
+    return [...tally.entries()].sort((a, b) => b[1] - a[1]);
+  }, [trades]);
+
+  const columns = useMemo<GridColumn<BacktestTrade>[]>(
     () => [
       {
         id: "exit_time",
@@ -747,9 +766,21 @@ function TradeLedger({ trades }: { trades: Record<string, unknown>[] }) {
         id: "exit_reason",
         header: "Sebep",
         width: 190,
-        hint: "Pozisyonu ne kapattı: stop, hedef, iz süren stop ya da puan düşüşü.",
+        hint: "Pozisyonu ne kapattı: stop, hedef, iz süren stop, puan düşüşü ya da likidasyon.",
         value: (row) => String(row.exit_reason ?? ""),
         cell: (row) => <ExitReasonPill reason={String(row.exit_reason ?? "")} />,
+      },
+      {
+        id: "leverage",
+        header: "Kaldıraç",
+        width: 96,
+        num: true,
+        hint: "Pozisyonun açıldığı kaldıraç çarpanı. 1 = kaldıraçsız.",
+        value: (row) => asNumber(row.leverage),
+        cell: (row) => {
+          const lev = asNumber(row.leverage);
+          return <NumText text={lev === null ? "—" : `×${num(lev, lev === Math.round(lev) ? 0 : 2)}`} size="sm" />;
+        },
       },
       {
         id: "pnl",
@@ -778,11 +809,18 @@ function TradeLedger({ trades }: { trades: Record<string, unknown>[] }) {
 
   return (
     <div>
-      <div
-        className="mb-2 font-medium"
-        style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}
-      >
-        İşlem defteri
+      <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <span className="font-medium" style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}>
+          İşlem defteri
+        </span>
+        <span className="flex flex-wrap items-center gap-2">
+          {reasons.map(([reason, count]) => (
+            <span key={reason} className="inline-flex items-center gap-1">
+              <ExitReasonPill reason={reason} />
+              <NumText text={num(count, 0)} size="xs" />
+            </span>
+          ))}
+        </span>
       </div>
       <div
         className="overflow-hidden rounded-[var(--sn-r-sm)]"

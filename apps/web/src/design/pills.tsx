@@ -67,9 +67,16 @@ export function BotStatePill({ state, hint = true }: { state: string; hint?: boo
   );
 }
 
+/* Kaldıraçlı paper motorunun yeni çıkış sebebi; `humanize` sözlüğüne
+   girmeden önce burada tanınır ki defterde ham kod basılmasın. */
+const EXTRA_EXIT_LABEL: Record<string, string> = { LIQUIDATION: "likidasyon" };
+const EXTRA_EXIT_HINT: Record<string, string> = {
+  LIQUIDATION: "Kaldıraçlı pozisyonun teminatı tükendi ve pozisyon zorla kapatıldı.",
+};
+
 export function ExitReasonPill({ reason }: { reason: string }) {
   const tone: Tone =
-    reason === "STOP" || reason === "KILL_SWITCH" || reason === "DELIST"
+    reason === "STOP" || reason === "KILL_SWITCH" || reason === "DELIST" || reason === "LIQUIDATION"
       ? "down"
       : reason === "TRAILING" || reason === "BREAKEVEN"
         ? "up"
@@ -77,8 +84,10 @@ export function ExitReasonPill({ reason }: { reason: string }) {
 
   return (
     <span className="inline-flex items-center gap-1">
-      <Tag tone={tone}>{EXIT_REASON_LABEL[reason] ?? reason}</Tag>
-      {EXIT_REASON_HINT[reason] && <InfoDot text={EXIT_REASON_HINT[reason]} />}
+      <Tag tone={tone}>{EXIT_REASON_LABEL[reason] ?? EXTRA_EXIT_LABEL[reason] ?? reason}</Tag>
+      {(EXIT_REASON_HINT[reason] ?? EXTRA_EXIT_HINT[reason]) && (
+        <InfoDot text={EXIT_REASON_HINT[reason] ?? EXTRA_EXIT_HINT[reason]} />
+      )}
     </span>
   );
 }
