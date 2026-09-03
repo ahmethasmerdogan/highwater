@@ -248,7 +248,7 @@ export default function MarathonPage() {
               <SimpleTable
                 rows={siralama.map((r, i) => ({ ...r, sira: i + 1 }))}
                 rowKey={(r) => r.bot.id}
-                columns={SIRALAMA_KOLONLARI(perBot)}
+                columns={SIRALAMA_KOLONLARI(perBot, start)}
               />
             </div>
           )}
@@ -262,7 +262,14 @@ type Satir = { sira: number; bot: Bot; getiri: number | null };
 
 function SIRALAMA_KOLONLARI(
   perBot: Map<number, { islem: number; kazanan: number; toplamR: number }>,
+  start: string | null,
 ): SimpleColumn<Satir>[] {
+  /* Maraton başladıktan sonra kurulan bot, koşuya geç katılmıştır — 30
+     günlük getiriyi 12 günlük getiriyle yan yana koymak dürüst olmaz. */
+  const startMs = start ? new Date(start).getTime() : null;
+  const gecKatilim = (bot: Bot): boolean =>
+    startMs !== null && new Date(bot.created_at).getTime() > startMs;
+
   return [
     {
       header: "#",
@@ -286,6 +293,17 @@ function SIRALAMA_KOLONLARI(
       ),
     },
     { header: "Bar", cell: (r) => <span className="sn-num" style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>{r.bot.timeframe}</span> },
+    {
+      header: "Katılım",
+      cell: (r) =>
+        gecKatilim(r.bot) ? (
+          <span className="sn-num" style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>
+            {dateOnly(r.bot.created_at)}
+          </span>
+        ) : (
+          <span style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}>başlangıç</span>
+        ),
+    },
     {
       header: "Getiri",
       num: true,

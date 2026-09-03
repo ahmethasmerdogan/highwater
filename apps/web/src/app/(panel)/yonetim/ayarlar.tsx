@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Ayarlar — motorun okuduğu parametreler.
+ * Yönetim › Ayarlar — motorun okuduğu parametreler.
  *
  * İki sınıf ayar var ve panel ikisini **karıştırmaz**:
  *
@@ -21,7 +21,7 @@ import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
 import { SETTING_GROUPS, type SettingFieldSpec } from "@/lib/settings-fields";
 import { num } from "@/lib/format";
-import { Page, GuideSection } from "@/shell/page";
+import { GuideSection } from "@/shell/page";
 import { Alert, Async, Button, InfoDot, NumText, Panel, Tag, Term, TextInput } from "@/design";
 import { cx } from "@/design/cx";
 
@@ -33,46 +33,47 @@ interface SettingGroup {
   effective: Record<string, unknown>;
 }
 
-export default function SettingsPage() {
+export const AYARLAR = {
+  summary: "Motorun okuduğu parametreler. Değişiklik bir sonraki döngüde geçerli olur.",
+  guide: (
+    <>
+      <GuideSection title="Ne gösteriyor">
+        <p>
+          Havuzun nasıl kurulacağını belirleyen filtre eşikleri. Her alanın yanında ne işe
+          yaradığı ve yanlış ayarlanırsa ne olacağı yazılıdır.
+        </p>
+      </GuideSection>
+      <GuideSection title="Nasıl okunur">
+        <p>
+          Her alanda üç değer vardır: <strong>varsayılan</strong> (sistemin kendi değeri),{" "}
+          <strong>kayıtlı</strong> (sizin yazdığınız) ve <strong>yürürlükteki</strong> (motorun
+          şu an kullandığı). Kayıtlı bir değer varsa varsayılanı ezer.
+        </p>
+        <p>
+          Bir grup <strong>salt okunur</strong> işaretliyse motor onu okumuyor demektir —
+          değiştirmek hiçbir şeyi değiştirmez, bu yüzden düzenlemeye kapalıdır.
+        </p>
+      </GuideSection>
+      <GuideSection title="Ne yapabilirim">
+        <p>
+          Bir eşiği değiştirdikten sonra Havuz sayfasındaki filtre hunisine bakın:
+          değişikliğin kaç adayı etkilediğini orada görürsünüz. Havuz beklenenden küçük
+          çıkarsa hangi filtrenin fazla agresif olduğu huni raporundan anlaşılır.
+        </p>
+        <p>Risk sınırları burada değil, strateji tanımında durur.</p>
+      </GuideSection>
+    </>
+  ),
+};
+
+export function AyarlarTab() {
   const query = useQuery({
     queryKey: ["settings"],
     queryFn: () => api.get<{ groups: SettingGroup[] }>("/settings"),
   });
 
   return (
-    <Page
-      title="Ayarlar"
-      summary="Motorun okuduğu parametreler. Değişiklik bir sonraki döngüde geçerli olur."
-      guide={
-        <>
-          <GuideSection title="Ne gösteriyor">
-            <p>
-              Havuzun nasıl kurulacağını belirleyen filtre eşikleri. Her alanın yanında ne işe
-              yaradığı ve yanlış ayarlanırsa ne olacağı yazılıdır.
-            </p>
-          </GuideSection>
-          <GuideSection title="Nasıl okunur">
-            <p>
-              Her alanda üç değer vardır: <strong>varsayılan</strong> (sistemin kendi değeri),{" "}
-              <strong>kayıtlı</strong> (sizin yazdığınız) ve <strong>yürürlükteki</strong> (motorun
-              şu an kullandığı). Kayıtlı bir değer varsa varsayılanı ezer.
-            </p>
-            <p>
-              Bir grup <strong>salt okunur</strong> işaretliyse motor onu okumuyor demektir —
-              değiştirmek hiçbir şeyi değiştirmez, bu yüzden düzenlemeye kapalıdır.
-            </p>
-          </GuideSection>
-          <GuideSection title="Ne yapabilirim">
-            <p>
-              Bir eşiği değiştirdikten sonra Havuz sayfasındaki filtre hunisine bakın:
-              değişikliğin kaç adayı etkilediğini orada görürsünüz. Havuz beklenenden küçük
-              çıkarsa hangi filtrenin fazla agresif olduğu huni raporundan anlaşılır.
-            </p>
-            <p>Risk sınırları burada değil, strateji tanımında durur.</p>
-          </GuideSection>
-        </>
-      }
-    >
+    <>
       <Alert tone="warn" title="Dikkat">
         Havuz filtreleri sistemin en sessiz ama en etkili düğmeleridir: bir eşiği yanlış kısmak
         havuzu belirgin biçimde küçültür ve bunu <Term id="huni">huni raporuna</Term> bakılmadıkça
@@ -89,7 +90,7 @@ export default function SettingsPage() {
           </>
         )}
       </Async>
-    </Page>
+    </>
   );
 }
 

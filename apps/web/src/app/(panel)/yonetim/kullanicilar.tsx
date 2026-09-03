@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Kullanıcılar — hesap ve yetki yönetimi.
+ * Yönetim › Kullanıcılar — hesap ve yetki yönetimi.
  *
  * Açık kayıt yoktur; hesaplar yalnızca buradan oluşur. Her yönetimsel işlem
  * denetim kaydına yazılır.
@@ -14,7 +14,7 @@ import { useAuth } from "@/lib/auth";
 import { toast } from "@/lib/toast";
 import { ROLE_HINT, ROLE_LABEL } from "@/lib/humanize";
 import { dateTime, relative } from "@/lib/format";
-import { Page, GuideSection } from "@/shell/page";
+import { GuideSection } from "@/shell/page";
 import {
   Async,
   Button,
@@ -35,7 +35,42 @@ import type { GridColumn } from "@/grid/types";
 
 const ROLES: Role[] = ["ADMIN", "TRADER", "VIEWER"];
 
-export default function UsersPage() {
+export const KULLANICILAR = {
+  summary:
+    "Panel hesapları, yetkileri ve oturumları. Açık kayıt yoktur — hesaplar yalnızca buradan oluşturulur.",
+  guide: (
+    <>
+      <GuideSection title="Ne gösteriyor">
+        <p>
+          Panele erişebilen hesaplar. <strong>Açık kayıt yoktur</strong> — hesaplar yalnızca
+          buradan oluşturulur ve iki adımlı doğrulama zorunludur.
+        </p>
+      </GuideSection>
+      <GuideSection title="Nasıl okunur">
+        <p>
+          <strong>Yönetici</strong> her şeyi yapabilir: kullanıcı yönetimi, ayarlar,
+          entegrasyonlar, acil durdurma.
+        </p>
+        <p>
+          <strong>İşlemci</strong> bot ve strateji yönetir, işlem açar; yönetim sayfalarını
+          göremez.
+        </p>
+        <p>
+          <strong>İzleyici</strong> yalnızca görüntüler, hiçbir şeyi değiştiremez.
+        </p>
+      </GuideSection>
+      <GuideSection title="Ne yapabilirim">
+        <p>
+          Bir hesabın şüpheli kullanıldığını düşünüyorsanız oturumlarını iptal edin; kullanıcı
+          yeniden giriş yapmak zorunda kalır. İki adımlı doğrulamayı sıfırlamak, kullanıcının
+          telefonunu kaybettiği durumlar içindir.
+        </p>
+      </GuideSection>
+    </>
+  ),
+};
+
+export function KullanicilarTab() {
   const [selected, setSelected] = useState<User | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
 
@@ -109,46 +144,16 @@ export default function UsersPage() {
   );
 
   return (
-    <Page
-      title="Kullanıcılar"
-      summary="Panel hesapları, yetkileri ve oturumları. Açık kayıt yoktur — hesaplar yalnızca buradan oluşturulur."
-      actions={
-        <Button size="sm" variant="primary" onClick={() => setCreateOpen(true)}>
-          Yeni kullanıcı
-        </Button>
-      }
-      guide={
-        <>
-          <GuideSection title="Ne gösteriyor">
-            <p>
-              Panele erişebilen hesaplar. <strong>Açık kayıt yoktur</strong> — hesaplar yalnızca
-              buradan oluşturulur ve iki adımlı doğrulama zorunludur.
-            </p>
-          </GuideSection>
-          <GuideSection title="Nasıl okunur">
-            <p>
-              <strong>Yönetici</strong> her şeyi yapabilir: kullanıcı yönetimi, ayarlar,
-              entegrasyonlar, acil durdurma.
-            </p>
-            <p>
-              <strong>İşlemci</strong> bot ve strateji yönetir, işlem açar; yönetim sayfalarını
-              göremez.
-            </p>
-            <p>
-              <strong>İzleyici</strong> yalnızca görüntüler, hiçbir şeyi değiştiremez.
-            </p>
-          </GuideSection>
-          <GuideSection title="Ne yapabilirim">
-            <p>
-              Bir hesabın şüpheli kullanıldığını düşünüyorsanız oturumlarını iptal edin; kullanıcı
-              yeniden giriş yapmak zorunda kalır. İki adımlı doğrulamayı sıfırlamak, kullanıcının
-              telefonunu kaybettiği durumlar içindir.
-            </p>
-          </GuideSection>
-        </>
-      }
-    >
-      <Panel padded={false}>
+    <>
+      <Panel
+        title="Hesaplar"
+        padded={false}
+        actions={
+          <Button size="sm" variant="primary" onClick={() => setCreateOpen(true)}>
+            Yeni kullanıcı
+          </Button>
+        }
+      >
         <Async query={query} empty={{ title: "Kullanıcı yok", hint: "Henüz hiç hesap oluşturulmamış." }}>
           {(rows) => (
             <DataGrid
@@ -190,7 +195,7 @@ export default function UsersPage() {
 
       {selected && <UserDrawer user={selected} onClose={() => setSelected(null)} />}
       <CreateUserModal open={createOpen} onClose={() => setCreateOpen(false)} />
-    </Page>
+    </>
   );
 }
 

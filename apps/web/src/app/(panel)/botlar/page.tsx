@@ -31,8 +31,15 @@ import {
   TextInput,
 Tag } from "@/design";
 import { Sparkline } from "@/design/chart";
+import { Collapsible } from "uicean";
 import { DataGrid } from "@/grid/data-grid";
 import type { GridColumn } from "@/grid/types";
+import { girisYasagiBitis, GirisYasagiPill, KesiciPill } from "./risk";
+
+/** Arşiv: adı "ARŞİV" ile başlayan ya da kesicisiz durdurulmuş bot. */
+function arsivMi(bot: Bot): boolean {
+  return bot.name.startsWith("ARŞİV") || (bot.state === "STOPPED" && !bot.halt_reason);
+}
 
 export default function BotsPage() {
   const { can } = useAuth();
@@ -81,6 +88,8 @@ export default function BotsPage() {
   }, [curves.data]);
 
   const bots = query.data ?? [];
+  const kollar = bots.filter((bot) => !arsivMi(bot));
+  const arsiv = bots.filter(arsivMi);
   const running = bots.filter((bot) => bot.state === "PAPER_RUNNING").length;
   const totalEquity = bots.reduce((sum, bot) => sum + (bot.equity ?? 0), 0);
   const totalCapital = bots.reduce((sum, bot) => sum + bot.capital, 0);
@@ -115,19 +124,26 @@ export default function BotsPage() {
       {
         id: "state",
         header: "Durum",
-        width: 170,
-        hint: "Çalışıyor: karar alır ve pozisyon açabilir. Duraklatıldı: açık pozisyonları yönetir, yeni giriş yapmaz. Kısıtlı: bir devre kesici girişleri kapatmış.",
+        width: 224,
+        hint: "Çalışıyor: karar alır ve pozisyon açabilir. Duraklatıldı: açık pozisyonları yönetir, yeni giriş yapmaz. Kısıtlı: bir devre kesici girişleri kapatmış. Giriş yasağı: kesici cezası sürüyor, saat dolunca kalkar. Kesici: bot bir devre kesici tarafından durduruldu.",
         value: (row) => row.state,
-        cell: (row) => (
-          <span className="flex flex-col gap-0.5">
-            <BotStatePill state={row.state} />
-            {row.halt_reason && (
-              <span style={{ fontSize: "var(--sn-t-micro)", color: "var(--sn-warn)" }}>
-                {row.halt_reason}
-              </span>
-            )}
-          </span>
-        ),
+        cell: (row) => {
+          /* Öncelik: hata → süren giriş yasağı → kesici durdurması → durum. */
+          if (row.state === "ERROR") return <BotStatePill state={row.state} />;
+          const yasak = girisYasagiBitis(row);
+          if (yasak) return <GirisYasagiPill until={yasak} />;
+          if (row.state === "STOPPED" && row.halt_reason) return <KesiciPill reason={row.halt_reason} />;
+          return (
+            <span className="flex flex-col gap-0.5">
+              <BotStatePill state={row.state} />
+              {row.halt_reason && (
+                <span style={{ fontSize: "var(--sn-t-micro)", color: "var(--sn-warn)" }}>
+                  {row.halt_reason}
+                </span>
+              )}
+            </span>
+          );
+        },
       },
       {
         id: "timeframe",
@@ -144,15 +160,15 @@ export default function BotsPage() {
       {
         id: "equity",
         header: "Özsermaye",
-        width: 126,
+        width: 190,
         num: true,
-        hint: "Nakit artı açık pozisyonların güncel karşılığı.",
+        hint: "Nakit artı açık pozisyonların güncel karşılığı. Yanındaki eğri son 40 barın seyri.",
         value: (row) => row.equity,
         cell: (row) => (
           <span className="inline-flex items-center justify-end gap-2">
             <Sparkline
               points={egriler.get(row.id) ?? []}
-              width={54}
+              width={96}
               height={16}
               color={
                 (egriler.get(row.id)?.at(-1) ?? 0) >= (egriler.get(row.id)?.[0] ?? 0)
@@ -315,7 +331,11 @@ export default function BotsPage() {
         </div>
       )}
 
-      <Panel padded={false}>
+      <Panel
+        title="Maraton kolları"
+        description="Koşan, kısıtlı ve durmuş kollar. Arşive kaldırılanlar aşağıda katlıdır."
+        padded={false}
+      >
         <Async
           query={query}
           empty={{
@@ -328,19 +348,46 @@ export default function BotsPage() {
             ) : undefined,
           }}
         >
-          {(list) => (
+          {() => (
             <DataGrid
-              rows={list}
+              rows={kollar}
               columns={columns}
               rowKey={(row) => String(row.id)}
               storageKey="botlar"
               searchPlaceholder="Bot ara…"
               defaultSort={[{ id: "name", desc: false }]}
+              emptyTitle="Koşan kol yok"
+              emptyHint="Tüm botlar arşivde."
               footNote="Botlar sunucuda çalışır. Bu sayfayı kapatmak çalışan bir botu durdurmaz."
             />
           )}
         </Async>
       </Panel>
+
+      {arsiv.length > 0 && (
+        <Panel padded={false}>
+          <Collapsible
+            className="px-3"
+            trigger={
+              <span className="inline-flex items-baseline gap-1">
+                Arşiv (<span className="sn-num">{arsiv.length}</span>)
+              </span>
+            }
+          >
+            <div className="-mx-3">
+              <DataGrid
+                rows={arsiv}
+                columns={columns}
+                rowKey={(row) => String(row.id)}
+                storageKey="botlar-arsiv"
+                searchPlaceholder="Arşivde ara…"
+                defaultSort={[{ id: "name", desc: false }]}
+                density="compact"
+              />
+            </div>
+          </Collapsible>
+        </Panel>
+      )}
 
       <CreateBotModal open={createOpen} onClose={() => setCreateOpen(false)} />
     </Page>

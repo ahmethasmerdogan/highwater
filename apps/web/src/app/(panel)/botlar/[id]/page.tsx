@@ -8,7 +8,9 @@
  */
 
 import Link from "next/link";
-import { use, useMemo, useState } from "react";
+import { Suspense, use, useMemo } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { StatusPill, UnderlineTabs } from "uicean";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Bot, type Position, type Strategy, type Trade } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -41,13 +43,14 @@ import {
   Metric,
   NumText,
   Panel,
-  Segmented,
+  Tag,
   type Tone,
 } from "@/design";
 import { AreaCurve } from "@/design/chart";
 import { DataGrid } from "@/grid/data-grid";
 import { SimpleTable, type SimpleColumn } from "@/grid/simple-table";
 import type { GridColumn } from "@/grid/types";
+import { girisYasagiBitis, GirisYasagiPill, KesiciPill, PAZAR_ETIKET } from "../risk";
 
 interface BotMetricsResponse {
   stats: {
@@ -71,7 +74,13 @@ interface BotEventRow {
   created_at: string;
 }
 
-type Tab = "performans" | "islemler" | "olaylar";
+/* Sekme adres çubuğunda yaşar: `?tab=gidisat|islemler|neden`. */
+type Tab = "gidisat" | "islemler" | "neden";
+const TABS: { id: Tab; label: string }[] = [
+  { id: "gidisat", label: "Nasıl gidiyor" },
+  { id: "islemler", label: "Ne yaptı" },
+  { id: "neden", label: "Neden yaptı" },
+];
 
 const SEVERITY_TONE: Record<Severity, Tone> = {
   error: "down",
@@ -106,12 +115,38 @@ function kritikAyarlar(definition: Record<string, unknown>): [string, string][] 
   return rows.filter((entry): entry is [string, string] => entry[1] !== null);
 }
 
+/*
+ * `useSearchParams` bir Suspense sınırı ister; yoksa derleme sırasında
+ * uyarı verir ve sayfa tamamen istemci tarafına kaçar.
+ */
 export default function BotDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  return (
+    <Suspense
+      fallback={
+        <div className="px-6 py-8" style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink-3)" }}>
+          Yükleniyor…
+        </div>
+      }
+    >
+      <BotDetailContent params={params} />
+    </Suspense>
+  );
+}
+
+function BotDetailContent({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const botId = Number(id);
   const { can } = useAuth();
   const qc = useQueryClient();
-  const [tab, setTab] = useState<Tab>("performans");
+  const search = useSearchParams();
+  const router = useRouter();
+  const requested = search.get("tab");
+  const tab: Tab = TABS.some((entry) => entry.id === requested) ? (requested as Tab) : "gidisat";
+  const setTab = (next: string) => {
+    const query = new URLSearchParams(search.toString());
+    query.set("tab", next);
+    router.replace(`/botlar/${botId}?${query.toString()}`, { scroll: false });
+  };
 
   const bot = useQuery({
     queryKey: ["bot", botId],
@@ -226,7 +261,7 @@ export default function BotDetailPage({ params }: { params: Promise<{ id: string
           style={{ background: "var(--sn-panel)", border: "1px solid var(--sn-hairline)" }}
         >
           <Link
-            href="/stratejiler"
+            href="/arastirma?tab=stratejiler"
             className="hover:underline"
             style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-brand)" }}
           >
@@ -294,18 +329,12 @@ export default function BotDetailPage({ params }: { params: Promise<{ id: string
         />
       </div>
 
-      <Segmented
-        value={tab}
-        onChange={setTab}
-        options={[
-          { value: "performans", label: "Nasıl gidiyor" },
-          { value: "islemler", label: "Ne yaptı" },
-          { value: "olaylar", label: "Neden yaptı" },
-        ]}
-      />
+      <UnderlineTabs items={TABS} value={tab} onChange={setTab} accent="var(--sn-brand)" />
 
-      {tab === "performans" && (
+      {tab === "gidisat" && (
         <>
+          {data && <RiskDurumu bot={data} />}
+
           <Panel title="Özsermaye eğrisi" description="Botun toplam değerinin zaman içindeki seyri.">
             <AreaCurve
               points={curve.map((point) => ({ at: point.at, value: point.equity }))}
@@ -394,8 +423,61 @@ export default function BotDetailPage({ params }: { params: Promise<{ id: string
       )}
 
       {tab === "islemler" && <BotTrades botId={botId} />}
-      {tab === "olaylar" && <BotEvents botId={botId} />}
+      {tab === "neden" && <BotEvents botId={botId} />}
     </Page>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Risk durumu                                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Tek satırlık risk şeridi: kesici, giriş yasağı, yaşam sinyali, pazar.
+ *
+ * Botun "çalışıyor" görünüp alım yapamadığı hâl buradan okunur — durum
+ * rozeti tek başına bunu söylemez.
+ */
+function RiskDurumu({ bot }: { bot: Bot }) {
+  const yasak = girisYasagiBitis(bot);
+  return (
+    <div
+      className="flex flex-wrap items-center gap-2 rounded-[var(--sn-r-md)] px-4 py-2.5"
+      style={{ background: "var(--sn-panel)", border: "1px solid var(--sn-hairline)" }}
+    >
+      <span className="sn-label mr-1">Risk durumu</span>
+      {bot.halt_reason ? (
+        <KesiciPill reason={bot.halt_reason} />
+      ) : (
+        <StatusPill tone="gray" size="sm">
+          kesici yok
+        </StatusPill>
+      )}
+      {yasak ? (
+        <GirisYasagiPill until={yasak} />
+      ) : (
+        <StatusPill tone="gray" size="sm">
+          giriş açık
+        </StatusPill>
+      )}
+      <span
+        className="inline-flex items-center gap-1"
+        style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}
+      >
+        yaşam sinyali
+        <span style={{ color: "var(--sn-ink)", fontVariantNumeric: "tabular-nums" }}>
+          {relative(bot.last_heartbeat_at)}
+        </span>
+      </span>
+      <span className="ml-auto inline-flex items-center gap-1.5">
+        <Tag tone={bot.market === "CRYPTO" ? "neutral" : "info"}>
+          {PAZAR_ETIKET[bot.market] ?? bot.market}
+        </Tag>
+        <Tag tone="neutral" mono>
+          {bot.timeframe}
+        </Tag>
+      </span>
+    </div>
   );
 }
 

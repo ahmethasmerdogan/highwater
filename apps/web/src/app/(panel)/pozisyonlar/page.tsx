@@ -10,8 +10,10 @@
  * tabloda vardır ve gizlenemez.
  */
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
+import { UnderlineTabs } from "uicean";
 import Link from "next/link";
 import {
   api,
@@ -29,12 +31,13 @@ import {
   money,
   num,
   pct,
+  pctSigned,
   price,
   relative,
   rMultiple,
 } from "@/lib/format";
 import { Page, GuideSection } from "@/shell/page";
-import { Panel, Segmented, Tag, Tip } from "@/design/primitives";
+import { Panel, Tag, Tip } from "@/design/primitives";
 import { ExitReasonPill, OrderStatusPill } from "@/design/pills";
 import { ErrorBox } from "@/design/state";
 import { Delta, Metric, NumCell, NumText } from "@/design/numeric";
@@ -45,7 +48,14 @@ import { TradeShareCard } from "@/design/win-card";
 import { DataGrid } from "@/grid/data-grid";
 import type { GridColumn } from "@/grid/types";
 
-type Tab = "acik" | "kapali" | "emirler";
+/* Sekme adres çubuğunda yaşar: `?tab=acik|islemler|emirler`. Başka
+   sayfalar `/pozisyonlar?tab=islemler` diye bağlanır. */
+type Tab = "acik" | "islemler" | "emirler";
+const TABS: { id: Tab; label: string }[] = [
+  { id: "acik", label: "Açık pozisyonlar" },
+  { id: "islemler", label: "Kapanmış işlemler" },
+  { id: "emirler", label: "Emirler" },
+];
 
 /*
  * Boş tablo tek başına "kayıt yok" demez — "veri gelmedi" de olabilir.
@@ -58,8 +68,34 @@ function sorguHatasi(query: SorguDurumu): string {
   return query.error instanceof Error ? query.error.message : String(query.error ?? "");
 }
 
+/*
+ * `useSearchParams` bir Suspense sınırı ister; yoksa derleme sırasında
+ * uyarı verir ve sayfa tamamen istemci tarafına kaçar.
+ */
 export default function PositionsPage() {
-  const [tab, setTab] = useState<Tab>("acik");
+  return (
+    <Suspense
+      fallback={
+        <div className="px-6 py-8" style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink-3)" }}>
+          Yükleniyor…
+        </div>
+      }
+    >
+      <PositionsContent />
+    </Suspense>
+  );
+}
+
+function PositionsContent() {
+  const search = useSearchParams();
+  const router = useRouter();
+  const requested = search.get("tab");
+  const tab: Tab = TABS.some((entry) => entry.id === requested) ? (requested as Tab) : "acik";
+  const setTab = (next: string) => {
+    const query = new URLSearchParams(search.toString());
+    query.set("tab", next);
+    router.replace(`/pozisyonlar?${query.toString()}`, { scroll: false });
+  };
 
   const open = useQuery({
     queryKey: ["positions", "open"],
@@ -124,18 +160,10 @@ export default function PositionsPage() {
     >
       <CostPanel />
 
-      <Segmented
-        value={tab}
-        onChange={setTab}
-        options={[
-          { value: "acik", label: "Açık pozisyonlar", count: open.data?.length },
-          { value: "kapali", label: "Kapanmış işlemler", count: trades.data?.length },
-          { value: "emirler", label: "Emirler", count: orders.data?.length },
-        ]}
-      />
+      <UnderlineTabs items={TABS} value={tab} onChange={setTab} accent="var(--sn-brand)" />
 
       {tab === "acik" && <OpenPositions rows={open.data ?? []} query={open} botlar={botlar} />}
-      {tab === "kapali" && <ClosedTrades rows={trades.data ?? []} query={trades} />}
+      {tab === "islemler" && <ClosedTrades rows={trades.data ?? []} query={trades} />}
       {tab === "emirler" && <Orders rows={orders.data ?? []} query={orders} />}
     </Page>
   );
@@ -244,7 +272,9 @@ function OpenPositions({
               {row.symbol}
             </span>
             {row.leverage > 1 && (
-              <Tag tone="brand" mono>{`${num(row.leverage, 0)}×`}</Tag>
+              <Tag tone="brand">
+                kaldıraç <span className="sn-num">{`${num(row.leverage, 0)}×`}</span>
+              </Tag>
             )}
           </span>
         ),
@@ -305,6 +335,23 @@ function OpenPositions({
             <NumCell value={row.stop} text={price(row.stop)} tint={false} />
           </span>
         ),
+      },
+      {
+        id: "stop_distance",
+        header: "Stop mesafesi",
+        width: 136,
+        num: true,
+        hint: "Güncel fiyatın stopa uzaklığı: (güncel − stop) / güncel. Sıfıra yaklaştıkça pozisyon stopa yakındır; eksi değer fiyatın stopun altına indiğini gösterir. Çubuk %10'da dolar.",
+        value: (row) => stopMesafesi(row),
+        cell: (row) => {
+          const mesafe = stopMesafesi(row);
+          return (
+            <span className="inline-flex items-center gap-2">
+              <Bar value={mesafe === null ? null : Math.abs(mesafe) * 100} max={10} width={26} height={3} />
+              <NumCell value={mesafe} text={pctSigned(mesafe)} size="sm" />
+            </span>
+          );
+        },
       },
       {
         id: "risk",
@@ -545,7 +592,7 @@ function GirisGerekcesi({ rationaleId, symbol }: { rationaleId: number | null; s
           <ScoreCard rationale={q.data.rationale} compact />
           <div className="mt-2">
             <Link
-              href={`/puanlar?symbol=${symbol}`}
+              href={`/piyasa?sembol=${symbol}`}
               style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-brand)" }}
             >
               Puanlar sayfasında aç →
@@ -571,6 +618,13 @@ function openRisk(position: Position): number | null {
   if (!Number.isFinite(position.qty) || !Number.isFinite(position.stop)) return null;
   const reference = position.last_price ?? position.entry_price;
   return (reference - position.stop) * position.qty;
+}
+
+/** Güncel fiyatın stopa oransal uzaklığı: (güncel − stop) / güncel. */
+function stopMesafesi(position: Position): number | null {
+  const last = position.last_price;
+  if (last === null || !Number.isFinite(last) || last <= 0 || !Number.isFinite(position.stop)) return null;
+  return (last - position.stop) / last;
 }
 
 /* ------------------------------------------------------------------ */

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Hesap — kendi kullanıcı bilgileri ve arayüz tercihleri.
+ * Yönetim › Hesap — kendi kullanıcı bilgileri ve arayüz tercihleri.
  *
  * Yetki burada değiştirilemez; kendi yetkisini yükseltebilen bir kullanıcı
  * yetki sisteminin kendisini anlamsız kılar. Değişiklik için yöneticiye
@@ -11,7 +11,6 @@
 import { useAuth } from "@/lib/auth";
 import { ROLE_HINT, ROLE_LABEL } from "@/lib/humanize";
 import { dateTime, relative } from "@/lib/format";
-import { Page } from "@/shell/page";
 import {
   Button,
   Field,
@@ -34,14 +33,19 @@ const THEMES: { id: ThemeMode; label: string; hint: string }[] = [
   },
 ];
 
-export default function AccountPage() {
+export const HESAP = {
+  summary: "Kimlik bilgileriniz, yetkiniz ve arayüz tercihleriniz.",
+  guide: null,
+};
+
+export function HesapTab() {
   const { user, logout } = useAuth();
   const { mode, setMode } = useTheme();
 
   if (!user) return null;
 
   return (
-    <Page title="Hesabım" summary="Kimlik bilgileriniz, yetkiniz ve arayüz tercihleriniz.">
+    <>
       <Panel title="Kimlik">
         <div className="flex flex-col">
           <Field label="Görünen ad" value={user.display_name || "—"} />
@@ -145,6 +149,6 @@ export default function AccountPage() {
           </span>
         </div>
       </Panel>
-    </Page>
+    </>
   );
 }
