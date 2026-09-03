@@ -415,7 +415,7 @@ export default function TerminalPage() {
         setCommand("");
         break;
       case "backtest":
-        router.push("/backtest");
+        router.push("/arastirma?tab=backtest");
         break;
       case "kill":
         if (
