@@ -110,7 +110,11 @@ async def load_open_positions(session: AsyncSession, bot_id: int) -> list[OpenPo
 
 
 async def consecutive_losses(
-    session: AsyncSession, bot_id: int, limit: int = 20, strategy_version_id: int | None = None
+    session: AsyncSession,
+    bot_id: int,
+    limit: int = 20,
+    strategy_version_id: int | None = None,
+    since: datetime | None = None,
 ) -> int:
     """Son kapanan işlemlerden geriye doğru kaç tanesi zararla kapandı?
 
@@ -123,6 +127,12 @@ async def consecutive_losses(
     stmt = select(Trade.pnl).where(Trade.bot_id == bot_id)
     if strategy_version_id is not None:
         stmt = stmt.where(Trade.strategy_version_id == strategy_version_id)
+    if since is not None:
+        # Çekilmiş ceza SERİYİ AFFEDER: blokaj süresi dolduktan sonra sayaç
+        # blokaj anından sonraki işlemlerle başlar. Aksi hâlde 6 saatlik
+        # duraklatma biter bitmez aynı eski seri kesiciyi yeniden tetikler ve
+        # bot bir daha hiç işlem yapamazdı (sürüm-değişimi affı ile aynı ilke).
+        stmt = stmt.where(Trade.exit_time > since)
     rows = (await session.execute(stmt.order_by(Trade.exit_time.desc()).limit(limit))).scalars()
     streak = 0
     for pnl in rows:
@@ -133,16 +143,28 @@ async def consecutive_losses(
     return streak
 
 
-async def equity_at(session: AsyncSession, bot_id: int, moment: datetime, fallback: float) -> float:
-    """`moment` anındaki (veya öncesindeki son) özsermaye."""
-    value = (
-        await session.execute(
-            select(EquityPoint.equity)
-            .where(EquityPoint.bot_id == bot_id, EquityPoint.at <= moment)
-            .order_by(EquityPoint.at.desc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
+async def equity_at(
+    session: AsyncSession,
+    bot_id: int,
+    moment: datetime,
+    fallback: float,
+    not_before: datetime | None = None,
+) -> float:
+    """`moment` anındaki (veya öncesindeki son) özsermaye.
+
+    `not_before`: sermaye re-base'inden ÖNCEKİ noktalar farklı taban
+    cinsindendir ve çapa olamaz — süzülür, bulunamazsa `fallback` (yeni
+    sermaye) döner.
+    """
+    stmt = (
+        select(EquityPoint.equity)
+        .where(EquityPoint.bot_id == bot_id, EquityPoint.at <= moment)
+        .order_by(EquityPoint.at.desc())
+        .limit(1)
+    )
+    if not_before is not None:
+        stmt = stmt.where(EquityPoint.at > not_before)
+    value = (await session.execute(stmt)).scalar_one_or_none()
     return float(value) if value is not None else fallback
 
 
@@ -173,15 +195,21 @@ async def load_snapshot(
     rebase_at = datetime.fromisoformat(rebase_raw) if rebase_raw else None
 
     async def _anchor(moment: datetime) -> float:
-        # Çapa re-base'in gerisindeyse dürüst taban yeni sermayenin kendisidir.
+        # Çapa re-base'in gerisindeyse dürüst taban yeni sermayenin kendisidir;
+        # ilerisindeyse de re-base ÖNCESİ noktalar (eski taban) süzülür.
         if rebase_at is not None and moment <= rebase_at:
             return float(bot.capital)
-        return await equity_at(session, bot.id, moment, float(bot.capital))
+        return await equity_at(
+            session, bot.id, moment, float(bot.capital), not_before=rebase_at
+        )
 
     snapshot.equity_start_of_day = await _anchor(day_start)
     snapshot.equity_start_of_week = await _anchor(week_start)
     snapshot.consecutive_losses = await consecutive_losses(
-        session, bot.id, strategy_version_id=bot.strategy_version_id
+        session,
+        bot.id,
+        strategy_version_id=bot.strategy_version_id,
+        since=bot.entries_blocked_until,
     )
     return snapshot
 

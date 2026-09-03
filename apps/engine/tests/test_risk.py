@@ -316,3 +316,72 @@ async def test_rebase_sonrasi_hafta_capasi_yeni_sermayedir(api_session):
     temiz = await load_snapshot(api_session, bot, {}, now=now)
     assert temiz.equity_start_of_week == 400.0
     assert temiz.equity_start_of_day == 400.0
+
+
+def test_blok_surerken_kesici_yeniden_tetiklenmez():
+    """Bot 4'te yaşandı: her karar barı CONSECUTIVE_LOSSES'ı yeniden tetikleyip
+    blokajı ileri kaydırıyordu — 6 saatlik duraklatma sonsuz kilide dönüştü.
+    Blok sürerken blok veren kesiciler susar; giriş mevcut-yasak yoluyla kapalı
+    kalır."""
+    now = datetime(2026, 9, 3, 2, 0, tzinfo=UTC)
+    state = RiskState(
+        equity=380.0,
+        equity_start_of_day=400.0,  # −%5: günlük limit de aşık
+        equity_start_of_week=400.0,
+        equity_peak=400.0,
+        consecutive_losses=9,
+        entries_blocked_until=now + timedelta(hours=5),
+    )
+    verdict = RiskEngine().evaluate(state, now)
+    assert not verdict.allow_entry, "blok sürerken giriş kapalı kalmalı"
+    tetikler = {str(t.breaker) for t in verdict.trips}
+    assert "CircuitBreaker.CONSECUTIVE_LOSSES" not in tetikler
+    assert "CircuitBreaker.DAILY_LOSS" not in tetikler
+
+    # Blok dolduktan sonra: seri affedilmişse (0) giriş açılır.
+    sonra = now + timedelta(hours=6)
+    temiz = RiskState(
+        equity=380.0,
+        equity_start_of_day=380.0,
+        equity_start_of_week=400.0,
+        equity_peak=400.0,
+        consecutive_losses=0,  # affetme: bloktan sonra işlem yok
+        entries_blocked_until=state.entries_blocked_until,
+    )
+    v2 = RiskEngine().evaluate(temiz, sonra)
+    assert v2.allow_entry, "ceza çekildi + seri affedildi → sonda bir deneme hakkı"
+
+
+@pytest.mark.asyncio
+async def test_ardisik_zarar_serisi_blokajdan_sonra_sayilir(api_session):
+    """`since` verildiğinde eski kayıplar seriye girmez — çekilen ceza affeder."""
+    from decimal import Decimal
+
+    from sarnic.bots.portfolio import consecutive_losses
+    from sarnic.db.models import Position, Trade
+    from tests.test_api import make_bot
+
+    bot, _ = await make_bot(api_session, "af-test")
+    blok = datetime(2026, 9, 3, 7, 30, tzinfo=UTC)
+    for i in range(6):  # blokajdan ÖNCE 6 zarar
+        poz = Position(
+            bot_id=bot.id, symbol="XUSDT", qty=Decimal("1"),
+            entry_price=Decimal("1"), entry_time=blok - timedelta(hours=7 - i),
+            stop=Decimal("0.9"), initial_stop=Decimal("0.9"), status="CLOSED",
+        )
+        api_session.add(poz)
+        await api_session.flush()
+        api_session.add(
+            Trade(
+                position_id=poz.id, bot_id=bot.id, symbol="XUSDT",
+                exit_price=Decimal("1"), exit_time=blok - timedelta(hours=6 - i),
+                exit_reason="STOP", pnl=Decimal("-5"), pnl_r=Decimal("-1"),
+                fees=Decimal("0"), slippage_bps=Decimal("0"),
+                mfe=Decimal("0"), mae=Decimal("-1"), hold_hours=Decimal("1"),
+                strategy_version_id=bot.strategy_version_id,
+            )
+        )
+    await api_session.flush()
+
+    assert await consecutive_losses(api_session, bot.id) == 6
+    assert await consecutive_losses(api_session, bot.id, since=blok) == 0
