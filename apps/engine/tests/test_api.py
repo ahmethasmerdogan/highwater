@@ -912,3 +912,29 @@ async def test_bot_patch_rejects_unknown_field(api_client, auth, api_session):
     response = await api_client.patch(f"/bots/{bot.id}", json={"timeframe": "4h"}, headers=auth)
 
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_attention_giris_yasagini_ve_akislari_listeler(api_client, api_session, auth):
+    """/system/status bot 4 yasaktayken 'alarm 0' diyordu. Dikkat ucu yasağı
+    listeler, üç pazar akışını raporlar ve filo sayacını verir."""
+    from datetime import UTC, datetime, timedelta
+
+    bot, _ = await make_bot(api_session, "yasakli")
+    bot.entries_blocked_until = datetime.now(UTC) + timedelta(hours=5)
+    bot.last_heartbeat_at = datetime.now(UTC)
+    await api_session.flush()
+
+    res = await api_client.get("/system/attention", headers=auth)
+    assert res.status_code == 200, res.text
+    body = res.json()
+    kinds = {i["kind"] for i in body["items"]}
+    assert "entries_blocked" in kinds
+    assert [f["market"] for f in body["feeds"]] == ["CRYPTO", "BIST", "US"]
+    assert body["fleet"]["blocked"] == 1 and body["fleet"]["running"] == 1
+    # Seviye sırası: CRITICAL önce (boş depoda kripto akışı 'bayat' → CRITICAL başta).
+    seviyeler = [i["level"] for i in body["items"]]
+    assert seviyeler == sorted(seviyeler, key={"CRITICAL": 0, "WARN": 1, "INFO": 2}.get)
+
+    tek = (await api_client.get(f"/bots/{bot.id}", headers=auth)).json()
+    assert tek.get("entries_blocked_until"), tek

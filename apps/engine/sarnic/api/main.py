@@ -18,7 +18,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_
 from sqlalchemy import select, text, update
 from starlette.responses import Response
 
-from sarnic.api.deps import RedisDep, SessionDep, close_redis, get_redis
+from sarnic.api.deps import CurrentUser, RedisDep, SessionDep, close_redis, get_redis
 from sarnic.api.routes import admin, auth, bots, portfolio, scores, social, strategies, symbols
 from sarnic.api.routes import universe as universe_routes
 from sarnic.api.ws import hub
@@ -28,7 +28,7 @@ from sarnic.core.enums import BotState
 from sarnic.core.logging import configure_logging, get_logger
 from sarnic.core.observability import init_sentry
 from sarnic.data.marketdata import data_is_stale
-from sarnic.db.models import Backtest, Bot, UniverseSnapshot
+from sarnic.db.models import OHLCV, Backtest, Bot, Notification, UniverseSnapshot
 from sarnic.db.session import dispose_engine, get_sessionmaker
 
 log = get_logger(__name__)
@@ -182,6 +182,188 @@ def create_app() -> FastAPI:
                 if stale
                 else "Piyasa verisi akıyor."
             ),
+        }
+
+    @app.get("/system/attention", tags=["system"])
+    async def system_attention(session: SessionDep, redis: RedisDep, user: CurrentUser) -> dict:
+        """Tek dikkat yüzeyi: "sistem sağlıklı mı, benden bir şey istiyor mu?"
+
+        /system/status bot 4 giriş yasağındayken "alarm 0" diyordu — alarm
+        sayacı yalnız ERROR/DEGRADED sayıyordu. Dikkat isteyen her şey burada
+        tek listede: kesici durdurmaları, giriş yasakları, nabızsız worker,
+        bayat akış, seansı eksik pazar, okunmamış kritik bildirim. Panel bu
+        listeyi aynen gösterir; ayrıca sayaç türetmez (tek kaynak).
+        """
+        from sarnic.core.calendar import ExchangeSessionCalendar, calendar_for
+        from sarnic.core.markets import BIST, US
+
+        now = datetime.now(UTC)
+        items: list[dict] = []
+
+        def ekle(level: str, kind: str, title: str, detail: str, href: str, **extra) -> None:
+            items.append(
+                {
+                    "id": f"{kind}:{extra.get('bot_id', extra.get('market', ''))}",
+                    "level": level,
+                    "kind": kind,
+                    "title": title,
+                    "detail": detail,
+                    "href": href,
+                    **extra,
+                }
+            )
+
+        bots = (await session.execute(select(Bot))).scalars().all()
+        blocked = halted = 0
+        for b in bots:
+            kosuyor = b.state in (BotState.PAPER_RUNNING, BotState.DEGRADED)
+            if b.state == BotState.ERROR:
+                ekle(
+                    "CRITICAL",
+                    "bot_error",
+                    f"{b.name} hata verdi",
+                    b.halt_reason or "sebep kaydedilmedi",
+                    f"/botlar/{b.id}",
+                    bot_id=b.id,
+                )
+            elif b.state == BotState.DEGRADED:
+                ekle(
+                    "WARN",
+                    "bot_degraded",
+                    f"{b.name} DEGRADED",
+                    "API hata oranı yüksek — girişler kısıtlı.",
+                    f"/botlar/{b.id}",
+                    bot_id=b.id,
+                )
+            elif b.state == BotState.STOPPED and b.halt_reason:
+                halted += 1
+                ekle(
+                    "WARN",
+                    "bot_halted",
+                    f"{b.name} kesiciyle durdu",
+                    f"{b.halt_reason} — elle yeniden başlatma gerekiyor.",
+                    f"/botlar/{b.id}",
+                    bot_id=b.id,
+                )
+            if kosuyor and b.entries_blocked_until is not None and b.entries_blocked_until > now:
+                blocked += 1
+                kalan = int((b.entries_blocked_until - now).total_seconds() // 60)
+                ekle(
+                    "WARN",
+                    "entries_blocked",
+                    f"{b.name} giriş yasağında",
+                    f"{kalan} dk daha yeni giriş yok; açık pozisyonlar yönetiliyor.",
+                    f"/botlar/{b.id}",
+                    bot_id=b.id,
+                    until=b.entries_blocked_until.isoformat(),
+                )
+            if kosuyor and (
+                b.last_heartbeat_at is None or (now - b.last_heartbeat_at).total_seconds() > 90
+            ):
+                ekle(
+                    "CRITICAL",
+                    "no_heartbeat",
+                    f"{b.name} nabız vermiyor",
+                    "Worker 90 sn'dir yazmadı — süpervizör yeniden başlatır; "
+                    "sürerse servise bakın.",
+                    f"/botlar/{b.id}",
+                    bot_id=b.id,
+                )
+
+        try:
+            stale = await data_is_stale(redis)
+        except Exception:
+            stale = True
+        if stale:
+            ekle(
+                "CRITICAL",
+                "market_data_stale",
+                "Kripto akışı bayat",
+                "Marketdata nabız vermiyor; yeni emir gönderilmiyor, stoplar aktif.",
+                "/gunluk?tab=kalite",
+                market="CRYPTO",
+            )
+
+        # Pazar akışları — referans sembolün son barı (ucuz nokta sorgusu).
+        feeds: list[dict] = []
+        for market, symbol, tf, expected in (
+            ("CRYPTO", "BTCUSDT", "1h", 2 * 3600),
+            ("BIST", "THYAO.IS", "1d", None),
+            ("US", "AAPL.US", "1d", None),
+        ):
+            son = (
+                await session.execute(
+                    select(OHLCV.open_time)
+                    .where(OHLCV.symbol == symbol, OHLCV.timeframe == tf)
+                    .order_by(OHLCV.open_time.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            age = (now - son).total_seconds() if son else None
+            if expected is not None:
+                ok = age is not None and age <= expected
+                detail = "son 1h barı beklenen aralıkta." if ok else "son bar 2 saatten eski."
+            else:
+                cal = calendar_for((BIST if market == "BIST" else US).calendar)
+                assert isinstance(cal, ExchangeSessionCalendar)
+                beklenen = cal.last_closed_session(now)
+                ok = son is not None and beklenen is not None and son >= beklenen
+                detail = (
+                    "son kapanan seans depoda."
+                    if ok
+                    else "beklenen seans "
+                    f"{beklenen.date().isoformat() if beklenen else '—'} henüz gelmedi."
+                )
+            feeds.append(
+                {
+                    "market": market,
+                    "symbol": symbol,
+                    "timeframe": tf,
+                    "last_bar_at": son.isoformat() if son else None,
+                    "age_seconds": age,
+                    "ok": ok,
+                    "detail": detail,
+                }
+            )
+            if not ok and market != "CRYPTO":
+                ekle(
+                    "WARN",
+                    "feed_lagging",
+                    f"{market} seansı eksik",
+                    detail,
+                    "/gunluk?tab=kalite",
+                    market=market,
+                )
+
+        kritik = (
+            (
+                await session.execute(
+                    select(Notification).where(
+                        Notification.read_at.is_(None),
+                        Notification.level.in_(("ERROR", "CRITICAL")),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if kritik:
+            ekle(
+                "INFO",
+                "unread_critical",
+                f"{len(kritik)} okunmamış kritik bildirim",
+                kritik[0].title,
+                "/gunluk?tab=bildirimler",
+            )
+
+        sira = {"CRITICAL": 0, "WARN": 1, "INFO": 2}
+        items.sort(key=lambda i: sira[i["level"]])
+        running = sum(1 for b in bots if b.state in (BotState.PAPER_RUNNING, BotState.DEGRADED))
+        return {
+            "at": now.isoformat(),
+            "items": items,
+            "feeds": feeds,
+            "fleet": {"running": running, "total": len(bots), "blocked": blocked, "halted": halted},
         }
 
     @app.get("/system/marathon", tags=["system"])
