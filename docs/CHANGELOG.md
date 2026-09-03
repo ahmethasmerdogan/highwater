@@ -1827,3 +1827,20 @@ ADP.US (R 2,63) ve MSFT.US (R 2,10), ikisi de %1,1 risk. Sahte WEEKLY_LOSS
 tetiğinin bıraktığı 24 saatlik giriş blokajı da temizlendi — bot 5 CRVUSDT
 ile maratonun ilk kripto pozisyonunu açtı. Maraton 3 açık pozisyonla,
 9/9 bot koşarak gece yarısını geçti.
+
+## 2026-09-03 — İlk komutsuz 48 saat: sistem ayakta, kesici mekaniği onarıldı
+
+İlk 48 saatin karnesi: sıfır servis çökmesi, sıfır deadman, sıfır OOM;
+20 maraton işlemi, 11 açık pozisyon; deadman/bellek-tavanı/linger zırhı
+hiç devreye girmeden bekledi. Çıkış parametre taraması (6 varyant,
+ön-kayıtlı kural) DONUK KALIR dedi — gerekçe MEYDAN-OKUMA'da.
+
+Koşunun kendisi iki mekanik hatayı açığa çıkardı, ikisi de düzeltildi:
+(1) blok veren kesiciler her karar barında yeniden tetiklenip blokajı ileri
+kaydırıyordu — bot 4'ün 6 saatlik "duraklatması" sonsuz kilide dönmüştü;
+artık blok sürerken kesici susar ve çekilen ceza seriyi affeder (blokajdan
+sonraki işlemlerden sayılır). (2) İş Yatırım'ın damla damla yayını yüzünden
+tek sembol gelmişken seans "tazelendi" işaretleniyordu — 2 Eylül BIST barı
+19/57 sembolle terk edilmişti; bekçi artık worker'la aynı nisabı (%60, ≥10)
+arar. Ayrıca rebase çapası re-base öncesi özsermaye noktalarını artık hangi
+günden bakılırsa bakılsın süzer (not_before).

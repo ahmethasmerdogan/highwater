@@ -1161,3 +1161,66 @@ olduğu kadar 9 kollu bir A/B'dir: taban / seçici / trend / 15m / 30m / 4h
 / G8-kaldıraç / BIST-1d / ABD-1d. Meta tek kaynakta (`settings.marathon`),
 hakem /maraton sayfası. Eski işlem geçmişi silinmedi; maraton ölçümü
 başlangıç damgasıyla süzülür.
+
+## ÇIKIŞ TARAMASI ÖN-KAYDI — 2026-09-01 02:20 (TR), sonuçlar GÖRÜLMEDEN
+
+Canlı defter (temiz pencere ≥15 Ağu, bot 1–6, 206 işlem, ort +0,49R):
+
+| çıkış | n | ortR | tepeR | geri veriş |
+|---|---|---|---|---|
+| STOP | 69 | −1,13 | +0,31 | 1,44 |
+| SCORE | 60 | +1,43 | +2,38 | 0,95 |
+| TRAILING | 54 | +1,52 | +2,93 | 1,41 |
+| BREAKEVEN | 17 | +0,04 | +1,44 | 1,40 |
+
+İki sızıntı aynı yöne işaret ediyor: iz (trail) çok gevşek — trailing tepeden
+1,41R geri veriyor; BE işlemleri +1,44R tepe görüp sıfıra dönüyor. Tarama:
+kontrol (3,5) + trail 3,0 / 2,5 / 2,0 (doz-cevap ekseni) + be 0,7 + kombine
+(trail 2,5 · be 0,7). Pencere 15–31 Ağu, aynı kod yolu, base maliyet.
+
+**Karar kuralı (önceden bağlayıcı):** Bir varyant ancak ŞU ÜÇÜ BİRDEN
+sağlarsa uygulanır: (1) beklenti_R kontrolden ≥ +0,05R iyi; (2) maks düşüş
+kontrolün 1,2 katını aşmaz; (3) trail ekseninde doz-cevap tutarlı (3,5→2,0
+boyunca zikzak yapmaz). Kazanan yalnız AYNI çıkış ailesini taşıyan bot
+1–6'ya uygulanır; 11 (G8) ve 12/13 (1d) DOKUNULMAZ. Hiçbiri geçemezse
+parametreler DONUK kalır ve bu da sonuçtur. Not: tarama tabanı kapı 75,2
+kullanır (canlı 77–80) — istatistik zemini için; ölçülen boyut çıkıştır.
+
+## KANIT TAZELEMESİ — 2026-09-01 02:45 (TR), maraton öncesi son bakış
+
+1. **Kapı kanıtı değişmedi.** Temiz pencerede (15–31 Ağu, 1h) puan dilimine
+   göre naif 24 saat ileri getiri: p<60 → +%0,88 · p60-75 → +%1,29 ·
+   p75-80 → +%0,92 · **p80+ → −%0,16** (n=332, σ %10,6). Örtüşen pencereler
+   ve gün kümelenmesi düzeltilmemiş naif bakış bile kapıda kenar
+   göstermiyor; en uç dilim hafif ters. Sekiz çürütülmüş hipotezle tutarlı —
+   kapı/ağırlık DONUK kalır, bu tablo eylem çağrısı DEĞİLDİR (aynı tuzak).
+2. **TIME çıkışları gözlemi (eylemsiz).** 72 saat dolunca kapanan 3 işlem
+   ortalama +3,53R ile kapandı (tepe +3,76R) — zaman tavanı kazananları
+   biçiyor OLABİLİR ama n=3'le hiçbir şey söylenmez. Maraton verisi büyüsün;
+   ölçüm sorusu olarak kayıtlı.
+3. **STOP maliyeti.** Ortalama STOP −1,13R (teorik −1,0R): 0,13R kayma +
+   boşluk gerçeği. `stop_fill_price` dürüstlüğüyle tutarlı; sızıntı değil,
+   piyasa maliyeti.
+
+## ÇIKIŞ TARAMASI SONUCU — 2026-09-03: DONUK KALIR
+
+Altı varyant, 15–31 Ağu, 110 sembol, base maliyet (işlem/isabet/ortR/net/düşüş/pf):
+
+| varyant | işlem | isabet | ortR | net | düşüş | pf |
+|---|---|---|---|---|---|---|
+| kontrol (3,5 · 1,0) | 26 | %42 | +0,79 | +%8,8 | %2,6 | 3,10 |
+| trail 3,0 | 34 | %44 | +0,53 | +%5,4 | %3,4 | 1,95 |
+| trail 2,5 | 28 | %46 | +0,55 | +%5,1 | %1,9 | 2,18 |
+| trail 2,0 | 26 | %54 | +0,87 | +%6,6 | %1,9 | 3,23 |
+| be 0,7 | 26 | %42 | +0,79 | +%8,8 | %2,6 | 3,10 |
+| kombine | 36 | %47 | +0,46 | +%4,4 | %3,9 | 1,73 |
+
+Ön-kayıtlı kural karar verdi: **hiçbir değişiklik uygulanmaz.** (1) Yalnız
+trail 2,0 beklenti eşiğini geçti (+0,087R) ama (3) doz-cevap U-şekilli
+(3,5→3,0→2,5→2,0: 0,79→0,53→0,55→0,87) — orta değerler iki uçtan kötü;
+26-36 işlemlik örneklemde bu, gürültü imzasıdır. Kontrol net getiride
+zaten birinci; be 0,7 kontrole BİREBİR eş çıktı (parametre bu pencerede
+hiç devreye girmemiş). Canlı defterdeki geri-veriş sızıntısı gerçek ama
+bu pencere/örneklemle hangi sıkılığın doğru olduğu ayırt edilemiyor.
+Maraton 30 günlük veri üretsin; soru tekrar açılabilir. Donmuş kalmak
+da bir ölçüm sonucudur.
