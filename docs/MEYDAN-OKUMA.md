@@ -1275,3 +1275,55 @@ aynen. Ayrıca kontrol holdout'ta yalnız 3 işlem üretti: 17 günlük pencered
 %30 holdout ≈ 5 gün — kabul kuralının "holdout'ta da +0,05R" şartı bu
 örneklemle pratikte sağlanamaz; bu tarama kabul için değil ÖLÇÜM için
 okunacak, kol kabulü maratonun kendi 30 günlük verisiyle yapılacak.
+
+## STRATEJİ TARAMASI SONUCU — 2026-09-03: HİÇBİR KOL KABUL EDİLMEDİ
+
+28 varyant, kontrol = bot 1 tanımı, in-sample 317 bar / holdout 137 bar,
+maliyet paper ile birebir. (n = işlem; beklenti R cinsinden; düşüş %)
+
+| varyant | in n | in R | in düşüş | out n | out R | out düşüş |
+|---|---|---|---|---|---|---|
+| kontrol | 13 | +0,25 | 2,4 | 3 | −0,23 | 3,3 |
+| kapı 85 | 4 | +0,60 | 2,4 | 0 | — | 1,2 |
+| kapı 70 (kademe 70) | 57 | +0,47 | 4,9 | 9 | −0,80 | 6,4 |
+| kapı 75 (kademe 75) | 33 | +0,68 | 5,8 | 21 | −0,31 | 6,4 |
+| slot 2 | 9 | +0,60 | 2,1 | 3 | −0,23 | 3,3 |
+| ablasyon trend=0 | 26 | +0,57 | 3,3 | 16 | **+0,06** | 2,9 |
+| ablasyon momentum=0 | 13 | +1,49 | 2,5 | 6 | −0,37 | 3,1 |
+| ablasyon flow=0 | 13 | +1,57 | 1,6 | 5 | −0,45 | 2,7 |
+| ablasyon vol=0 | 32 | **−0,02** | **7,5** | 19 | −0,08 | 6,2 |
+| ablasyon sr=0 | 19 | +1,32 | 3,7 | 9 | −0,07 | 4,4 |
+| eğilim trend-ağır | 20 | +1,23 | 4,2 | 11 | −0,35 | 3,8 |
+| eğilim momentum-ağır | 20 | +0,29 | 3,4 | 9 | −0,23 | 3,6 |
+| formasyon kapalı | **2** | +0,05 | 1,5 | 0 | — | 0 |
+| mum kapalı | 10 | +1,67 | 2,0 | 3 | −0,23 | 3,3 |
+| trail kapalı | 13 | +0,24 | 2,5 | 3 | −0,34 | 3,5 |
+| BE kapalı | 12 | +1,32 | 2,8 | 3 | −0,44 | 3,8 |
+| vol_target 0,4 / 0,9 | 13 | +0,19 / +0,25 | 2,4 | 3 | −0,23 | 3,1 / 3,6 |
+| kontrolle BİREBİR aynı | kapı 70/75 (eski), süre 120/240, slot 6, kalabalık kapalı, risk %2, kaldıraç ×3 | | | | | |
+
+**Karar (ön-kayıtlı kural):** hiçbir varyant iki pencerede birden
+kontrolü +0,05R geçip düşüş bekçisini (≤1,2×) sağlamadı. En yakını
+`trend=0` (iki pencerede pozitif, n=26/16) — in-sample düşüşü kontrolün
+1,38 katı, red. Yeni kol YOK. Kabul kararı maratonun 30 günlük verisine.
+
+**Ölçümün söyledikleri (bunlar için koşuldu):**
+1. **Vol ailesi hakkını veriyor.** Tek ablasyon ki her iki pencerede kötü ve
+   düşüşü üçe katlıyor. Dokunulmaz.
+2. **Formasyon düzenleyicisi fiilen kapının parçası.** Kapalıyken 317
+   barda 2 giriş: +10'a kadar formasyon katkısı olmadan 80 kapısı
+   neredeyse hiç geçilmiyor. "Puanı yüksek olana gir" pratikte "formasyonu
+   teyitli olana gir" demek — bilinçli tasarım mıydı? OPEN-QUESTIONS.
+3. **İz süren stop işe yarıyor** (kapalıyken holdout −0,34 vs −0,23);
+   BE kapalı in-sample'da parlayıp holdout'ta çöküyor — 28 Ağustos
+   taramasıyla tutarlı: iz/BE parametreleri DONUK.
+4. **Kaldıraç bu pencerede HİÇ devreye girmedi.** Üç spec de kontrolle
+   birebir: 13 girişin hiçbiri teyit üçlüsünü (formasyon>0 + ≥2 ATR
+   headroom + puan) aynı anda sağlamadı. Kaldıracın katkısı ölçülemedi —
+   "daha çok kazanç" sorusunun dürüst cevabı: önce üçlünün ne sıklıkla
+   tetiklendiği canlıda sayılmalı (bot 11 defteri).
+5. **13 işlemlik in-sample'da +1,5R'lik ablasyon parlamaları gürültüdür**
+   (momentum/flow/sr/mum): üçü de holdout'ta negatif. Multiple-comparison
+   tuzağı tam olarak beklendiği gibi göründü; holdout şartı işini yaptı.
+6. **Bağlanmayan düğmeler:** süre, slot 6, kalabalık, risk %, vol_target
+   bu pencerede sonucu değiştirmiyor — ölçmek yok saymaktan iyidir.
