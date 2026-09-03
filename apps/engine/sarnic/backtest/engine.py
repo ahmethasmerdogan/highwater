@@ -114,6 +114,14 @@ class SimPosition:
     entry_fees: float = 0.0
     leverage: float = 1.0
     entry_notional: float = 0.0
+    #: Kısmi kâr alma muhasebesi (worker'ın realized_* alanlarıyla aynı rol):
+    #: giriş miktarı, satılmış dilimlerin fiyat-puanı (Σ qty×(çıkış−giriş)),
+    #: nakit kârı ve komisyonu. R çarpanı giriş miktarına göre ağırlıklanır.
+    partial_done: bool = False
+    entry_qty: float = 0.0
+    realized_points: float = 0.0
+    realized_pnl: float = 0.0
+    realized_fees: float = 0.0
 
     def view(self) -> PositionView:
         return PositionView(
@@ -124,6 +132,7 @@ class SimPosition:
             stop=self.stop,
             initial_stop=self.initial_stop,
             breakeven_locked=self.breakeven_locked,
+            partial_done=self.partial_done,
         )
 
 
@@ -421,6 +430,9 @@ class BacktestEngine:
                 position.mfe = max(position.mfe, r)
                 position.mae = min(position.mae, r)
 
+                if decision.partial_fraction > 0 and not position.partial_done:
+                    cash += self._partial(position, decision.partial_fraction, price, bar, cost_bps)
+                    turnover += position.qty * decision.partial_fraction * price
                 if decision.stop_moved and decision.new_stop is not None:
                     position.stop = decision.new_stop
                     position.breakeven_locked = True
@@ -599,6 +611,32 @@ class BacktestEngine:
                 positions.remove(position)
         return positions, cash, turnover
 
+    def _partial(
+        self, position: SimPosition, fraction: float, price: float, at: datetime, cost_bps: float
+    ) -> float:
+        """Kısmi kâr alma: dilimi kapanış fiyatından satar, pozisyon açık kalır.
+
+        Worker'ın kısmi-dolum muhasebesiyle aynı: dilimin kâr/komisyonu
+        realized_* alanlarında birikir ve nihai işlemde tek satırda raporlanır
+        (işlem sayısı 1 kalır). Borç maliyeti dilim için burada tahakkuk eder.
+        """
+        qty = position.qty * fraction
+        fiyat = price * (1 - cost_bps * SLIP_RATIO / 10_000)
+        gross = fiyat * qty
+        fee = gross * cost_bps / 10_000
+        hold_hours = (at - position.entry_time).total_seconds() / 3600
+        borc = borrow_cost(
+            position.entry_price * qty, position.leverage, hold_hours, self.lev_spec.hourly_rate
+        )
+        position.realized_points += (fiyat - position.entry_price) * qty
+        position.realized_pnl += (fiyat - position.entry_price) * qty - fee - borc
+        position.realized_fees += fee + borc
+        position.qty -= qty
+        position.entry_fees *= 1 - fraction
+        position.entry_notional *= 1 - fraction
+        position.partial_done = True
+        return gross - fee - borc
+
     def _close(
         self,
         position: SimPosition,
@@ -627,8 +665,16 @@ class BacktestEngine:
             gross=(price - position.entry_price) * position.qty,
             entry_fees=position.entry_fees,
             exit_fees=fee,
-        )
+        ) + position.realized_pnl
+        fee += position.realized_fees
         risk_per_unit = max(position.entry_price - position.initial_stop, 1e-12)
+        # R: giriş miktarına göre ağırlıklı fiyat-puanı — kısmi satış yoksa
+        # eski formülle birebir aynı ((price − entry)/risk).
+        toplam_qty = position.entry_qty or position.qty
+        r_carpani = (
+            (position.realized_points + (price - position.entry_price) * position.qty)
+            / (risk_per_unit * toplam_qty)
+        )
         trades.append(
             {
                 "symbol": position.symbol,
@@ -639,8 +685,9 @@ class BacktestEngine:
                 "qty": round(position.qty, 10),
                 "exit_reason": str(reason),
                 "pnl": round(pnl, 8),
-                "pnl_r": round((price - position.entry_price) / risk_per_unit, 6),
+                "pnl_r": round(r_carpani, 6),
                 "fees": round(total_fees(entry_fees=position.entry_fees, exit_fees=fee), 8),
+                "partial": position.partial_done,
                 "slippage_bps": round(cost_bps * SLIP_RATIO, 4),
                 "mfe": round(position.mfe, 6),
                 "mae": round(position.mae, 6),
@@ -760,6 +807,7 @@ class BacktestEngine:
                     entry_fees=fee,
                     leverage=lev.leverage,
                     entry_notional=gross,
+                    entry_qty=decision.qty,
                 )
             )
             exposures[candidate.symbol] = gross

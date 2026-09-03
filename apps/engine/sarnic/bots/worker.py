@@ -144,6 +144,17 @@ class BotWorker:
     # ------------------------------------------------------------------ #
     async def run(self) -> None:
         log.info("worker_starting", bot_id=self.bot_id)
+        # Kısmi kâr alma (exit.partial_tp_r) kararı paylaşılır (evaluate_exit) ama
+        # canlı yürütmesi (dilim satışı + partial_done sütunu) henüz yok. Sessizce
+        # kesri yok saymak kural 1'i kırardı: backtest kısmi satar, canlı satmaz.
+        # Açıkça reddediyoruz — kaldıraç için backtest'in eskiden yaptığı gibi.
+        async with session_scope() as session:
+            bot = await self._load_bot(session)
+            if self._definition_of(bot).exit.partial_tp_r > 0:
+                raise ValueError(
+                    "exit.partial_tp_r canlı worker'da henüz desteklenmiyor — yalnız "
+                    "backtest'te ölçülür (H2). Tanımda 0 yapın."
+                )
         tasks = [
             asyncio.create_task(self._heartbeat_loop(), name=f"bot{self.bot_id}-heartbeat"),
             asyncio.create_task(self._decision_loop(), name=f"bot{self.bot_id}-decide"),

@@ -63,9 +63,16 @@ def test_kapanis_borc_maliyeti_worker_aritmetigiyle_ayni():
     giris = datetime(2026, 1, 20, tzinfo=UTC)
     cikis = giris + timedelta(hours=48)
     poz = SimPosition(
-        symbol="C00USDT", qty=10.0, entry_price=100.0, entry_time=giris,
-        stop=95.0, initial_stop=95.0, score_at_entry=90.0,
-        entry_fees=1.0, leverage=3.0, entry_notional=1000.0,
+        symbol="C00USDT",
+        qty=10.0,
+        entry_price=100.0,
+        entry_time=giris,
+        stop=95.0,
+        initial_stop=95.0,
+        score_at_entry=90.0,
+        entry_fees=1.0,
+        leverage=3.0,
+        entry_notional=1000.0,
     )
     trades: list[dict] = []
     cost_bps = 10.0
@@ -79,7 +86,9 @@ def test_kapanis_borc_maliyeti_worker_aritmetigiyle_ayni():
     fiyat = 110.0 * (1 - cost_bps * SLIP_RATIO / 10_000)
     cikis_komisyon = fiyat * 10.0 * cost_bps / 10_000
     assert t["fees"] == pytest.approx(1.0 + cikis_komisyon + beklenen_borc, abs=1e-6)
-    assert t["pnl"] == pytest.approx((fiyat - 100.0) * 10.0 - 1.0 - cikis_komisyon - beklenen_borc, abs=1e-6)
+    assert t["pnl"] == pytest.approx(
+        (fiyat - 100.0) * 10.0 - 1.0 - cikis_komisyon - beklenen_borc, abs=1e-6
+    )
 
 
 def test_bar_ici_likidasyon_stoptan_once_tetiklenir():
@@ -88,16 +97,29 @@ def test_bar_ici_likidasyon_stoptan_once_tetiklenir():
     e = _engine(KALDIRACLI)
     bar = datetime(2026, 1, 20, 12, tzinfo=UTC)
     poz = SimPosition(
-        symbol="X", qty=1.0, entry_price=100.0, entry_time=bar - timedelta(hours=5),
-        stop=60.0, initial_stop=60.0, score_at_entry=90.0, leverage=3.0, entry_notional=100.0,
+        symbol="X",
+        qty=1.0,
+        entry_price=100.0,
+        entry_time=bar - timedelta(hours=5),
+        stop=60.0,
+        initial_stop=60.0,
+        score_at_entry=90.0,
+        leverage=3.0,
+        entry_notional=100.0,
     )
     liq = liquidation_price(100.0, 3.0)  # 100 × (1 − 0.9/3) = 70
     assert liq == pytest.approx(70.0)
     assert liq > poz.stop, "test kurgusu: likidasyon stopun üstünde olmalı"
-    df = pd.DataFrame({
-        "open_time": [pd.Timestamp(bar)],
-        "open": [72.0], "high": [73.0], "low": [65.0], "close": [71.0], "quote_volume": [1.0],
-    })
+    df = pd.DataFrame(
+        {
+            "open_time": [pd.Timestamp(bar)],
+            "open": [72.0],
+            "high": [73.0],
+            "low": [65.0],
+            "close": [71.0],
+            "quote_volume": [1.0],
+        }
+    )
     trades: list[dict] = []
     kalan, _, _ = e._check_intrabar_stops(
         [poz], {"X": {"1h": df}}, {"X": {"1h": 1}}, bar, 0.0, 10.0, trades
@@ -113,13 +135,24 @@ def test_kaldiracsiz_pozisyonda_likidasyon_yolu_calismaz():
     e = _engine()
     bar = datetime(2026, 1, 20, 12, tzinfo=UTC)
     poz = SimPosition(
-        symbol="X", qty=1.0, entry_price=100.0, entry_time=bar - timedelta(hours=5),
-        stop=90.0, initial_stop=90.0, score_at_entry=90.0,
+        symbol="X",
+        qty=1.0,
+        entry_price=100.0,
+        entry_time=bar - timedelta(hours=5),
+        stop=90.0,
+        initial_stop=90.0,
+        score_at_entry=90.0,
     )
-    df = pd.DataFrame({
-        "open_time": [pd.Timestamp(bar)],
-        "open": [95.0], "high": [96.0], "low": [80.0], "close": [94.0], "quote_volume": [1.0],
-    })
+    df = pd.DataFrame(
+        {
+            "open_time": [pd.Timestamp(bar)],
+            "open": [95.0],
+            "high": [96.0],
+            "low": [80.0],
+            "close": [94.0],
+            "quote_volume": [1.0],
+        }
+    )
     trades: list[dict] = []
     e._check_intrabar_stops([poz], {"X": {"1h": df}}, {"X": {"1h": 1}}, bar, 0.0, 10.0, trades)
     assert trades[0]["exit_reason"] == "STOP" and trades[0]["leverage"] == 1.0
@@ -140,3 +173,31 @@ def test_uctan_uca_kaldiracli_kosu_borc_ve_kaldirac_kaydeder():
     assert kaldiracli, "hiç kaldıraçlı giriş olmadı — decide_leverage yolu çalışmıyor"
     assert all(t["borrow_cost"] > 0 for t in kaldiracli)
     assert all(t["borrow_cost"] == 0 for t in trades if t["leverage"] == 1.0)
+
+
+def test_kismi_satis_muhasebesi_ve_agirlikli_r():
+    """Elle hesap: 10 adet @100, stop 95 (1R = 5). +1R'de yarısı 105'ten
+    satılır (kayma/komisyon 0 için cost_bps=0), kalan 5 adet 110'dan kapanır.
+    R = (5×5 + 5×10) / (5×10) = 1,5R; pnl = 25 + 50 = 75; tek işlem satırı."""
+    e = _engine()
+    giris = datetime(2026, 1, 20, tzinfo=UTC)
+    poz = SimPosition(
+        symbol="X",
+        qty=10.0,
+        entry_price=100.0,
+        entry_time=giris,
+        stop=95.0,
+        initial_stop=95.0,
+        score_at_entry=85.0,
+        entry_qty=10.0,
+    )
+    nakit = e._partial(poz, 0.5, 105.0, giris + timedelta(hours=1), 0.0)
+    assert nakit == pytest.approx(525.0)
+    assert poz.qty == pytest.approx(5.0) and poz.partial_done
+    assert poz.realized_pnl == pytest.approx(25.0)
+    trades: list[dict] = []
+    e._close(poz, 110.0, giris + timedelta(hours=5), ExitReason.TRAILING, 0.0, trades)
+    assert len(trades) == 1
+    assert trades[0]["pnl"] == pytest.approx(75.0)
+    assert trades[0]["pnl_r"] == pytest.approx(1.5)
+    assert trades[0]["partial"] is True

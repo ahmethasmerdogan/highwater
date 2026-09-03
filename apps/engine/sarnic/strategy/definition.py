@@ -114,6 +114,12 @@ class ExitSpec:
     score_exit: float = 60.0
     max_hold_hours: int = 72
     stop_atr_multiple: float = 2.0
+    #: Kısmi kâr alma: fiyat +partial_tp_r R'ye ulaşınca (bar kapanışında)
+    #: pozisyonun partial_fraction'ı satılır, kalan iz sürmeye devam eder.
+    #: 0 = kapalı. Ölçüm: 228 işlemin 22'si ≥1R tepe görüp zararla kapandı
+    #: (H2, MEYDAN-OKUMA 2026-09-04). Worker ve backtest aynı kararı alır.
+    partial_tp_r: float = 0.0
+    partial_fraction: float = 0.5
 
 
 @dataclass(slots=True)
@@ -193,6 +199,8 @@ class StrategyDefinition:
         # burası unutulduğunda strateji doğrulaması onu reddediyordu.
         if self.timeframe not in TIMEFRAME_MINUTES:
             errors.append(f"bilinmeyen zaman dilimi: {self.timeframe}")
+        if self.exit.partial_tp_r < 0 or not 0 < self.exit.partial_fraction < 1:
+            raise ValueError("exit.partial_tp_r ≥ 0 ve 0 < exit.partial_fraction < 1 olmalı")
         saatler = self.entry.hours_utc
         if saatler is not None and (not saatler or any(not 0 <= h <= 23 for h in saatler)):
             raise ValueError("entry.hours_utc: 0–23 arası saatlerden oluşan, boş olmayan liste")

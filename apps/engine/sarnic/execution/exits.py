@@ -33,6 +33,7 @@ class PositionView:
     stop: float
     initial_stop: float
     breakeven_locked: bool = False
+    partial_done: bool = False
 
     @property
     def initial_risk(self) -> float:
@@ -59,6 +60,8 @@ class ExitDecision:
     message: str = ""
     new_stop: float | None = None
     breakeven_locked: bool = False
+    #: >0 ise pozisyonun bu kesri satılır (kısmi kâr alma); çıkış değildir.
+    partial_fraction: float = 0.0
 
     @property
     def stop_moved(self) -> bool:
@@ -110,13 +113,31 @@ def evaluate_exit(
 
     # --- 2) Başabaş kilidi ve 3) Trailing: çıkış değil, stop güncellemesi ---
     new_stop = update_stop(position, market, spec)
-    if new_stop is not None:
+
+    # --- 6) Kısmi kâr alma (bar kapanışında, bir kez): stop güncellemesiyle
+    # aynı kararda taşınır — ikisi de "pozisyon açık kalır" kararıdır.
+    kesir = 0.0
+    if (
+        market.bar_closed
+        and spec.partial_tp_r > 0
+        and not position.partial_done
+        and position.r_multiple(market.price) >= spec.partial_tp_r
+    ):
+        kesir = spec.partial_fraction
+
+    if new_stop is not None or kesir > 0:
+        parcalar = []
+        if kesir > 0:
+            parcalar.append(f"kısmi kâr: %{kesir * 100:.0f} satıldı (+{spec.partial_tp_r:g}R)")
+        if new_stop is not None:
+            parcalar.append(f"stop {position.stop:.8f} → {new_stop:.8f}")
         return ExitDecision(
             False,
             None,
-            f"stop {position.stop:.8f} → {new_stop:.8f}",
+            " · ".join(parcalar),
             new_stop=new_stop,
-            breakeven_locked=True,
+            breakeven_locked=new_stop is not None,
+            partial_fraction=kesir,
         )
 
     return ExitDecision(False)

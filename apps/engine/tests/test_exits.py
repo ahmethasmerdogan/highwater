@@ -297,3 +297,49 @@ def test_zero_trail_atr_disables_trailing_after_lock():
     spec = ExitSpec(breakeven_r=1.0, trail_atr=0.0)
     kilitli = position(stop=100.0, breakeven_locked=True)
     assert update_stop(kilitli, MarketView(price=140.0, atr=2.0), spec) is None
+
+
+def test_kismi_kar_alma_karari_bir_kez_ve_bar_kapanisinda():
+    """exit.partial_tp_r: +1R'de kesri sat, pozisyon açık kalır; ikinci kez
+    tetiklenmez; bar içinde (bar_closed=False) tetiklenmez; 0 = kapalı."""
+    from datetime import UTC, datetime
+
+    from sarnic.execution.exits import MarketView, PositionView, evaluate_exit
+    from sarnic.strategy.definition import ExitSpec
+
+    now = datetime(2026, 9, 4, tzinfo=UTC)
+    poz = PositionView(
+        symbol="X", qty=10, entry_price=100.0, entry_time=now, stop=95.0, initial_stop=95.0
+    )
+    spec = ExitSpec(
+        partial_tp_r=1.0,
+        partial_fraction=0.5,
+        breakeven_r=99,
+        trail_atr=0,
+        score_exit=0,
+        max_hold_hours=999,
+    )
+    piyasa = MarketView(price=105.0, atr=1.0, score=90, bar_closed=True)  # tam +1R
+    k = evaluate_exit(poz, piyasa, spec, now)
+    assert not k.should_exit and k.partial_fraction == 0.5
+    # Bir kez: partial_done sonra tetiklenmez.
+    poz.partial_done = True
+    assert evaluate_exit(poz, piyasa, spec, now).partial_fraction == 0.0
+    # Bar içinde değil.
+    poz.partial_done = False
+    assert (
+        evaluate_exit(
+            poz, MarketView(price=105.0, atr=1.0, bar_closed=False), spec, now
+        ).partial_fraction
+        == 0.0
+    )
+    # Kapalı düğme.
+    assert (
+        evaluate_exit(
+            poz,
+            piyasa,
+            ExitSpec(breakeven_r=99, trail_atr=0, score_exit=0, max_hold_hours=999),
+            now,
+        ).partial_fraction
+        == 0.0
+    )
