@@ -60,6 +60,7 @@ class ExitReason(StrEnum):
     DELIST = "DELIST"
     MANUAL = "MANUAL"
     LIQUIDATION = "LIQUIDATION"
+    PARTIAL = "PARTIAL"
 
 
 class Timeframe(StrEnum):

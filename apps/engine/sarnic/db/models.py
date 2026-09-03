@@ -390,6 +390,8 @@ class Position(Base):
         ForeignKey("scores.id", ondelete="SET NULL"), default=None
     )
     breakeven_locked: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: Kısmi kâr alma bir kez yapıldı (H2).
+    partial_done: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     #: Girişin kaldıracı (1 = spot). Sahibin kararıyla kapsama girdi
     #: (2026-08-27); borç maliyeti kapanışta komisyonlara tahakkuk eder.
     leverage: Mapped[Decimal] = mapped_column(
