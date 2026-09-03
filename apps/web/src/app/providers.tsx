@@ -2,11 +2,24 @@
 
 import { useEffect, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ThemeProvider } from "@/design/theme";
+import { ThemeProvider, useTheme } from "@/design/theme";
 import { ToastProvider, useToast } from "@/design/toast";
 import { registerToastSink } from "@/lib/toast";
 import { AuthProvider } from "@/lib/auth";
 import { WebSocketProvider } from "@/lib/ws";
+
+/** Vurgu ön ayarı: sahibin seçimi yoksa "blue" (DESIGN-V3 §2). */
+function AccentDefault() {
+  const { setAccent } = useTheme();
+  useEffect(() => {
+    try {
+      if (!window.localStorage.getItem("uicean-accent")) setAccent("blue");
+    } catch {
+      /* depo yok — html[data-accent] ilk boyamayı zaten mavi yapar */
+    }
+  }, [setAccent]);
+  return null;
+}
 
 /** Bildirim sağlayıcısının `push`'unu modül köprüsüne bağlar (`lib/toast.ts`). */
 function ToastBridge() {
@@ -35,6 +48,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <ThemeProvider>
+      <AccentDefault />
       <ToastProvider>
         <ToastBridge />
         <QueryClientProvider client={client}>

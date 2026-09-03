@@ -18,23 +18,21 @@ export const metadata: Metadata = {
 };
 
 /*
- * Tema sayfa boyanmadan önce kararlaştırılır; yoksa panel bir kare yanlış
- * temada çizilip diğerine atlar.
- *
- * Varsayılan **sistem**: açık ve koyu bu üründe eşit vatandaş, hangisinin
- * geleceğine işletim sistemi karar verir. `ui/theme.tsx` içindeki
- * `DEFAULT_MODE` ile aynı olmak zorunda — ayrışırlarsa yanıp sönme geri gelir.
+ * Tema sayfa boyanmadan önce kararlaştırılır (uicean'ın betiği, aynı
+ * depolama anahtarı). Vurgu: uicean "blue" — sakin, kurumsal; yeşil ve
+ * kırmızı yalnız yön içindir (DESIGN-V3 §2).
  */
-const THEME_SCRIPT = `(function(){try{
-  var s=localStorage.getItem("hashui-theme");
-  var sys=matchMedia("(prefers-color-scheme: dark)").matches;
-  var dark = s==="dark" || ((s===null||s==="system") && sys);
-  document.documentElement.classList.toggle("dark", dark);
-}catch(e){}})();`;
+/*
+ * uicean'ın boyama-öncesi betiğiyle aynı mantık ve aynı depolama anahtarı
+ * ("uicean-theme"). Buraya kopyalandı çünkü root layout sunucu bileşeni;
+ * "uicean" paketi istemci modülü (createContext) ve sunucuda içe
+ * aktarılamaz.
+ */
+const THEME_SCRIPT = `(function(){try{var s=localStorage.getItem("uicean-theme");if(s==="dark"||((s===null||s==="system")&&matchMedia("(prefers-color-scheme: dark)").matches))document.documentElement.classList.add("dark");}catch(e){}})();`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="tr" suppressHydrationWarning>
+    <html lang="tr" data-accent="blue" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>

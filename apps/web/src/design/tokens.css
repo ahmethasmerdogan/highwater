@@ -1,157 +1,83 @@
-/* =====================================================================
- * SARNIÇ — tasarım token'ları (2. nesil)
+/*
+ * HIGHWATER token katmanı — v3.
  *
- * Bu katman `ui/hashui.css` + `globals.css` ikilisinin yerini alır. İkisi
- * geçiş boyunca yan yana yaşar: yeni token'lar `--sn-` önekli, eskiler
- * öneksiz. Bir sayfa yeni sisteme taşındığında hiçbir eski token'a
- * dokunmaz; son sayfa da taşınınca eski katman tek seferde silinir.
+ * Palet yok: her `--sn-*` rengi uicean token'ının TAKMA ADIDIR (canvas ›
+ * surface › elev › inset, line, ink, brand). Açık/koyu ve vurgu ön ayarı
+ * uicean'dan gelir (`.dark`, `[data-accent]`); burada yeniden tanımlanmaz.
+ * Yön renkleri (kâr/zarar) ve uyarı bu dosyanın tek "kendi" rengidir —
+ * marka rengi asla yön anlamı taşımaz (DESIGN-V3 §2).
  *
- * ---- Devralınan disiplin (değişmedi, değişmeyecek) -------------------
- *   yeşil  = YALNIZCA yukarı yön        kırmızı = YALNIZCA aşağı yön
- *   amber  = marka / seçili / birincil  turuncu = YALNIZCA uyarı
- *   mavi   = YALNIZCA nötr bilgi
- *   seri renkleri (1–5) renk körlüğü için ölçüldü — sıraları anlamlıdır
- *
- * Yeşil bir "kaydet" düğmesi bu üründe okuma hatasıdır: göz onu kazanç
- * sanar. Birincil eylem bu yüzden amber.
- *
- * ---- Yeni olan ------------------------------------------------------
- * Yüzey rampası, tipografi ölçeği, yoğunluk ızgarası, kenarlık dili ve
- * hareket token'ları sıfırdan kuruldu. Eski katmanda yüzey üç kademeydi
- * ve yükseklik yalnızca çizgiyle anlatılıyordu; yeni rampa dört kademe +
- * yalnızca **yüzen** yüzeylere ayrılmış tek bir gölge kullanır. Bir veri
- * ızgarasında gölge gürültüdür; açılır pencerede ise derinlik bilgisidir.
- * ===================================================================== */
+ * Sayılar için ölçek, yarıçaplar, hareket ve yardımcı sınıflar (`.sn-num`,
+ * `.sn-label`, animasyonlar) aşağıda değişmeden durur.
+ */
 
 :root {
-  /* Tarayıcıya sayfanın şemasını söyle: yerel denetimler (kaydırma çubuğu,
-     tarih seçici, select menüsü) temaya uysun. `.dark` sınıfı tek başına
-     bunu yapmaz — koyu temada beyaz açılıyorlardı. */
-  color-scheme: light;
+  /* yüzeyler */
+  --sn-bg: var(--canvas);
+  --sn-panel: var(--surface);
+  --sn-raised: var(--elev);
+  --sn-sunken: var(--inset);
+  --sn-overlay: var(--surface);
 
-  /* ---- Yüzey rampası ---------------------------------------------- */
-  --sn-bg: #f5f7f9;          /* sayfa zemini */
-  --sn-panel: #ffffff;       /* birincil içerik yüzeyi */
-  --sn-raised: #fbfcfd;      /* panel içi araç çubuğu / başlık */
-  --sn-sunken: #eef1f5;      /* girinti: input kuyusu, tablo başlığı */
-  --sn-overlay: #ffffff;     /* yüzen: menü, açılır pencere, çekmece */
+  /* çizgiler — gölge yok, yapıyı çizgi taşır */
+  --sn-hairline: var(--line);
+  --sn-border: var(--line);
+  --sn-border-strong: var(--line-strong);
 
-  /* ---- Çizgiler ---------------------------------------------------- */
-  --sn-hairline: #e7eaef;    /* satır ayracı — en sessiz çizgi */
-  --sn-border: #dde1e8;      /* bileşen kenarlığı */
-  --sn-border-strong: #c3cad4; /* vurgu, sürükleme tutamağı */
+  /* mürekkep */
+  --sn-ink: var(--ink);
+  --sn-ink-2: var(--ink2);
+  --sn-ink-3: var(--ink3);
+  --sn-ink-4: color-mix(in oklab, var(--ink3) 72%, transparent);
 
-  /* ---- Mürekkep ---------------------------------------------------- */
-  --sn-ink: #171b21;         /* birincil metin */
-  --sn-ink-2: #545d6a;       /* ikincil */
-  --sn-ink-3: #6b7480;       /* etiket, başlık üstü — 4,5:1 için koyulaştırıldı */
-  --sn-ink-4: #a7b0bc;       /* devre dışı, yer tutucu */
+  /* marka — uicean vurgu ön ayarı (html[data-accent]) */
+  --sn-brand: var(--brand);
+  --sn-brand-2: var(--brand-ink);
+  --sn-brand-solid: var(--btn-brand-a);
+  --sn-on-brand: var(--btn-brand-fg);
+  --sn-brand-bg: var(--brand-soft);
+  --sn-brand-line: color-mix(in oklab, var(--brand) 45%, var(--line));
+  --sn-focus-ring: var(--brand);
 
-  /* ---- Marka ------------------------------------------------------- */
-  /* Amber dolgu açık zeminde METİN olarak okunmaz (4.5:1'i geçmez).
-     Bu yüzden dolgu ve metin iki ayrı token — tek renk ailesi. */
-  --sn-brand-solid: #f0b90b; /* dolgu */
-  --sn-on-brand: #1a1d23;    /* amber dolgunun ÜSTÜNDEKİ metin */
-  --sn-brand: #9a6f00;       /* amber ailesinin okunur metin tonu */
-  --sn-brand-2: #7d5a00;     /* aynı ailenin daha koyu tonu */
-  --sn-brand-bg: rgba(240, 185, 11, 0.14);
-  --sn-brand-line: rgba(240, 185, 11, 0.42);
-  /* Odak halkası: amber dolgu açık zeminde 1,68:1 — halka görünmüyordu.
-     Halka için ailenin okunur koyusu; koyu temada dolgu zaten yeter. */
-  --sn-focus-ring: #7d5a00;
+  /* yön ve durum — yalnız burası kendi rengini taşır */
+  --sn-up: #059669;
+  --sn-up-bg: color-mix(in oklab, #059669 12%, transparent);
+  --sn-down: #e11d48;
+  --sn-down-bg: color-mix(in oklab, #e11d48 12%, transparent);
+  --sn-on-down: #ffffff;
+  --sn-warn: #b45309;
+  --sn-warn-bg: color-mix(in oklab, #b45309 12%, transparent);
+  --sn-info: var(--brand);
+  --sn-info-bg: var(--brand-soft);
+  --sn-idle: var(--ink3);
 
-  /* ---- Yön ve durum ------------------------------------------------ */
-  /* #17a56b beyaz panelde 3,17:1 kalıyordu — kayıp kırmızısı 4,79:1 ile
-     geçerken kazanç kayıptan zor okunuyordu. Koyu temanın yeşiline dokunma:
-     orada sorun yok. */
-  --sn-up: #0f7a4e;
-  --sn-up-bg: rgba(23, 165, 107, 0.12);
-  --sn-down: #d6304a;
-  --sn-down-bg: rgba(214, 48, 74, 0.12);
-  --sn-on-down: #ffffff;     /* kırmızı dolgunun üstündeki metin */
-  --sn-warn: #b25e09;
-  --sn-warn-bg: rgba(178, 94, 9, 0.12);
-  --sn-info: #1f6fd0;
-  --sn-info-bg: rgba(31, 111, 208, 0.12);
-  --sn-idle: #8e99a6;        /* nötr nokta: durum yok — 1.4.11 için ≥3:1 */
-
-  /* ---- Grafik serisi ----------------------------------------------- */
-  /* Sıra keyfi değil: trend → momentum → akış → volatilite → s/r.
-     Renk körlüğü ayrımı KOMŞU çiftler üzerinden ölçüldü; sırayı
-     değiştirmek doğrulamayı geçersiz kılar. Yeşil ve kırmızı bilinçli
-     olarak yok — o ikisi yön için rezerve. */
-  --sn-series-1: #1d4ed8;
+  /* seriler — 1 marka, gerisi nötr aile; yeşil/kırmızı seri rengi DEĞİL */
+  --sn-series-1: var(--brand);
   --sn-series-2: #ea580c;
   --sn-series-3: #0d9488;
-  --sn-series-4: #a855f7;
+  --sn-series-4: #7c3aed;
   --sn-series-5: #db2777;
 
-  /* ---- Yükseklik ---------------------------------------------------- */
-  /* Tek gölge, yalnızca yüzen yüzeylere. Kartlar gölge kullanmaz. */
-  --sn-shadow-pop:
-    0 0 0 1px rgba(23, 27, 33, 0.06),
-    0 8px 24px -6px rgba(23, 27, 33, 0.14),
-    0 2px 6px -2px rgba(23, 27, 33, 0.08);
-  --sn-shadow-drag: 0 12px 32px -8px rgba(23, 27, 33, 0.24);
+  /* katman ayrımı gölgeyle değil çizgiyle */
+  --sn-shadow-pop: 0 0 0 1px var(--line-strong);
+  --sn-shadow-drag: 0 0 0 1px var(--line-strong);
 }
 
 .dark {
-  color-scheme: dark;
-
-  --sn-bg: #0a0c0f;
-  --sn-panel: #12151a;
-  --sn-raised: #171b21;
-  --sn-sunken: #0e1116;
-  --sn-overlay: #171b21;
-
-  --sn-hairline: #1e232b;
-  --sn-border: #262d36;
-  --sn-border-strong: #3a434f;
-
-  --sn-ink: #e9ecf1;
-  --sn-ink-2: #98a1ae;
-  --sn-ink-3: #7d8896;
-  --sn-ink-4: #4d5663;
-
-  /* Koyu zeminde amber zaten okunur; dolgu ve metin aynı renk olabilir. */
-  --sn-brand-solid: #f0b90b;
-  --sn-on-brand: #14171a;
-  --sn-brand: #f0b90b;
-  --sn-brand-2: #fcd535;
-  --sn-brand-bg: rgba(240, 185, 11, 0.13);
-  --sn-brand-line: rgba(240, 185, 11, 0.36);
-  --sn-focus-ring: #f0b90b;
-
-  --sn-up: #0ecb81;
-  --sn-up-bg: rgba(14, 203, 129, 0.14);
-  --sn-down: #f6465d;
-  --sn-down-bg: rgba(246, 70, 93, 0.14);
-  /* Beyaz metin #f6465d üstünde 3,53:1 kalıyordu; koyu mürekkep 5,1:1. */
-  --sn-on-down: #14171a;
-  --sn-warn: #f0a020;
-  --sn-warn-bg: rgba(240, 160, 32, 0.14);
-  --sn-info: #4ea8de;
-  --sn-info-bg: rgba(78, 168, 222, 0.14);
-  --sn-idle: #2b323b;
-
-  /* Koyu tema serisi ayrı doğrulandı, açık temanın çevirisi değil.
-     Yalnızca mavi bir kademe açılıyor. */
-  --sn-series-1: #3b82f6;
-  --sn-series-2: #ea580c;
-  --sn-series-3: #0d9488;
-  --sn-series-4: #a855f7;
-  --sn-series-5: #db2777;
-
-  --sn-shadow-pop:
-    0 0 0 1px rgba(0, 0, 0, 0.5),
-    0 8px 24px -6px rgba(0, 0, 0, 0.6),
-    0 2px 6px -2px rgba(0, 0, 0, 0.4);
-  --sn-shadow-drag: 0 12px 32px -8px rgba(0, 0, 0, 0.7);
+  --sn-ink-4: color-mix(in oklab, var(--ink3) 80%, transparent);
+  --sn-up: #34d399;
+  --sn-up-bg: color-mix(in oklab, #34d399 14%, transparent);
+  --sn-down: #fb7185;
+  --sn-down-bg: color-mix(in oklab, #fb7185 14%, transparent);
+  --sn-on-down: #14090c;
+  --sn-warn: #fbbf24;
+  --sn-warn-bg: color-mix(in oklab, #fbbf24 14%, transparent);
+  --sn-series-2: #fb923c;
+  --sn-series-3: #2dd4bf;
+  --sn-series-4: #a78bfa;
+  --sn-series-5: #f472b6;
 }
 
-/* =====================================================================
- * Ölçüler — temadan bağımsız
- * ===================================================================== */
 :root {
   /* Yarıçap: veri yüzeyleri keskin, etkileşim yüzeyleri yumuşak. */
   --sn-r-xs: 4px;
