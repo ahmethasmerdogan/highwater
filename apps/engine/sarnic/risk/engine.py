@@ -145,6 +145,13 @@ class RiskEngine:
         trips: list[Trip] = []
         reasons: list[str] = []
         allow = True
+        # Blok VEREN kesiciler (günlük zarar, ardışık zarar) blok sürerken
+        # yeniden tetiklenmez. Aksi hâlde her karar barı blokajı "şimdi + süre"
+        # ile İLERİ kaydırıyordu: bot 4'te 6 saatlik duraklatma sonsuz kilide
+        # dönüştü (seri ancak işlemle kırılır, işlem bloklu → kısır döngü) ve
+        # olay akışı 15 dk'da bir aynı kesiciyle doldu. Girişler zaten
+        # aşağıdaki mevcut-yasak kontrolüyle kapalı kalır.
+        zaten_bloklu = state.entries_blocked_until is not None and now < state.entries_blocked_until
 
         # --- Kill switch seviyesi: maksimum drawdown ---
         if breached(state.drawdown, limits.max_drawdown):
@@ -178,7 +185,7 @@ class RiskEngine:
             reasons.append("haftalık zarar limiti")
 
         # --- Günlük zarar: 24 saat giriş yok ---
-        if breached(state.daily_return, limits.daily_loss):
+        if not zaten_bloklu and breached(state.daily_return, limits.daily_loss):
             allow = False
             trips.append(
                 Trip(
@@ -193,7 +200,7 @@ class RiskEngine:
             reasons.append("günlük zarar limiti")
 
         # --- Ardışık zarar: 6 saat duraklatma ---
-        if state.consecutive_losses >= limits.consecutive_losses:
+        if not zaten_bloklu and state.consecutive_losses >= limits.consecutive_losses:
             allow = False
             trips.append(
                 Trip(
