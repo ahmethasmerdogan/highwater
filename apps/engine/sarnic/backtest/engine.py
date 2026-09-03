@@ -45,7 +45,12 @@ from sarnic.risk.engine import RiskEngine, RiskState
 from sarnic.scoring.engine import ScoringEngine
 from sarnic.sizing.clusters import cluster_exposure, cluster_symbols, returns_matrix
 from sarnic.sizing.engine import SizingEngine, SizingInput
-from sarnic.sizing.leverage import LeverageSpec
+from sarnic.sizing.leverage import (
+    LeverageSpec,
+    borrow_cost,
+    decide_leverage,
+    liquidation_price,
+)
 from sarnic.strategy.definition import StrategyDefinition
 
 log = get_logger(__name__)
@@ -107,6 +112,8 @@ class SimPosition:
     mfe: float = 0.0
     mae: float = 0.0
     entry_fees: float = 0.0
+    leverage: float = 1.0
+    entry_notional: float = 0.0
 
     def view(self) -> PositionView:
         return PositionView(
@@ -219,12 +226,11 @@ class BacktestEngine:
         # koruduğunu sandığı yerde kırardı: canlı 3× işlem yaparken backtest
         # 1× raporlar ve karşılaştırma yalan olurdu. Açıkça reddediyoruz;
         # kaldıraçlı stratejinin ölçüsü şimdilik yalnız canlı paper defteridir.
-        if LeverageSpec.from_sizing(self.definition.sizing).enabled:
-            raise ValueError(
-                "Kaldıraçlı strateji backtest v1'de desteklenmiyor — sonuç canlı "
-                "paper ile karşılaştırılamaz olurdu. sizing.leverage.max_leverage=1 "
-                "yapın ya da kaldıraçsız bir sürümle koşun."
-            )
+        # Kaldıraç modeli PaperAdapter'ı birebir taşır: marj kuralı (notional/lev
+        # + komisyon ≤ nakit, tam notional düşülür → eksi nakit = borç), kapanışta
+        # saatlik borç maliyeti, bar-içi likidasyon (low ≤ likidasyon fiyatı).
+        # Karar aynı fonksiyondan (decide_leverage) aynı girdilerle alınır.
+        self.lev_spec = LeverageSpec.from_sizing(self.definition.sizing)
         self.params = params
         self.timeframe = definition.timeframe
         self.step = TIMEFRAME_MINUTES[self.timeframe]
@@ -362,6 +368,8 @@ class BacktestEngine:
             rvols: dict[str, float] = {}
             stops: dict[str, float] = {}
             adv: dict[str, float] = {}
+            headrooms: dict[str, float] = {}
+            pattern_mods: dict[str, float] = {}
             for b in bundles:
                 h1 = b.indicators.get(self.timeframe)
                 if h1 is None or not math.isfinite(h1.close):
@@ -373,6 +381,9 @@ class BacktestEngine:
                     stop = stop_from_sr(b.sr, exit_spec.stop_atr_multiple, entry=h1.close)
                     if stop is not None:
                         stops[b.symbol] = stop
+                    headrooms[b.symbol] = b.sr.resistance_distance_atr
+                if b.patterns is not None:
+                    pattern_mods[b.symbol] = b.patterns.modifier()
                 cut = cuts[b.symbol].get(self.timeframe, 0)
                 df = data[b.symbol].get(self.timeframe)
                 if df is not None and cut >= 24:
@@ -462,6 +473,8 @@ class BacktestEngine:
                     btc_below,
                     btc_vol_high,
                     trades,
+                    headrooms,
+                    pattern_mods,
                 )
                 turnover += added
 
@@ -566,7 +579,20 @@ class BacktestEngine:
             row = df.iloc[cut - 1]
             if row["open_time"].to_pydatetime().timestamp() != bar.timestamp():
                 continue
-            if float(row["low"]) <= position.stop:
+            low = float(row["low"])
+            if position.leverage > 1.0:
+                # Likidasyon stopun ÜSTÜNDEYSE önce o tetiklenir (stop-marj
+                # sığması bunu normalde yasaklar; boşlukta yine de mümkündür).
+                liq = liquidation_price(position.entry_price, position.leverage)
+                if liq >= position.stop and low <= liq:
+                    fill = stop_fill_price(liq, float(row["open"]))
+                    cash += self._close(
+                        position, fill, bar, ExitReason.LIQUIDATION, cost_bps, trades
+                    )
+                    turnover += position.qty * fill
+                    positions.remove(position)
+                    continue
+            if low <= position.stop:
                 fill = stop_fill_price(position.stop, float(row["open"]))
                 cash += self._close(position, fill, bar, ExitReason.STOP, cost_bps, trades)
                 turnover += position.qty * fill
@@ -585,11 +611,17 @@ class BacktestEngine:
         """Pozisyonu kapatır, `trades` listesine yazar, nakde dönen tutarı verir.
 
         Çıkışta da ters yönlü kayma uygulanır (PaperAdapter SELL'de de uygular).
+        Borç maliyeti worker ile aynı aritmetik: kapanışta tek seferde, tutulan
+        saat kadar, komisyona eklenir ve kârdan düşer.
         """
         price = price * (1 - cost_bps * SLIP_RATIO / 10_000)
         gross = price * position.qty
         fee = gross * cost_bps / 10_000
         hold_hours = (at - position.entry_time).total_seconds() / 3600
+        borc = borrow_cost(
+            position.entry_notional, position.leverage, hold_hours, self.lev_spec.hourly_rate
+        )
+        fee += borc
         proceeds = gross - fee
         pnl = net_pnl(
             gross=(price - position.entry_price) * position.qty,
@@ -614,6 +646,8 @@ class BacktestEngine:
                 "mae": round(position.mae, 6),
                 "hold_hours": round(hold_hours, 4),
                 "score_at_entry": round(position.score_at_entry, 2),
+                "leverage": round(position.leverage, 2),
+                "borrow_cost": round(borc, 8),
             }
         )
         return proceeds
@@ -635,7 +669,11 @@ class BacktestEngine:
         btc_below,
         btc_vol_high,
         trades,
+        headrooms=None,
+        pattern_mods=None,
     ) -> tuple[float, float]:
+        headrooms = headrooms or {}
+        pattern_mods = pattern_mods or {}
         held = {p.symbol for p in positions}
         candidates = [
             s
@@ -670,12 +708,21 @@ class BacktestEngine:
                 continue
 
             exposure = sum(exposures.values())
+            lev = decide_leverage(
+                self.lev_spec,
+                score=candidate.score,
+                pattern_modifier=pattern_mods.get(candidate.symbol),
+                headroom_atr=headrooms.get(candidate.symbol),
+                entry=entry,
+                stop=stop,
+            )
             decision = sizing.size(
                 SizingInput(
                     symbol=candidate.symbol,
                     score=candidate.score,
                     entry=entry,
                     stop=stop,
+                    leverage=lev.leverage,
                     equity=equity,
                     free_cash=cash,
                     current_exposure=exposure,
@@ -693,7 +740,9 @@ class BacktestEngine:
             fill = entry * (1 + cost_bps * SLIP_RATIO / 10_000)
             gross = fill * decision.qty
             fee = gross * cost_bps / 10_000
-            if gross + fee > cash:
+            # Marj kuralı = PaperAdapter: notional/lev + komisyon ≤ serbest nakit;
+            # nakitten TAM notional düşer, eksiye inen nakit görünür borçtur.
+            if gross / lev.leverage + fee > cash + 1e-9:
                 continue
             cash -= gross + fee
             turnover += gross
@@ -707,6 +756,8 @@ class BacktestEngine:
                     initial_stop=stop,
                     score_at_entry=candidate.score,
                     entry_fees=fee,
+                    leverage=lev.leverage,
+                    entry_notional=gross,
                 )
             )
             exposures[candidate.symbol] = gross

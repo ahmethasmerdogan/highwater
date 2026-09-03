@@ -59,6 +59,7 @@ class ExitReason(StrEnum):
     KILL_SWITCH = "KILL_SWITCH"
     DELIST = "DELIST"
     MANUAL = "MANUAL"
+    LIQUIDATION = "LIQUIDATION"
 
 
 class Timeframe(StrEnum):
