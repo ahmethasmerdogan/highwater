@@ -1327,3 +1327,18 @@ kontrolü +0,05R geçip düşüş bekçisini (≤1,2×) sağlamadı. En yakını
    tuzağı tam olarak beklendiği gibi göründü; holdout şartı işini yaptı.
 6. **Bağlanmayan düğmeler:** süre, slot 6, kalabalık, risk %, vol_target
    bu pencerede sonucu değiştirmiyor — ölçmek yok saymaktan iyidir.
+
+## G9 KOLU KATILDI — 2026-09-03 19:56 UTC (sahibin kararı)
+
+Sahibin talimatı: maratonda en yüksek kâr oranını yakalayan botun kopyası
+kaldıraçlı kol olsun. Ölçü: gerçekleşen maraton kârı + isabet → **bot 3
+"trend ağırlıklı"** (4 işlem, %75 isabet, +6,28). Bot 14 = bot 3'ün
+tanımının (sv 53) birebir kopyası + kaldıraç bloğu: tavan 3×, puan ≥80 →
+2×, ≥88 → 3×, formasyon şart, dirence ≥2 ATR, stop-marj sığması 0,8,
+saatlik borç 0,00208 %. 400 $, `rebased_at` = katılım anı, 1h. Kontrol =
+bot 3'ün kendisi (aynı tanım 1×): kaldıracın KENDİ katkısı doğrudan
+ölçülür. G8'in (bot 11) eşiği 88 hiç tetiklenmemişti; G9 eşiği kapıya (80)
+indirir — her "kaldıraçsız (1×): sebep" kaydı üçlünün hangi ayağının
+tıkadığını gösterecek. Not: bu kol ön-kayıtlı kabul kuralından geçmedi;
+sahibin açık talimatıyla ölçüm amaçlı katıldı, tablo bunu "katılım günü"
+ile ayırır.
