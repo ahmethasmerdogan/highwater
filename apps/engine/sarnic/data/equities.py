@@ -465,16 +465,21 @@ class EquityDataService:
         # 28.08 satırı içlerinde yoktu; seans yine de işaretlenince döngü bir
         # daha denemedi ve günün barı hiç gelmedi. Veri eksikse işaret KONMAZ,
         # 15 dk sonra yeniden denenir (sağlayıcıyı 5 dk'da bir dövmemek için).
-        en_yeni = max(
-            (d for s, d in self._last_bar_day.items() if s.endswith(market.suffix)),
-            default=None,
-        )
-        if son_seans is not None and (en_yeni is None or en_yeni < son_seans):
+        # NİSAP şart, max() değil: İş Yatırım günü sembol sembol damlatıyor.
+        # 2 Eylül'de 57 sembolün 19'u gelmişken max() seansı "tazelendi"
+        # işaretledi — kalan 38 hiç çekilmedi, bot nisabı (%60) asla dolmadı
+        # ve Salı barı puanlanmadan terk edildi. Bekçi worker'ın kesit
+        # nisabıyla AYNI eşiği arar: gün gelen sembol ≥ max(10, %60).
+        pazarin = [d for s, d in self._last_bar_day.items() if s.endswith(market.suffix)]
+        gunlu = sum(1 for d in pazarin if son_seans is not None and d >= son_seans)
+        yeterli = max(10, int(len(pazarin) * 0.6))
+        if son_seans is not None and gunlu < yeterli:
             log.warning(
                 "equity_session_lagging",
                 market=market.code,
                 expected=son_seans.date().isoformat(),
-                newest=en_yeni.date().isoformat() if en_yeni else None,
+                arrived=gunlu,
+                needed=yeterli,
             )
             self._lag_until[market.code] = utcnow() + timedelta(minutes=15)
         else:
