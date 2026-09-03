@@ -10,7 +10,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Field as UiField, Reveal, StatusPill, Table, TBody, Td, Th, THead, Tr } from "uicean";
+import { Field as UiField, Reveal, StatusPill } from "uicean";
 import { api, type Strategy, type StrategyVersion } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { toast } from "@/lib/toast";
@@ -18,6 +18,8 @@ import { STRATEGY_GROUPS, readPath, type FieldSpec } from "@/lib/strategy-fields
 import { dateTime, num } from "@/lib/format";
 import { GuideSection } from "@/shell/page";
 import { Async, Button, Drawer, DrawerSection, KeyValue, Modal, NumText, Panel, TextInput } from "@/design";
+import { DataGrid } from "@/grid/data-grid";
+import type { GridColumn } from "@/grid/types";
 
 export const STRATEJILER_SUMMARY =
   "Puan ağırlıkları, giriş eşikleri, boyutlandırma ve çıkış kurallarından oluşan kural kümeleri.";
@@ -48,6 +50,26 @@ export function StratejilerGuide() {
   );
 }
 
+interface SurumRow {
+  strategy: Strategy;
+  version: StrategyVersion;
+}
+
+/* Sürüm defteri — önce strateji adı, aynı stratejide en yeni sürüm üstte. */
+const SURUM_COLUMNS: GridColumn<SurumRow>[] = [
+  { id: "strateji", header: "Strateji", width: 240, pin: true, value: (r) => r.strategy.name, cell: (r) => <span className="font-medium text-ink">{r.strategy.name}</span> },
+  { id: "surum", header: "Sürüm", width: 80, num: true, value: (r) => r.version.version, cell: (r) => <NumText text={`v${r.version.version}`} size="sm" /> },
+  {
+    id: "durum",
+    header: "Durum",
+    width: 130,
+    value: (r) => (r.version.frozen ? "dondurulmuş" : "düzenlenebilir"),
+    cell: (r) => <StatusPill tone={r.version.frozen ? "blue" : "gray"} size="sm">{r.version.frozen ? "dondurulmuş" : "düzenlenebilir"}</StatusPill>,
+  },
+  { id: "hash", header: "Parmak izi", width: 130, value: (r) => r.version.definition_hash, cell: (r) => <NumText text={r.version.definition_hash.slice(0, 12)} size="xs" /> },
+  { id: "created_at", header: "Oluşturuldu", width: 150, num: true, value: (r) => new Date(r.version.created_at).getTime(), cell: (r) => <NumText text={dateTime(r.version.created_at)} size="sm" /> },
+];
+
 export default function StratejilerTab({
   strategyId,
   versionId,
@@ -75,13 +97,8 @@ export default function StratejilerTab({
         [...strategy.versions].sort((a, b) => b.version - a.version)[0] ??
         null);
 
-  const rows = useMemo(
-    () =>
-      (query.data ?? []).flatMap((entry) =>
-        [...entry.versions]
-          .sort((a, b) => b.version - a.version)
-          .map((item, index) => ({ strategy: entry, version: item, first: index === 0, count: entry.versions.length })),
-      ),
+  const rows = useMemo<SurumRow[]>(
+    () => (query.data ?? []).flatMap((entry) => entry.versions.map((item) => ({ strategy: entry, version: item }))),
     [query.data],
   );
 
@@ -102,34 +119,19 @@ export default function StratejilerTab({
             }}
           >
             {() => (
-              <Table minWidth={720}>
-                <THead>
-                  <tr>
-                    <Th>Strateji</Th>
-                    <Th align="right">Sürüm</Th>
-                    <Th>Durum</Th>
-                    <Th>Parmak izi</Th>
-                    <Th align="right">Oluşturuldu</Th>
-                  </tr>
-                </THead>
-                <TBody>
-                  {rows.map(({ strategy: s, version: v, first, count }) => (
-                    <Tr key={v.id} selected={v.id === version?.id} onClick={() => onSelect(s.id, v.id)}>
-                      <Td className={first ? "font-medium text-ink" : "text-ink-3"}>
-                        {first ? s.name : <span className="pl-3">↳ {s.name}</span>}
-                        {first && count > 1 && <span className="ml-2 text-[12px] font-normal text-ink-3"><NumText text={num(count, 0)} size="xs" /> sürüm</span>}
-                      </Td>
-                      <Td align="right"><NumText text={`v${v.version}`} size="sm" /></Td>
-                      <Td><StatusPill tone={v.frozen ? "blue" : "gray"} size="sm">{v.frozen ? "dondurulmuş" : "düzenlenebilir"}</StatusPill></Td>
-                      <Td><NumText text={v.definition_hash.slice(0, 12)} size="xs" /></Td>
-                      <Td align="right"><NumText text={dateTime(v.created_at)} size="sm" /></Td>
-                    </Tr>
-                  ))}
-                  {rows.length === 0 && (
-                    <Tr><Td colSpan={5} className="py-8 text-center text-ink-3">Sürüm yok — sürüm oluşturulana kadar strateji bir bota bağlanamaz.</Td></Tr>
-                  )}
-                </TBody>
-              </Table>
+              <DataGrid
+                rows={rows}
+                columns={SURUM_COLUMNS}
+                rowKey={(r) => String(r.version.id)}
+                storageKey="arastirma-surumler"
+                searchPlaceholder="Strateji ara…"
+                density="compact"
+                defaultSort={[{ id: "strateji", desc: false }, { id: "surum", desc: true }]}
+                onRowClick={(r) => onSelect(r.strategy.id, r.version.id)}
+                rowAccent={(r) => (r.version.id === version?.id ? "var(--sn-brand-solid)" : null)}
+                emptyTitle="Sürüm yok"
+                emptyHint="Sürüm oluşturulana kadar strateji bir bota bağlanamaz."
+              />
             )}
           </Async>
         </Panel>

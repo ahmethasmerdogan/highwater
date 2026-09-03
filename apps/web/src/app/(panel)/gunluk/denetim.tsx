@@ -5,14 +5,14 @@
  * Kim, ne zaman, neyi değiştirdi, hangi IP'den. Yalnızca yöneticiye; kapı `page.tsx`'te.
  */
 
-import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { SearchField, Table, TBody, Td, Th, THead, Tr } from "uicean";
 import { api, type AuditEntry } from "@/lib/api";
 import { payloadSummary, readableCode } from "@/lib/humanize";
 import { dateTime } from "@/lib/format";
 import { GuideSection } from "@/shell/page";
 import { Async, InfoDot, NumText, Panel } from "@/design";
+import { DataGrid } from "@/grid/data-grid";
+import type { GridColumn } from "@/grid/types";
 
 export const DENETIM_SUMMARY = "Her yönetimsel işlemin kaydı: kim, ne zaman, neyi değiştirdi ve hangi IP'den.";
 
@@ -24,58 +24,41 @@ export function DenetimGuide() {
   );
 }
 
-export default function DenetimTab() {
-  const [search, setSearch] = useState("");
+const DENETIM_COLUMNS: GridColumn<AuditEntry>[] = [
+  { id: "created_at", header: "Zaman", width: 150, pin: true, value: (r) => new Date(r.created_at).getTime(), cell: (r) => <NumText text={dateTime(r.created_at)} size="sm" /> },
+  { id: "user_id", header: "Kullanıcı", width: 90, num: true, value: (r) => r.user_id, search: (r) => (r.user_id === null ? "sistem" : `#${r.user_id}`), cell: (r) => <NumText text={r.user_id === null ? "sistem" : `#${r.user_id}`} size="sm" /> },
+  { id: "action", header: "Eylem", width: 180, value: (r) => readableCode(r.action), search: (r) => `${readableCode(r.action)} ${r.action}`, cell: (r) => <span className="text-ink">{readableCode(r.action)}</span> },
+  { id: "target", header: "Hedef", width: 140, value: (r) => r.target, cell: (r) => <NumText text={r.target || "—"} size="sm" /> },
+  { id: "payload", header: "Ayrıntı", width: 360, value: (r) => payloadSummary(r.payload, 4), cell: (r) => <span className="block max-w-[360px] truncate text-[12px]">{payloadSummary(r.payload, 4)}</span> },
+  { id: "ip", header: "IP", width: 130, value: (r) => r.ip, cell: (r) => <NumText text={r.ip || "—"} size="xs" /> },
+];
 
+export default function DenetimTab() {
   const query = useQuery({
     queryKey: ["audit"],
     queryFn: () => api.get<AuditEntry[]>("/audit", { limit: 500 }),
     refetchInterval: 60_000,
   });
 
-  const rows = useMemo(() => {
-    const q = search.trim().toLocaleLowerCase("tr");
-    return (query.data ?? [])
-      .filter((row) => !q || `${row.action} ${row.target} ${row.ip}`.toLocaleLowerCase("tr").includes(q))
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  }, [query.data, search]);
-
   return (
     <Panel
       padded={false}
       title={<span className="inline-flex items-center gap-1.5">Denetim kaydı <InfoDot id="denetim_kaydi" /></span>}
       description="En yeni işlem üstte."
-      actions={<SearchField className="h-8 w-56" placeholder="Eylem, hedef ya da IP…" kbd={false} value={search} onChange={setSearch} />}
     >
       <Async query={query} empty={{ title: "Denetim kaydı boş", hint: "Henüz kaydedilmiş bir yönetimsel işlem yok." }}>
-        {() => (
-          <div className="max-h-[600px] overflow-y-auto">
-            <Table minWidth={900}>
-              <THead>
-                <tr>
-                  <Th>Zaman</Th>
-                  <Th align="right">Kullanıcı</Th>
-                  <Th>Eylem</Th>
-                  <Th>Hedef</Th>
-                  <Th>Ayrıntı</Th>
-                  <Th>IP</Th>
-                </tr>
-              </THead>
-              <TBody>
-                {rows.map((row) => (
-                  <Tr key={row.id}>
-                    <Td><NumText text={dateTime(row.created_at)} size="sm" /></Td>
-                    <Td align="right"><NumText text={row.user_id === null ? "sistem" : `#${row.user_id}`} size="sm" /></Td>
-                    <Td className="text-ink">{readableCode(row.action)}</Td>
-                    <Td><NumText text={row.target || "—"} size="sm" /></Td>
-                    <Td className="max-w-[360px] truncate text-[12px]">{payloadSummary(row.payload, 4)}</Td>
-                    <Td><NumText text={row.ip || "—"} size="xs" /></Td>
-                  </Tr>
-                ))}
-                {rows.length === 0 && <Tr><Td colSpan={6} className="py-8 text-center text-ink-3">Aramaya uyan kayıt yok.</Td></Tr>}
-              </TBody>
-            </Table>
-          </div>
+        {(rows) => (
+          <DataGrid
+            rows={rows}
+            columns={DENETIM_COLUMNS}
+            rowKey={(r) => String(r.id)}
+            storageKey="gunluk-denetim"
+            searchPlaceholder="Eylem, hedef ya da IP…"
+            density="compact"
+            defaultSort={[{ id: "created_at", desc: true }]}
+            maxHeight={600}
+            emptyTitle="Aramaya uyan kayıt yok"
+          />
         )}
       </Async>
     </Panel>

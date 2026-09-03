@@ -10,14 +10,16 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Reveal, SegmentedControl, StatusPill, Table, TBody, Td, Th, THead, Tr } from "uicean";
-import { api, type Calibration } from "@/lib/api";
+import { Reveal, SegmentedControl, StatusPill } from "uicean";
+import { api, type Calibration, type CalibrationDecile } from "@/lib/api";
 import { num, pct, pctSigned, signed } from "@/lib/format";
 import { GuideSection } from "@/shell/page";
 import { Async, InfoDot, Metric, NumText, Panel, RichText, Term, TextMetric } from "@/design";
 import { ChartLegend, CurveChart, DecileChart } from "@/design/chart";
 import { FAMILY_BY_ID } from "@/design/series";
 import { cx } from "@/design/cx";
+import { DataGrid } from "@/grid/data-grid";
+import type { GridColumn } from "@/grid/types";
 
 export const KALIBRASYON_SUMMARY = "Puanlama işe yarıyor mu? Cevap ölçülür ve olumsuz olabilir.";
 
@@ -240,37 +242,60 @@ function fallbackVerdict(cal: Calibration): string {
 /*  Desil tablosu                                                      */
 /* ------------------------------------------------------------------ */
 
+const ayrismis = (row: CalibrationDecile) => row.ci_low > 0 || row.ci_high < 0;
+
+const DESIL_COLUMNS: GridColumn<CalibrationDecile>[] = [
+  { id: "decile", header: "Dilim", width: 70, num: true, pin: true, value: (r) => r.decile, cell: (r) => <NumText text={String(r.decile)} size="sm" /> },
+  { id: "mean_score", header: "Ort. puan", width: 100, num: true, value: (r) => r.mean_score, cell: (r) => <NumText text={num(r.mean_score, 1)} size="sm" /> },
+  { id: "count", header: "Gözlem", width: 90, num: true, value: (r) => r.count, cell: (r) => <NumText text={num(r.count, 0)} size="sm" /> },
+  {
+    id: "mean_return",
+    header: "Ort. getiri",
+    width: 110,
+    num: true,
+    value: (r) => r.mean_return,
+    cell: (r) => <NumText text={pct(r.mean_return, 2)} size="sm" tone={r.mean_return >= 0 ? "var(--sn-up)" : "var(--sn-down)"} />,
+  },
+  {
+    id: "median_return",
+    header: "Medyan",
+    width: 100,
+    num: true,
+    hint: "Ortalama birkaç aşırı getiriyle sürüklenir; medyan tipik gözlemi gösterir.",
+    value: (r) => r.median_return,
+    cell: (r) => <NumText text={pct(r.median_return, 2)} size="sm" tone={r.median_return >= 0 ? "var(--sn-up)" : "var(--sn-down)"} />,
+  },
+  {
+    id: "ci",
+    header: "Güven aralığı",
+    width: 170,
+    num: true,
+    hint: "Ölçülen ortalamanın gerçekte hangi bandın içinde olabileceği. Bant sıfırı içeriyorsa fark belirsizdir.",
+    value: (r) => r.ci_low,
+    cell: (r) => <NumText text={`${pct(r.ci_low, 2)} … ${pct(r.ci_high, 2)}`} size="sm" />,
+  },
+  {
+    id: "separated",
+    header: "Gürültüden ayrı",
+    width: 130,
+    hint: "Güven aralığı sıfırı içermiyorsa fark gürültüden ayrışmış demektir.",
+    value: (r) => (ayrismis(r) ? "evet" : "sıfırı içeriyor"),
+    cell: (r) => (ayrismis(r) ? <StatusPill tone="gray" size="sm">evet</StatusPill> : <span className="text-[12px] text-ink-3">sıfırı içeriyor</span>),
+  },
+];
+
 function DecileTable({ cal }: { cal: Calibration }) {
   return (
-    <Table minWidth={720}>
-      <THead>
-        <tr>
-          <Th align="right">Dilim</Th>
-          <Th align="right">Ort. puan</Th>
-          <Th align="right">Gözlem</Th>
-          <Th align="right">Ort. getiri</Th>
-          <Th align="right"><span className="inline-flex items-center gap-1">Medyan <InfoDot text="Ortalama birkaç aşırı getiriyle sürüklenir; medyan tipik gözlemi gösterir." /></span></Th>
-          <Th align="right"><Term id="guven_araligi">Güven aralığı</Term></Th>
-          <Th><span className="inline-flex items-center gap-1">Gürültüden ayrı <InfoDot text="Güven aralığı sıfırı içermiyorsa fark gürültüden ayrışmış demektir." /></span></Th>
-        </tr>
-      </THead>
-      <TBody>
-        {cal.deciles.map((row) => {
-          const separated = row.ci_low > 0 || row.ci_high < 0;
-          return (
-            <Tr key={row.decile}>
-              <Td align="right"><NumText text={String(row.decile)} size="sm" /></Td>
-              <Td align="right"><NumText text={num(row.mean_score, 1)} size="sm" /></Td>
-              <Td align="right"><NumText text={num(row.count, 0)} size="sm" /></Td>
-              <Td align="right"><NumText text={pct(row.mean_return, 2)} size="sm" tone={row.mean_return >= 0 ? "var(--sn-up)" : "var(--sn-down)"} /></Td>
-              <Td align="right"><NumText text={pct(row.median_return, 2)} size="sm" tone={row.median_return >= 0 ? "var(--sn-up)" : "var(--sn-down)"} /></Td>
-              <Td align="right"><NumText text={`${pct(row.ci_low, 2)} … ${pct(row.ci_high, 2)}`} size="sm" /></Td>
-              <Td>{separated ? <StatusPill tone="gray" size="sm">evet</StatusPill> : <span className="text-[12px] text-ink-3">sıfırı içeriyor</span>}</Td>
-            </Tr>
-          );
-        })}
-      </TBody>
-    </Table>
+    <DataGrid
+      rows={cal.deciles}
+      columns={DESIL_COLUMNS}
+      rowKey={(r) => String(r.decile)}
+      storageKey="kalibrasyon-desil"
+      searchable={false}
+      density="compact"
+      defaultSort={[{ id: "decile", desc: false }]}
+      emptyTitle="Dilim yok"
+    />
   );
 }
 

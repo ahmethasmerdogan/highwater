@@ -9,13 +9,15 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Field as UiField, StatusPill, Table, TBody, Td, Th, THead, Tr } from "uicean";
+import { Field as UiField, StatusPill } from "uicean";
 import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
 import { SETTING_GROUPS, type SettingFieldSpec } from "@/lib/settings-fields";
 import { num } from "@/lib/format";
 import { GuideSection } from "@/shell/page";
 import { Alert, Async, Button, NumText, Panel, Term, TextInput } from "@/design";
+import { DataGrid } from "@/grid/data-grid";
+import type { GridColumn } from "@/grid/types";
 
 interface SettingGroup {
   key: string;
@@ -24,6 +26,17 @@ interface SettingGroup {
   stored: Record<string, unknown>;
   effective: Record<string, unknown>;
 }
+
+interface AyarRow {
+  key: string;
+  value: unknown;
+}
+
+/* Salt okunur defter: alan + değer. */
+const AYAR_COLUMNS: GridColumn<AyarRow>[] = [
+  { id: "key", header: "Alan", width: 240, pin: true, value: (r) => r.key, cell: (r) => r.key },
+  { id: "value", header: "Değer", width: 200, num: true, value: (r) => (typeof r.value === "number" ? r.value : String(r.value)), cell: (r) => <NumText text={String(r.value)} size="sm" /> },
+];
 
 export const AYARLAR = {
   summary: "Motorun okuduğu parametreler. Değişiklik bir sonraki döngüde geçerli olur.",
@@ -96,17 +109,16 @@ function SettingGroupCard({ group }: { group: SettingGroup }) {
         padded={false}
         actions={<StatusPill tone="gray" size="sm">motor okumuyor</StatusPill>}
       >
-        <Table minWidth={320}>
-          <THead><tr><Th>Alan</Th><Th align="right">Değer</Th></tr></THead>
-          <TBody>
-            {Object.entries(group.effective).map(([key, value]) => (
-              <Tr key={key}>
-                <Td>{key}</Td>
-                <Td align="right"><NumText text={String(value)} size="sm" /></Td>
-              </Tr>
-            ))}
-          </TBody>
-        </Table>
+        <DataGrid
+          rows={Object.entries(group.effective).map(([key, value]) => ({ key, value }))}
+          columns={AYAR_COLUMNS}
+          rowKey={(r) => r.key}
+          storageKey="yonetim-ayarlar"
+          searchable={false}
+          density="compact"
+          defaultSort={[{ id: "key", desc: false }]}
+          emptyTitle="Alan yok"
+        />
       </Panel>
     );
   }

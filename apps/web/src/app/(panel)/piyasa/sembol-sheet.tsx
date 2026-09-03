@@ -19,7 +19,8 @@ import { Empty, Field, InfoDot, NumText, Tag } from "@/design";
 import { CurveChart } from "@/design/chart";
 import { PriceChart } from "@/design/price-chart";
 import { ScoreCard } from "@/design/score-card";
-import { SimpleTable, type SimpleColumn } from "@/grid/simple-table";
+import { DataGrid } from "@/grid/data-grid";
+import type { GridColumn } from "@/grid/types";
 import { Atolye } from "./atolye";
 import type { Market } from "./ortak";
 
@@ -28,11 +29,13 @@ const TIMEFRAMES = ["15m", "1h", "4h", "1d"].map((value) => ({ value, label: val
 /* Uç dört tür döndürür (`features/sr.py LevelKind`). */
 const SR_TUR: Record<string, string> = { support: "Destek", resistance: "Direnç", poc: "POC", value_area: "Değer alanı" };
 
-const LEVEL_COLUMNS: SimpleColumn<SRLevels["levels"][number]>[] = [
-  { header: "Tür", cell: (row) => <span className="text-[12px]">{SR_TUR[row.kind] ?? row.kind}</span> },
-  { header: "Fiyat", num: true, cell: (row) => <NumText text={price(row.price)} size="sm" /> },
-  { header: "Güç", num: true, cell: (row) => <NumText text={num(row.strength, 2)} size="sm" /> },
-  { header: "Dokunuş", num: true, cell: (row) => <NumText text={String(row.touches)} size="sm" /> },
+type Level = SRLevels["levels"][number];
+
+const LEVEL_COLUMNS: GridColumn<Level>[] = [
+  { id: "kind", header: "Tür", width: 110, value: (row) => SR_TUR[row.kind] ?? row.kind, cell: (row) => <span className="text-[12px]">{SR_TUR[row.kind] ?? row.kind}</span> },
+  { id: "price", header: "Fiyat", width: 110, num: true, value: (row) => row.price, cell: (row) => <NumText text={price(row.price)} size="sm" /> },
+  { id: "strength", header: "Güç", width: 80, num: true, value: (row) => row.strength, cell: (row) => <NumText text={num(row.strength, 2)} size="sm" /> },
+  { id: "touches", header: "Dokunuş", width: 90, num: true, value: (row) => row.touches, cell: (row) => <NumText text={String(row.touches)} size="sm" /> },
 ];
 
 /** Defter bölümü: büyük harf etiket + isteğe bağlı sağ eylem + içerik. Kutu yok. */
@@ -169,8 +172,17 @@ export function SembolSheet({
                   <Field label="ATR" term="atr" value={<NumText text={price(sr.data.atr)} size="sm" />} />
                 </div>
                 {sr.data.levels.length > 0 && (
-                  <div className="scroll-thin mt-3 max-h-[200px] overflow-y-auto">
-                    <SimpleTable rows={sr.data.levels} columns={LEVEL_COLUMNS} rowKey={(row) => `${row.kind}-${row.price}`} dense />
+                  <div className="mt-3">
+                    <DataGrid
+                      rows={sr.data.levels}
+                      columns={LEVEL_COLUMNS}
+                      rowKey={(row) => `${row.kind}-${row.price}`}
+                      storageKey="piyasa-sr"
+                      searchable={false}
+                      density="compact"
+                      defaultSort={[{ id: "price", desc: true }]}
+                      maxHeight={240}
+                    />
                   </div>
                 )}
               </>

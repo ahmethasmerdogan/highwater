@@ -11,20 +11,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  Field as UiField,
-  Reveal,
-  SegmentedControl,
-  StatusPill,
-  Table,
-  TBody,
-  Td,
-  Textarea,
-  Th,
-  THead,
-  Toggle as PressToggle,
-  Tr,
-} from "uicean";
+import { Field as UiField, Reveal, SegmentedControl, StatusPill, Textarea, Toggle as PressToggle } from "uicean";
 import {
   api,
   type Backtest,
@@ -54,6 +41,8 @@ import {
   TextInput,
 } from "@/design";
 import { CurveChart, type CurveSeries } from "@/design/chart";
+import { DataGrid } from "@/grid/data-grid";
+import type { GridColumn } from "@/grid/types";
 
 export const BACKTEST_SUMMARY = "Stratejiyi geçmiş veride çalıştır; sonucu kıyaslarla oku.";
 
@@ -299,55 +288,76 @@ const STATUS_INFO: Record<string, { label: string; tone: "green" | "red" | "ambe
   QUEUED: { label: "Sırada", tone: "gray" },
 };
 
-function BacktestList({ rows, selected, onSelect }: { rows: Backtest[]; selected: number | null; onSelect: (id: number) => void }) {
-  const sorted = useMemo(
-    () => [...rows].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
-    [rows],
-  );
+/** Koşu süresi (saniye); bitmemiş koşuda boş. */
+function kosuSuresi(row: Backtest): number | null {
+  return row.finished_at && row.started_at
+    ? (new Date(row.finished_at).getTime() - new Date(row.started_at).getTime()) / 1000
+    : null;
+}
 
+const KOSU_COLUMNS: GridColumn<Backtest>[] = [
+  { id: "created_at", header: "Başlatıldı", width: 150, pin: true, value: (r) => new Date(r.created_at).getTime(), cell: (r) => <NumText text={dateTime(r.created_at)} size="sm" /> },
+  {
+    id: "status",
+    header: "Durum",
+    width: 120,
+    value: (r) => (STATUS_INFO[r.status] ?? { label: r.status }).label,
+    cell: (r) => {
+      const info = STATUS_INFO[r.status] ?? { label: r.status, tone: "gray" as const };
+      return <StatusPill tone={info.tone} size="sm" dot={info.tone === "amber"}>{info.label}</StatusPill>;
+    },
+  },
+  {
+    id: "donem",
+    header: "Dönem",
+    width: 200,
+    value: (r) => String((r.params as { start?: string }).start ?? ""),
+    cell: (r) => {
+      const params = r.params as { start?: string; end?: string };
+      return <NumText text={`${dateOnly(params.start)} — ${dateOnly(params.end)}`} size="sm" />;
+    },
+  },
+  { id: "surum", header: "Sürüm", width: 80, num: true, value: (r) => r.strategy_version_id, cell: (r) => <NumText text={`#${r.strategy_version_id}`} size="sm" /> },
+  {
+    id: "havuz",
+    header: "Havuz",
+    width: 130,
+    value: (r) => (r.approximate_universe ? "yaklaşık havuz" : "gerçek fotoğraf"),
+    cell: (r) =>
+      r.approximate_universe
+        ? <StatusPill tone="amber" size="sm">yaklaşık havuz</StatusPill>
+        : <span className="text-[12px] text-ink-3">gerçek fotoğraf</span>,
+  },
+  {
+    id: "sure",
+    header: "Süre",
+    width: 100,
+    num: true,
+    value: (r) => kosuSuresi(r),
+    cell: (r) => {
+      const secs = kosuSuresi(r);
+      return secs !== null
+        ? <NumText text={`${num(secs, 0)} sn`} size="sm" />
+        : <span className="sn-num text-[12px] text-ink-3">{relative(r.started_at)}</span>;
+    },
+  },
+];
+
+function BacktestList({ rows, selected, onSelect }: { rows: Backtest[]; selected: number | null; onSelect: (id: number) => void }) {
   return (
-    <div className="max-h-[420px] overflow-y-auto">
-      <Table minWidth={760}>
-        <THead>
-          <tr>
-            <Th>Başlatıldı</Th>
-            <Th>Durum</Th>
-            <Th>Dönem</Th>
-            <Th align="right">Sürüm</Th>
-            <Th>Havuz</Th>
-            <Th align="right">Süre</Th>
-          </tr>
-        </THead>
-        <TBody>
-          {sorted.map((row) => {
-            const info = STATUS_INFO[row.status] ?? { label: row.status, tone: "gray" as const };
-            const params = row.params as { start?: string; end?: string };
-            const secs =
-              row.finished_at && row.started_at
-                ? (new Date(row.finished_at).getTime() - new Date(row.started_at).getTime()) / 1000
-                : null;
-            return (
-              <Tr key={row.id} selected={row.id === selected} onClick={() => onSelect(row.id)}>
-                <Td><NumText text={dateTime(row.created_at)} size="sm" /></Td>
-                <Td><StatusPill tone={info.tone} size="sm" dot={info.tone === "amber"}>{info.label}</StatusPill></Td>
-                <Td><NumText text={`${dateOnly(params.start)} — ${dateOnly(params.end)}`} size="sm" /></Td>
-                <Td align="right"><NumText text={`#${row.strategy_version_id}`} size="sm" /></Td>
-                <Td>
-                  {row.approximate_universe
-                    ? <StatusPill tone="amber" size="sm">yaklaşık havuz</StatusPill>
-                    : <span className="text-[12px] text-ink-3">gerçek fotoğraf</span>}
-                </Td>
-                <Td align="right">
-                  {secs !== null
-                    ? <NumText text={`${num(secs, 0)} sn`} size="sm" />
-                    : <span className="sn-num text-[12px] text-ink-3">{relative(row.started_at)}</span>}
-                </Td>
-              </Tr>
-            );
-          })}
-        </TBody>
-      </Table>
-    </div>
+    <DataGrid
+      rows={rows}
+      columns={KOSU_COLUMNS}
+      rowKey={(r) => String(r.id)}
+      storageKey="arastirma-kosular"
+      searchPlaceholder="Durum ya da sürüm…"
+      density="compact"
+      defaultSort={[{ id: "created_at", desc: true }]}
+      onRowClick={(r) => onSelect(r.id)}
+      rowAccent={(r) => (r.id === selected ? "var(--sn-brand-solid)" : null)}
+      maxHeight={420}
+      emptyTitle="Henüz backtest yok"
+    />
   );
 }
 
@@ -505,8 +515,23 @@ function ReportBody({
 
 /* ------------------------------------------------------------------ */
 
+interface KiyasRow {
+  name: string;
+  strategy: boolean;
+  total_return: number | null;
+  max_drawdown: number | null;
+  sharpe: number | null;
+}
+
+const KIYAS_COLUMNS: GridColumn<KiyasRow>[] = [
+  { id: "name", header: "Kıyas", width: 220, pin: true, value: (r) => r.name, cell: (r) => <span className={r.strategy ? "font-medium text-ink" : undefined}>{r.name}</span> },
+  { id: "total_return", header: "Toplam getiri", width: 130, num: true, value: (r) => r.total_return, cell: (r) => <Delta value={r.total_return} format={(v) => pctSigned(v)} size="sm" /> },
+  { id: "max_drawdown", header: "Azami düşüş", width: 120, num: true, value: (r) => r.max_drawdown, cell: (r) => <NumText text={pct(r.max_drawdown)} size="sm" /> },
+  { id: "sharpe", header: "Sharpe", width: 90, num: true, value: (r) => r.sharpe, cell: (r) => <NumText text={num(r.sharpe, 2)} size="sm" /> },
+];
+
 function BenchmarkTable({ result }: { result: BacktestResult }) {
-  const rows = [
+  const rows: KiyasRow[] = [
     {
       name: "Strateji",
       strategy: true,
@@ -525,26 +550,15 @@ function BenchmarkTable({ result }: { result: BacktestResult }) {
 
   return (
     <div className="border-t border-line">
-      <Table minWidth={520}>
-        <THead>
-          <tr>
-            <Th>Kıyas</Th>
-            <Th align="right">Toplam getiri</Th>
-            <Th align="right">Azami düşüş</Th>
-            <Th align="right">Sharpe</Th>
-          </tr>
-        </THead>
-        <TBody>
-          {rows.map((row) => (
-            <Tr key={row.name}>
-              <Td className={row.strategy ? "font-medium text-ink" : undefined}>{row.name}</Td>
-              <Td align="right"><Delta value={row.total_return} format={(v) => pctSigned(v)} size="sm" /></Td>
-              <Td align="right"><NumText text={pct(row.max_drawdown)} size="sm" /></Td>
-              <Td align="right"><NumText text={num(row.sharpe, 2)} size="sm" /></Td>
-            </Tr>
-          ))}
-        </TBody>
-      </Table>
+      <DataGrid
+        rows={rows}
+        columns={KIYAS_COLUMNS}
+        rowKey={(r) => r.name}
+        storageKey="arastirma-kiyas"
+        searchable={false}
+        density="compact"
+        rowAccent={(r) => (r.strategy ? "var(--sn-series-1)" : null)}
+      />
     </div>
   );
 }
@@ -552,6 +566,39 @@ function BenchmarkTable({ result }: { result: BacktestResult }) {
 /* ------------------------------------------------------------------ */
 /*  İşlem defteri                                                      */
 /* ------------------------------------------------------------------ */
+
+interface LedgerRow {
+  key: string;
+  trade: BacktestTrade;
+}
+
+const ISLEM_COLUMNS: GridColumn<LedgerRow>[] = [
+  { id: "exit_time", header: "Kapanış", width: 150, pin: true, value: (r) => String(r.trade.exit_time ?? ""), cell: (r) => <NumText text={dateTime(String(r.trade.exit_time ?? ""))} size="sm" /> },
+  { id: "symbol", header: "Sembol", width: 120, value: (r) => String(r.trade.symbol ?? ""), cell: (r) => <NumText text={String(r.trade.symbol ?? "—")} size="sm" /> },
+  { id: "exit_reason", header: "Sebep", width: 150, value: (r) => String(r.trade.exit_reason ?? ""), cell: (r) => <ExitReasonPill reason={String(r.trade.exit_reason ?? "")} /> },
+  {
+    id: "leverage",
+    header: "Kaldıraç",
+    width: 90,
+    num: true,
+    hint: "Pozisyonun açıldığı kaldıraç çarpanı. 1 = kaldıraçsız.",
+    value: (r) => asNumber(r.trade.leverage),
+    cell: (r) => {
+      const lev = asNumber(r.trade.leverage);
+      return <NumText text={lev === null ? "—" : `×${num(lev, lev === Math.round(lev) ? 0 : 2)}`} size="sm" />;
+    },
+  },
+  { id: "pnl", header: "K/Z", width: 110, num: true, value: (r) => asNumber(r.trade.pnl), cell: (r) => <Delta value={asNumber(r.trade.pnl)} format={(v) => money(v)} size="sm" /> },
+  {
+    id: "pnl_r",
+    header: "Sonuç",
+    width: 100,
+    num: true,
+    hint: "İşlemin sonucu, o işlemde göze alınan riske bölünmüş hâli.",
+    value: (r) => asNumber(r.trade.pnl_r),
+    cell: (r) => <Delta value={asNumber(r.trade.pnl_r)} format={(v) => rMultiple(v)} size="sm" />,
+  },
+];
 
 function TradeLedger({ trades }: { trades: BacktestTrade[] }) {
   /* Çıkış sebebi lejantı: defterde geçen her sebep ve kaç kez geçtiği.
@@ -565,8 +612,9 @@ function TradeLedger({ trades }: { trades: BacktestTrade[] }) {
     return [...tally.entries()].sort((a, b) => b[1] - a[1]);
   }, [trades]);
 
-  const sorted = useMemo(
-    () => [...trades].sort((a, b) => String(b.exit_time ?? "").localeCompare(String(a.exit_time ?? ""))),
+  /* Motor id vermeyebilir; sıra numarası anahtarı tekilleştirir. */
+  const rows = useMemo<LedgerRow[]>(
+    () => trades.map((trade, index) => ({ key: String(trade.id ?? `${trade.symbol}-${trade.exit_time}-${index}`), trade })),
     [trades],
   );
 
@@ -586,35 +634,17 @@ function TradeLedger({ trades }: { trades: BacktestTrade[] }) {
         </span>
       }
     >
-      <div className="max-h-[480px] overflow-y-auto">
-        <Table minWidth={760}>
-          <THead>
-            <tr>
-              <Th>Kapanış</Th>
-              <Th>Sembol</Th>
-              <Th>Sebep</Th>
-              <Th align="right"><span className="inline-flex items-center gap-1">Kaldıraç <InfoDot text="Pozisyonun açıldığı kaldıraç çarpanı. 1 = kaldıraçsız." /></span></Th>
-              <Th align="right">K/Z</Th>
-              <Th align="right"><span className="inline-flex items-center gap-1">Sonuç <InfoDot text="İşlemin sonucu, o işlemde göze alınan riske bölünmüş hâli." /></span></Th>
-            </tr>
-          </THead>
-          <TBody>
-            {sorted.map((row, index) => {
-              const lev = asNumber(row.leverage);
-              return (
-                <Tr key={String(row.id ?? `${row.symbol}-${row.exit_time}-${index}`)}>
-                  <Td><NumText text={dateTime(String(row.exit_time ?? ""))} size="sm" /></Td>
-                  <Td><NumText text={String(row.symbol ?? "—")} size="sm" /></Td>
-                  <Td><ExitReasonPill reason={String(row.exit_reason ?? "")} /></Td>
-                  <Td align="right"><NumText text={lev === null ? "—" : `×${num(lev, lev === Math.round(lev) ? 0 : 2)}`} size="sm" /></Td>
-                  <Td align="right"><Delta value={asNumber(row.pnl)} format={(v) => money(v)} size="sm" /></Td>
-                  <Td align="right"><Delta value={asNumber(row.pnl_r)} format={(v) => rMultiple(v)} size="sm" /></Td>
-                </Tr>
-              );
-            })}
-          </TBody>
-        </Table>
-      </div>
+      <DataGrid
+        rows={rows}
+        columns={ISLEM_COLUMNS}
+        rowKey={(r) => r.key}
+        storageKey="arastirma-islemler"
+        searchPlaceholder="Sembol ya da sebep…"
+        density="compact"
+        defaultSort={[{ id: "exit_time", desc: true }]}
+        maxHeight={480}
+        emptyTitle="İşlem yok"
+      />
     </Panel>
   );
 }

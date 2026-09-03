@@ -5,9 +5,9 @@
  * Açık kayıt yoktur; hesaplar yalnızca buradan oluşur. Her işlem denetim kaydına yazılır.
  */
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Field as UiField, StatusPill, Switch, Table, TBody, Td, Th, THead, Tr } from "uicean";
+import { Field as UiField, StatusPill, Switch } from "uicean";
 import { api, type Role, type User } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { toast } from "@/lib/toast";
@@ -15,6 +15,8 @@ import { ROLE_HINT, ROLE_LABEL } from "@/lib/humanize";
 import { dateTime, relative } from "@/lib/format";
 import { GuideSection } from "@/shell/page";
 import { Async, Button, Drawer, DrawerSection, KeyValue, Modal, NumText, Panel, RolePill, Select, TextInput } from "@/design";
+import { DataGrid } from "@/grid/data-grid";
+import type { GridColumn } from "@/grid/types";
 
 const ROLES: Role[] = ["ADMIN", "TRADER", "VIEWER"];
 
@@ -38,6 +40,46 @@ export const KULLANICILAR = {
   ),
 };
 
+const KULLANICI_COLUMNS: GridColumn<User>[] = [
+  {
+    id: "ad",
+    header: "Kullanıcı",
+    width: 260,
+    pin: true,
+    value: (r) => r.display_name || r.email,
+    search: (r) => `${r.display_name} ${r.email}`,
+    cell: (r) => (
+      <span className="flex flex-col leading-tight">
+        <span className="text-ink">{r.display_name || "—"}</span>
+        <span className="text-[11px] text-ink-3">{r.email}</span>
+      </span>
+    ),
+  },
+  { id: "role", header: "Yetki", width: 110, value: (r) => ROLE_LABEL[r.role], cell: (r) => <RolePill role={r.role} /> },
+  {
+    id: "totp",
+    header: "2FA",
+    width: 110,
+    value: (r) => (r.totp_enabled ? "Kurulu" : "Kurulmadı"),
+    cell: (r) => <StatusPill tone={r.totp_enabled ? "green" : "amber"} size="sm">{r.totp_enabled ? "Kurulu" : "Kurulmadı"}</StatusPill>,
+  },
+  {
+    id: "active",
+    header: "Durum",
+    width: 90,
+    value: (r) => (r.is_active ? "Aktif" : "Pasif"),
+    cell: (r) => <StatusPill tone={r.is_active ? "green" : "gray"} size="sm">{r.is_active ? "Aktif" : "Pasif"}</StatusPill>,
+  },
+  {
+    id: "last_login_at",
+    header: "Son giriş",
+    width: 120,
+    num: true,
+    value: (r) => (r.last_login_at ? new Date(r.last_login_at).getTime() : null),
+    cell: (r) => <span className="sn-num text-[12px] text-ink-3">{relative(r.last_login_at)}</span>,
+  },
+];
+
 export function KullanicilarTab() {
   const [selected, setSelected] = useState<User | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -46,11 +88,6 @@ export function KullanicilarTab() {
     queryKey: ["users"],
     queryFn: () => api.get<User[]>("/users"),
   });
-
-  const rows = useMemo(
-    () => [...(query.data ?? [])].sort((a, b) => (a.display_name || a.email).localeCompare(b.display_name || b.email, "tr")),
-    [query.data],
-  );
 
   return (
     <>
@@ -61,32 +98,19 @@ export function KullanicilarTab() {
         actions={<Button size="sm" variant="primary" onClick={() => setCreateOpen(true)}>Yeni kullanıcı</Button>}
       >
         <Async query={query} empty={{ title: "Kullanıcı yok", hint: "Henüz hiç hesap oluşturulmamış." }}>
-          {() => (
-            <Table minWidth={760}>
-              <THead>
-                <tr>
-                  <Th>Kullanıcı</Th>
-                  <Th>Yetki</Th>
-                  <Th>2FA</Th>
-                  <Th>Durum</Th>
-                  <Th align="right">Son giriş</Th>
-                </tr>
-              </THead>
-              <TBody>
-                {rows.map((row) => (
-                  <Tr key={row.id} selected={row.id === selected?.id} onClick={() => setSelected(row)}>
-                    <Td>
-                      <span className="block text-ink">{row.display_name || "—"}</span>
-                      <span className="block text-[12px] text-ink-3">{row.email}</span>
-                    </Td>
-                    <Td><RolePill role={row.role} /></Td>
-                    <Td><StatusPill tone={row.totp_enabled ? "green" : "amber"} size="sm">{row.totp_enabled ? "Kurulu" : "Kurulmadı"}</StatusPill></Td>
-                    <Td><StatusPill tone={row.is_active ? "green" : "gray"} size="sm">{row.is_active ? "Aktif" : "Pasif"}</StatusPill></Td>
-                    <Td align="right"><span className="sn-num text-[12px] text-ink-3">{relative(row.last_login_at)}</span></Td>
-                  </Tr>
-                ))}
-              </TBody>
-            </Table>
+          {(rows) => (
+            <DataGrid
+              rows={rows}
+              columns={KULLANICI_COLUMNS}
+              rowKey={(r) => String(r.id)}
+              storageKey="yonetim-kullanicilar"
+              searchPlaceholder="Ad ya da e-posta…"
+              density="default"
+              defaultSort={[{ id: "ad", desc: false }]}
+              onRowClick={setSelected}
+              rowAccent={(r) => (r.id === selected?.id ? "var(--sn-brand-solid)" : null)}
+              emptyTitle="Kullanıcı yok"
+            />
           )}
         </Async>
       </Panel>

@@ -7,12 +7,14 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { SearchField, StatusPill, Table, TBody, Td, Th, THead, Toggle as PressToggle, Tr } from "uicean";
+import { StatusPill, Toggle as PressToggle } from "uicean";
 import { api, type DataQualityEntry } from "@/lib/api";
 import { payloadFields, payloadSummary, readableCode } from "@/lib/humanize";
 import { dateTime, num } from "@/lib/format";
 import { GuideSection } from "@/shell/page";
-import { Async, Drawer, DrawerSection, Empty, Field, InfoDot, NumText, Panel, RichText, Term } from "@/design";
+import { Async, Drawer, DrawerSection, Field, InfoDot, NumText, Panel, RichText, Term } from "@/design";
+import { DataGrid } from "@/grid/data-grid";
+import type { GridColumn } from "@/grid/types";
 
 export const KALITE_SUMMARY = "Piyasa verisindeki eksik mumlar ve alışılmadık hareketler; boşluklar otomatik yeniden çekilir.";
 
@@ -28,9 +30,32 @@ export function KaliteGuide() {
   );
 }
 
+const kindLabel = (kind: string) => (kind === "gap" ? "Veri boşluğu" : kind === "outlier" ? "Aykırı değer" : readableCode(kind));
+
+const KALITE_COLUMNS: GridColumn<DataQualityEntry>[] = [
+  { id: "created_at", header: "Bulunma", width: 150, pin: true, value: (r) => new Date(r.created_at).getTime(), cell: (r) => <NumText text={dateTime(r.created_at)} size="sm" /> },
+  { id: "kind", header: "Tür", width: 140, value: (r) => kindLabel(r.kind), search: (r) => `${kindLabel(r.kind)} ${r.kind}`, cell: (r) => <span className="text-ink"><QualityKind kind={r.kind} /></span> },
+  { id: "symbol", header: "Sembol", width: 120, value: (r) => r.symbol, cell: (r) => <NumText text={r.symbol || "—"} size="sm" /> },
+  { id: "timeframe", header: "Bar", width: 70, hint: "Bulgunun tespit edildiği mum çözünürlüğü.", value: (r) => r.timeframe, cell: (r) => <NumText text={r.timeframe} size="sm" /> },
+  {
+    id: "severity",
+    header: "Önem",
+    width: 90,
+    value: (r) => (r.severity === "ERROR" ? "Hata" : "Uyarı"),
+    cell: (r) => <StatusPill tone={r.severity === "ERROR" ? "red" : "amber"} size="sm">{r.severity === "ERROR" ? "Hata" : "Uyarı"}</StatusPill>,
+  },
+  {
+    id: "resolved",
+    header: "Durum",
+    width: 90,
+    value: (r) => (r.resolved ? "Kapandı" : "Açık"),
+    cell: (r) => <StatusPill tone={r.resolved ? "green" : "gray"} size="sm">{r.resolved ? "Kapandı" : "Açık"}</StatusPill>,
+  },
+  { id: "detail", header: "Ayrıntı", width: 360, value: (r) => payloadSummary(r.detail, 3), cell: (r) => <span className="block max-w-[360px] truncate text-[12px]">{payloadSummary(r.detail, 3)}</span> },
+];
+
 export default function KaliteTab() {
   const [onlyOpen, setOnlyOpen] = useState(true);
-  const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<DataQualityEntry | null>(null);
 
   const query = useQuery({
@@ -39,13 +64,7 @@ export default function KaliteTab() {
     refetchInterval: 60_000,
   });
 
-  const rows = useMemo(() => {
-    const q = search.trim().toLocaleLowerCase("tr");
-    return (query.data ?? [])
-      .filter((row) => (onlyOpen ? !row.resolved : true))
-      .filter((row) => !q || `${row.symbol} ${row.kind} ${row.timeframe}`.toLocaleLowerCase("tr").includes(q))
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  }, [query.data, onlyOpen, search]);
+  const rows = useMemo(() => (query.data ?? []).filter((row) => (onlyOpen ? !row.resolved : true)), [query.data, onlyOpen]);
 
   const openCount = (query.data ?? []).filter((row) => !row.resolved).length;
 
@@ -61,48 +80,24 @@ export default function KaliteTab() {
             <><NumText text={num(openCount, 0)} size="sm" /> açık bulgu. Çoğu <Term id="aykiri_deger" /> olabilir; kendiliğinden kapanmaz.</>
           )
         }
-        actions={
-          <>
-            <SearchField className="h-8 w-48" placeholder="Sembol ya da tür…" kbd={false} value={search} onChange={setSearch} />
-            <PressToggle size="sm" pressed={onlyOpen} onChange={setOnlyOpen}>Yalnızca açık</PressToggle>
-          </>
-        }
+        actions={<PressToggle size="sm" pressed={onlyOpen} onChange={setOnlyOpen}>Yalnızca açık</PressToggle>}
       >
         <Async query={query} empty={{ title: "Kalite bulgusu yok", hint: "Veri akışında eksik mum ya da aykırı değer tespit edilmedi." }}>
-          {() =>
-            rows.length === 0 ? (
-              <Empty title="Bulgu yok" hint="Süzgece uyan kayıt yok. Kapananları görmek için süzgeci kaldırın." />
-            ) : (
-              <div className="max-h-[600px] overflow-y-auto">
-                <Table minWidth={820}>
-                  <THead>
-                    <tr>
-                      <Th>Bulunma</Th>
-                      <Th>Tür</Th>
-                      <Th>Sembol</Th>
-                      <Th><span className="inline-flex items-center gap-1">Bar <InfoDot text="Bulgunun tespit edildiği mum çözünürlüğü." /></span></Th>
-                      <Th>Önem</Th>
-                      <Th>Durum</Th>
-                      <Th>Ayrıntı</Th>
-                    </tr>
-                  </THead>
-                  <TBody>
-                    {rows.map((row) => (
-                      <Tr key={row.id} onClick={() => setSelected(row)}>
-                        <Td><NumText text={dateTime(row.created_at)} size="sm" /></Td>
-                        <Td className="text-ink"><QualityKind kind={row.kind} /></Td>
-                        <Td><NumText text={row.symbol || "—"} size="sm" /></Td>
-                        <Td><NumText text={row.timeframe} size="sm" /></Td>
-                        <Td><StatusPill tone={row.severity === "ERROR" ? "red" : "amber"} size="sm">{row.severity === "ERROR" ? "Hata" : "Uyarı"}</StatusPill></Td>
-                        <Td><StatusPill tone={row.resolved ? "green" : "gray"} size="sm">{row.resolved ? "Kapandı" : "Açık"}</StatusPill></Td>
-                        <Td className="max-w-[360px] truncate text-[12px]">{payloadSummary(row.detail, 3)}</Td>
-                      </Tr>
-                    ))}
-                  </TBody>
-                </Table>
-              </div>
-            )
-          }
+          {() => (
+            <DataGrid
+              rows={rows}
+              columns={KALITE_COLUMNS}
+              rowKey={(r) => String(r.id)}
+              storageKey="gunluk-kalite"
+              searchPlaceholder="Sembol ya da tür…"
+              density="compact"
+              defaultSort={[{ id: "created_at", desc: true }]}
+              onRowClick={setSelected}
+              maxHeight={600}
+              emptyTitle="Bulgu yok"
+              emptyHint="Süzgece uyan kayıt yok. Kapananları görmek için süzgeci kaldırın."
+            />
+          )}
         </Async>
       </Panel>
 

@@ -13,6 +13,8 @@ import { filterInfo } from "@/lib/universe-filters";
 import { num, relative } from "@/lib/format";
 import { Button, IClose, IconButton, InfoDot, NumText, TextInput } from "@/design";
 import { CurveChart, type CurveSeries } from "@/design/chart";
+import { DataGrid } from "@/grid/data-grid";
+import type { GridColumn } from "@/grid/types";
 import type { Market } from "./ortak";
 
 export function Huni({ snap, market, canEdit }: { snap: SnapshotDetail; market: Market; canEdit: boolean }) {
@@ -143,6 +145,12 @@ function Turnover({ market }: { market: Market }) {
 /*  Kara liste                                                         */
 /* ------------------------------------------------------------------ */
 
+interface BlacklistEntry {
+  symbol: string;
+  reason: string;
+  created_at: string;
+}
+
 function Blacklist() {
   const qc = useQueryClient();
   const [symbol, setSymbol] = useState("");
@@ -150,7 +158,7 @@ function Blacklist() {
 
   const list = useQuery({
     queryKey: ["blacklist"],
-    queryFn: () => api.get<{ symbol: string; reason: string; created_at: string }[]>("/universe/blacklist"),
+    queryFn: () => api.get<BlacklistEntry[]>("/universe/blacklist"),
   });
 
   const add = useMutation({
@@ -174,6 +182,27 @@ function Blacklist() {
   });
 
   const entries = list.data ?? [];
+
+  /* Kaldır düğmesi satırın içinde: sütunlar mutasyona baktığı için bileşen ömründe kurulur. */
+  const columns = useMemo<GridColumn<BlacklistEntry>[]>(
+    () => [
+      { id: "symbol", header: "Sembol", width: 130, pin: true, value: (row) => row.symbol, cell: (row) => <span className="sn-num text-ink">{row.symbol}</span> },
+      { id: "reason", header: "Sebep", width: 320, value: (row) => row.reason, cell: (row) => <span className="text-ink-2">{row.reason || "sebep yazılmamış"}</span> },
+      { id: "created_at", header: "Eklendi", width: 120, num: true, value: (row) => new Date(row.created_at).getTime(), cell: (row) => <span className="sn-num text-ink-3">{relative(row.created_at)}</span> },
+      {
+        id: "remove",
+        header: "",
+        width: 56,
+        cell: (row) => (
+          <IconButton size="sm" label={`${row.symbol} kara listeden çıkar`} onClick={() => remove.mutate(row.symbol)}>
+            <IClose size={13} />
+          </IconButton>
+        ),
+      },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
   return (
     <section>
@@ -204,29 +233,18 @@ function Blacklist() {
         </Button>
       </form>
 
-      {entries.length === 0 ? (
-        <p style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}>Kara liste boş.</p>
-      ) : (
-        /* Kutu değil hairline satırlar — kutunun içinde kutu olmaz. */
-        <ul className="border-t border-line">
-          {entries.map((entry) => (
-            <li key={entry.symbol} className="flex items-center gap-3 border-b border-line py-2 hover:bg-inset/60">
-              <span className="sn-num" style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink)" }}>
-                {entry.symbol}
-              </span>
-              <span className="min-w-0 flex-1 truncate" style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)" }}>
-                {entry.reason || "sebep yazılmamış"}
-              </span>
-              <span className="shrink-0" style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}>
-                {relative(entry.created_at)}
-              </span>
-              <IconButton size="sm" label={`${entry.symbol} kara listeden çıkar`} onClick={() => remove.mutate(entry.symbol)}>
-                <IClose size={13} />
-              </IconButton>
-            </li>
-          ))}
-        </ul>
-      )}
+      <DataGrid
+        rows={entries}
+        columns={columns}
+        rowKey={(row) => row.symbol}
+        storageKey="piyasa-kara-liste"
+        searchable={entries.length > 8}
+        searchPlaceholder="Sembol ara…"
+        density="compact"
+        defaultSort={[{ id: "created_at", desc: true }]}
+        maxHeight={320}
+        emptyTitle="Kara liste boş"
+      />
     </section>
   );
 }
