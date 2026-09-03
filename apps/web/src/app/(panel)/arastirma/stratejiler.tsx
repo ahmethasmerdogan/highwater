@@ -1,37 +1,23 @@
 "use client";
 
 /**
- * Araştırma › Stratejiler — kural kümeleri ve sürümleri.
+ * Araştırma › Stratejiler — kural kümeleri ve sürümleri (DESIGN-V3 §4.6).
  *
- * Bir strateji doğrudan düzenlenmez: her değişiklik **yeni bir sürüm**
- * doğurur ve eskisi silinmez. Geçmişe dönük testlerin dayanağı budur.
- *
- * Seçili sürüm URL'de yaşar (`?strateji=<id>&surum=<id>`): sayfa
- * yenilenince ya da bağlantı paylaşılınca aynı çekmece açılır.
+ * Bir strateji doğrudan düzenlenmez: her değişiklik yeni bir sürüm doğurur,
+ * eskisi silinmez. Sürümler tek defter tablosunda; ayrıntı sağdan açılır.
+ * Seçili sürüm URL'de yaşar (`?strateji=<id>&surum=<id>`).
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Field as UiField, Reveal, StatusPill, Table, TBody, Td, Th, THead, Tr } from "uicean";
 import { api, type Strategy, type StrategyVersion } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { toast } from "@/lib/toast";
 import { STRATEGY_GROUPS, readPath, type FieldSpec } from "@/lib/strategy-fields";
-import { dateTime, num, relative } from "@/lib/format";
-import { Reveal } from "uicean";
+import { dateTime, num } from "@/lib/format";
 import { GuideSection } from "@/shell/page";
-import {
-  Async,
-  Button,
-  Drawer,
-  DrawerSection,
-  Empty,
-  Explain,
-  FormField,
-  Modal,
-  Panel,
-  Tag,
-  TextInput,
-} from "@/design";
+import { Async, Button, Drawer, DrawerSection, KeyValue, Modal, NumText, Panel, TextInput } from "@/design";
 
 export const STRATEJILER_SUMMARY =
   "Puan ağırlıkları, giriş eşikleri, boyutlandırma ve çıkış kurallarından oluşan kural kümeleri.";
@@ -41,27 +27,21 @@ export function StratejilerGuide() {
     <>
       <GuideSection title="Ne gösteriyor">
         <p>
-          Bir strateji, botun nasıl karar vereceğini belirleyen tüm ayarları taşır: hangi ailenin
-          puana ne kadar katkı vereceği, hangi puandan itibaren giriş yapılacağı, pozisyonun ne
-          kadar büyük olacağı ve ne zaman çıkılacağı.
+          Bir strateji botun nasıl karar vereceğini belirleyen tüm ayarları taşır: aile
+          ağırlıkları, giriş eşiği, pozisyon boyutu ve çıkış kuralları.
         </p>
       </GuideSection>
       <GuideSection title="Nasıl okunur">
         <p>
-          <strong>Strateji doğrudan düzenlenmez.</strong> Bir ayarı değiştirdiğinizde yeni bir sürüm
-          doğar ve eski sürüm olduğu gibi kalır. Bot her zaman belirli bir sürümü çalıştırır; yeni
-          sürüme geçmesi için botu o sürüme almanız gerekir.
-        </p>
-        <p>
-          <strong>Dondurulmuş</strong> bir sürüm bir daha değiştirilemez. Geçmişe dönük testlerin
-          dayanağı budur: donuk sürüm, sonucun hangi kurallarla üretildiğinin kanıtıdır.
+          <strong>Strateji doğrudan düzenlenmez.</strong> Her değişiklik yeni bir sürüm doğurur;
+          bot belirli bir sürümü çalıştırır. <strong>Dondurulmuş</strong> sürüm bir daha
+          değişmez — geçmişe dönük testlerin kanıtı budur.
         </p>
       </GuideSection>
       <GuideSection title="Ne yapabilirim">
         <p>
-          Bir sürüme tıklayınca tüm alanları açıklamalarıyla birlikte görürsünüz. Kurgu değişikliği
-          yapmak için İndikatörler sayfasındaki strateji atölyesini kullanın; oradan kaydettiğinizde
-          yeni sürüm doğar.
+          Satıra tıklayınca tüm alanlar açıklamalarıyla açılır. Kurgu değişikliği İndikatörler
+          sayfasındaki atölyeden yapılır; kaydedince yeni sürüm doğar.
         </p>
       </GuideSection>
     </>
@@ -95,88 +75,65 @@ export default function StratejilerTab({
         [...strategy.versions].sort((a, b) => b.version - a.version)[0] ??
         null);
 
+  const rows = useMemo(
+    () =>
+      (query.data ?? []).flatMap((entry) =>
+        [...entry.versions]
+          .sort((a, b) => b.version - a.version)
+          .map((item, index) => ({ strategy: entry, version: item, first: index === 0, count: entry.versions.length })),
+      ),
+    [query.data],
+  );
+
   const createButton = can("TRADER") ? (
-    <Button size="sm" variant="primary" onClick={() => setCreateOpen(true)}>
-      Yeni strateji
-    </Button>
+    <Button size="sm" variant="primary" onClick={() => setCreateOpen(true)}>Yeni strateji</Button>
   ) : undefined;
 
   return (
     <>
-      {createButton && <div className="flex justify-end">{createButton}</div>}
-
-      <Async
-        query={query}
-        empty={{
-          title: "Henüz strateji yok",
-          hint: "Bot kurabilmek için önce bir strateji ve en az bir sürüm gerekir. Yeni strateji varsayılan ayarlarla oluşturulur.",
-          action: createButton,
-        }}
-      >
-        {(list) => (
-          <div className="flex flex-col gap-4">
-            {list.map((entry, index) => (
-              <Reveal key={entry.id} delay={index * 70}>
-                <Panel
-                  title={entry.name}
-                  description={`${entry.versions.length} sürüm · ${relative(entry.created_at)} oluşturuldu`}
-                  padded={false}
-                >
-                  {entry.versions.length === 0 ? (
-                    <Empty
-                      title="Bu stratejinin sürümü yok"
-                      hint="Sürüm oluşturulana kadar bu strateji bir bota bağlanamaz."
-                    />
-                  ) : (
-                    <ul>
-                      {[...entry.versions]
-                        .sort((a, b) => b.version - a.version)
-                        .map((item) => (
-                          <li key={item.id} style={{ borderTop: "1px solid var(--sn-hairline)" }}>
-                            <button
-                              type="button"
-                              onClick={() => onSelect(entry.id, item.id)}
-                              className="sn-focus flex w-full items-center gap-3 px-4 py-3 text-left transition-[background-color,transform] duration-[var(--sn-dur-1)] hover:translate-x-0.5 hover:bg-[var(--sn-sunken)]"
-                            >
-                              <span
-                                className="sn-num font-medium"
-                                style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}
-                              >
-                                Sürüm {item.version}
-                              </span>
-                              <Tag tone={item.frozen ? "brand" : "neutral"}>
-                                {item.frozen ? "dondurulmuş" : "düzenlenebilir"}
-                              </Tag>
-                              <span
-                                className="sn-num"
-                                style={{ fontSize: "var(--sn-t-micro)", color: "var(--sn-ink-3)" }}
-                              >
-                                {item.definition_hash.slice(0, 12)}
-                              </span>
-                              <span
-                                className="sn-num ml-auto"
-                                style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}
-                              >
-                                {dateTime(item.created_at)}
-                              </span>
-                            </button>
-                          </li>
-                        ))}
-                    </ul>
+      <Reveal>
+        <Panel title="Sürümler" description="Her satır bir sürüm; en yenisi üstte." padded={false} actions={createButton}>
+          <Async
+            query={query}
+            empty={{
+              title: "Henüz strateji yok",
+              hint: "Bot kurabilmek için önce bir strateji ve en az bir sürüm gerekir.",
+              action: createButton,
+            }}
+          >
+            {() => (
+              <Table minWidth={720}>
+                <THead>
+                  <tr>
+                    <Th>Strateji</Th>
+                    <Th align="right">Sürüm</Th>
+                    <Th>Durum</Th>
+                    <Th>Parmak izi</Th>
+                    <Th align="right">Oluşturuldu</Th>
+                  </tr>
+                </THead>
+                <TBody>
+                  {rows.map(({ strategy: s, version: v, first, count }) => (
+                    <Tr key={v.id} selected={v.id === version?.id} onClick={() => onSelect(s.id, v.id)}>
+                      <Td className={first ? "font-medium text-ink" : "text-ink-3"}>
+                        {first ? s.name : <span className="pl-3">↳ {s.name}</span>}
+                        {first && count > 1 && <span className="ml-2 text-[12px] font-normal text-ink-3"><NumText text={num(count, 0)} size="xs" /> sürüm</span>}
+                      </Td>
+                      <Td align="right"><NumText text={`v${v.version}`} size="sm" /></Td>
+                      <Td><StatusPill tone={v.frozen ? "blue" : "gray"} size="sm">{v.frozen ? "dondurulmuş" : "düzenlenebilir"}</StatusPill></Td>
+                      <Td><NumText text={v.definition_hash.slice(0, 12)} size="xs" /></Td>
+                      <Td align="right"><NumText text={dateTime(v.created_at)} size="sm" /></Td>
+                    </Tr>
+                  ))}
+                  {rows.length === 0 && (
+                    <Tr><Td colSpan={5} className="py-8 text-center text-ink-3">Sürüm yok — sürüm oluşturulana kadar strateji bir bota bağlanamaz.</Td></Tr>
                   )}
-                </Panel>
-              </Reveal>
-            ))}
-          </div>
-        )}
-      </Async>
-
-      <Panel title="Sürümleme neden böyle">
-        <div className="grid gap-4 md:grid-cols-2">
-          <Explain id="strateji_surum" />
-          <Explain id="backtest" />
-        </div>
-      </Panel>
+                </TBody>
+              </Table>
+            )}
+          </Async>
+        </Panel>
+      </Reveal>
 
       {strategy && version && (
         <VersionDrawer strategy={strategy} version={version} onClose={() => onSelect(null, null)} />
@@ -221,11 +178,7 @@ function VersionDrawer({
       title={`${strategy.name} · sürüm ${version.version}`}
       subtitle={dateTime(version.created_at)}
       width={720}
-      badge={
-        <Tag tone={version.frozen ? "brand" : "neutral"}>
-          {version.frozen ? "dondurulmuş" : "düzenlenebilir"}
-        </Tag>
-      }
+      badge={<StatusPill tone={version.frozen ? "blue" : "gray"} size="sm">{version.frozen ? "dondurulmuş" : "düzenlenebilir"}</StatusPill>}
       footer={
         <>
           <Button size="sm" variant="quiet" className="mr-auto" onClick={() => setShowRaw((value) => !value)}>
@@ -240,67 +193,34 @@ function VersionDrawer({
       }
     >
       {showRaw ? (
-        <pre
-          className="sn-scroll sn-num overflow-x-auto rounded-[var(--sn-r-sm)] p-3.5"
-          style={{
-            background: "var(--sn-sunken)",
-            border: "1px solid var(--sn-hairline)",
-            fontSize: "var(--sn-t-caption)",
-            color: "var(--sn-ink-2)",
-            lineHeight: 1.55,
-          }}
-        >
+        <pre className="sn-scroll sn-num overflow-x-auto rounded-xl border border-line bg-inset p-3.5 text-[12px] leading-[1.55] text-ink-2">
           {JSON.stringify(version.definition, null, 2)}
         </pre>
       ) : (
         <>
-          <p
-            className="mb-4 rounded-[var(--sn-r-sm)] px-3.5 py-2.5"
-            style={{
-              background: "var(--sn-raised)",
-              border: "1px solid var(--sn-hairline)",
-              fontSize: "var(--sn-t-caption)",
-              color: "var(--sn-ink-2)",
-              lineHeight: 1.55,
-            }}
-          >
-            Her alanın ne işe yaradığı ve yanlış ayarlanırsa ne olacağı yazılıdır. Bu sürüm{" "}
+          <p className="mb-4 text-[12.5px] leading-[1.55] text-ink-3">
             {version.frozen
-              ? "dondurulmuş — değerleri bir daha değişmez."
-              : "henüz dondurulmamış; bir bota bağlanmadan önce dondurmanız önerilir."}
+              ? "Bu sürüm dondurulmuş; değerleri bir daha değişmez."
+              : "Bu sürüm henüz dondurulmamış; bir bota bağlanmadan önce dondurmanız önerilir."}
           </p>
 
           {STRATEGY_GROUPS.map((group) => (
             <DrawerSection key={group.key} title={group.title} hint={group.description}>
-              <div className="rounded-[var(--sn-r-sm)]" style={{ border: "1px solid var(--sn-border)" }}>
+              <div className="rounded-xl border border-line">
                 {group.fields.map((field, index) => (
-                  <FieldRow
-                    key={field.path}
-                    field={field}
-                    value={readPath(version.definition, field.path)}
-                    first={index === 0}
-                  />
+                  <FieldRow key={field.path} field={field} value={readPath(version.definition, field.path)} first={index === 0} />
                 ))}
               </div>
             </DrawerSection>
           ))}
 
           <DrawerSection title="Künye">
-            <div
-              className="rounded-[var(--sn-r-sm)] px-3.5 py-2.5"
-              style={{ border: "1px solid var(--sn-border)", fontSize: "var(--sn-t-caption)" }}
-            >
-              <div className="flex justify-between gap-3 py-1">
-                <span style={{ color: "var(--sn-ink-2)" }}>Tanım parmak izi</span>
-                <span className="sn-num" style={{ fontSize: "var(--sn-t-micro)" }}>
-                  {version.definition_hash}
-                </span>
-              </div>
-              <div className="flex justify-between gap-3 py-1">
-                <span style={{ color: "var(--sn-ink-2)" }}>Oluşturulma</span>
-                <span className="sn-num">{dateTime(version.created_at)}</span>
-              </div>
-            </div>
+            <KeyValue
+              rows={[
+                { label: "Tanım parmak izi", value: <NumText text={version.definition_hash} size="xs" /> },
+                { label: "Oluşturulma", value: <NumText text={dateTime(version.created_at)} size="sm" /> },
+              ]}
+            />
           </DrawerSection>
         </>
       )}
@@ -313,58 +233,26 @@ function FieldRow({ field, value, first }: { field: FieldSpec; value: unknown; f
     value === null || value === undefined
       ? "—"
       : field.kind === "tiers" && Array.isArray(value)
-        ? /* [[80,0.75],[85,1]] → "80→×0,75 · 85→×1" — String(value) bunu
-             "80,0.75,85,1" diye basıyordu. */
-          (value as [number, number][])
-            .map(([esik, carpan]) => `${num(esik, 1)}→×${num(carpan, 2)}`)
-            .join(" · ")
+        ? /* [[80,0.75],[85,1]] → "80→×0,75 · 85→×1" */
+          (value as [number, number][]).map(([esik, carpan]) => `${num(esik, 1)}→×${num(carpan, 2)}`).join(" · ")
         : typeof value === "boolean"
-          ? value
-            ? "Açık"
-            : "Kapalı"
+          ? value ? "Açık" : "Kapalı"
           : typeof value === "number"
-            ? field.kind === "percent"
-              ? `%${num(value * 100, 2)}`
-              : num(value, Number.isInteger(value) ? 0 : 3)
+            ? field.kind === "percent" ? `%${num(value * 100, 2)}` : num(value, Number.isInteger(value) ? 0 : 3)
             : String(value);
 
   return (
-    <div
-      className="px-3.5 py-2.5"
-      style={first ? undefined : { borderTop: "1px solid var(--sn-hairline)" }}
-    >
+    <div className={first ? "px-3.5 py-2.5" : "border-t border-line px-3.5 py-2.5"}>
       <div className="flex items-baseline justify-between gap-4">
-        <span
-          className="font-medium"
-          style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink)" }}
-        >
-          {field.label}
-        </span>
-        <span className="sn-num" style={{ fontSize: "var(--sn-t-body)", color: "var(--sn-ink)" }}>
-          {display}
-          {field.unit && (
-            <span className="ml-1" style={{ fontSize: "var(--sn-t-micro)", color: "var(--sn-ink-3)" }}>
-              {field.unit}
-            </span>
-          )}
+        <span className="text-[12.5px] font-medium text-ink">{field.label}</span>
+        <span className="inline-flex items-baseline gap-1">
+          <NumText text={display} size="md" />
+          {field.unit && <span className="text-[10.5px] text-ink-3">{field.unit}</span>}
         </span>
       </div>
-      <p
-        className="mt-0.5"
-        style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-2)", lineHeight: 1.5 }}
-      >
-        {field.description}
-      </p>
+      <p className="mt-0.5 text-[12px] leading-[1.5] text-ink-2">{field.description}</p>
       {field.warning && (
-        <p
-          className="mt-1 pl-2"
-          style={{
-            borderLeft: "2px solid var(--sn-warn)",
-            fontSize: "var(--sn-t-caption)",
-            color: "var(--sn-ink-3)",
-            lineHeight: 1.5,
-          }}
-        >
+        <p className="mt-1 border-l-2 pl-2 text-[12px] leading-[1.5] text-ink-3" style={{ borderColor: "var(--sn-warn)" }}>
           {field.warning}
         </p>
       )}
@@ -393,30 +281,19 @@ function CreateStrategyModal({ open, onClose }: { open: boolean; onClose: () => 
       open={open}
       onOpenChange={(next) => !next && onClose()}
       title="Yeni strateji"
-      description="Strateji varsayılan ayarlarla oluşturulur ve ilk sürümü hazır gelir. Ayarları İndikatörler sayfasındaki atölyeden değiştirebilirsiniz; her değişiklik yeni bir sürüm doğurur."
+      description="Varsayılan ayarlarla oluşturulur; ilk sürüm hazır gelir. Her değişiklik yeni bir sürüm doğurur."
       footer={
         <>
-          <Button variant="quiet" onClick={onClose}>
-            Vazgeç
-          </Button>
-          <Button
-            variant="primary"
-            disabled={!name.trim() || create.isPending}
-            onClick={() => create.mutate()}
-          >
+          <Button variant="quiet" onClick={onClose}>Vazgeç</Button>
+          <Button variant="primary" disabled={!name.trim() || create.isPending} onClick={() => create.mutate()}>
             {create.isPending ? "Oluşturuluyor…" : "Oluştur"}
           </Button>
         </>
       }
     >
-      <FormField label="Ad">
-        <TextInput
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          autoFocus
-          placeholder="Örn. Temel kurgu"
-        />
-      </FormField>
+      <UiField label="Ad">
+        {(p) => <TextInput {...p} value={name} onChange={(event) => setName(event.target.value)} autoFocus placeholder="Örn. Temel kurgu" />}
+      </UiField>
     </Modal>
   );
 }
