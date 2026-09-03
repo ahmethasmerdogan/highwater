@@ -1342,3 +1342,42 @@ indirir — her "kaldıraçsız (1×): sebep" kaydı üçlünün hangi ayağın�
 tıkadığını gösterecek. Not: bu kol ön-kayıtlı kabul kuralından geçmedi;
 sahibin açık talimatıyla ölçüm amaçlı katıldı, tablo bunu "katılım günü"
 ile ayırır.
+
+## BOT OPTİMİZASYONU ARAŞTIRMASI — 2026-09-04 (sahibin isteği)
+
+Canlı defter, temiz pencere (15 Ağu–3 Eyl), kripto 1h ailesi, 228 işlem.
+Önce ölçüm, sonra hipotez; her hipotez ölçülebilir bir düğme ya da kol.
+
+**Ölçümler**
+1. *Girişteki puan:* 228 işlemin 221'i 80–85 bandında (ortR +0,46, isabet
+   %38), 85+ yalnız 7 (ortR +0,56). Puan neredeyse hep kapının dibinde —
+   kademe (0,75/1,0/1,25) fiilen hiç devreye girmiyor.
+2. *Giriş saati (UTC):* 00–06 → **+1,20R** (n=49) · 06–12 → +0,08R (n=43)
+   · 12–18 → +0,31R (n=72) · 18–24 → +0,33R (n=64). Gece (Asya seansı)
+   girişleri diğerlerinin 3–4 katı. Gün kümelenmesiyle daralır ama fark
+   büyük; sınanmayı hak ediyor.
+3. *Çıkış profili:* STOP 8 saatte kapanıyor (mae −1,09: kayma stopu 1R'nin
+   ötesine taşıyor); SCORE/TRAILING 14–19 saat, tepe +2,3/+2,9R;
+   TIME (72 sa) yalnız 3 işlem ama +3,5R.
+4. *Bırakılan kâr:* 22 işlem ≥1R tepe görüp (ort +1,51R) zararla kapandı
+   (ort −0,21R). Toplam 228'in ~%10'u; kısmi kâr alma bu 22'de ~+0,5R
+   kilitlerdi — kazananlarda (tepe +2,9R) bedeli de olurdu; ancak backtest
+   söyler.
+5. *Kaldıraç üçlüsü:* açılış olaylarında formasyon/headroom alanı yok →
+   geriye dönük ölçülemez. G9 (bot 14) ileriye dönük ölçüyor: her 1× kararı
+   sebebiyle loglanır.
+
+**Hipotezler ve ne yapıldı**
+- **H1 — giriş saati penceresi.** `entry.hours_utc` düğmesi eklendi (tek
+  karar yolu: worker + backtest aynı fonksiyon; test + hash). Dört varyant
+  backtest'te (E şeridi): 22–06, 00–06, 12–24, 06–12 kapalı. Sonuç
+  aşağıya eklenecek; kabul kuralı aynen (iki pencere + düşüş bekçisi).
+- **H2 — kısmi kâr alma (+1R'de %50 çık, kalanı iz sür).** Kod gerektirir
+  (worker + backtest'te pozisyon bölme, `ExitReason.PARTIAL`). Önce H1
+  sonucu, sonra bu; ölçüm 4'ün büyüklüğü (22/228) bunu sıraya koyuyor.
+- **H3 — kaldıraç sondası.** G9 koşuyor; ilk sebepler: "dirence yer yok".
+  Bir hafta veri toplansın, üçlünün tıkanan ayağı ona göre gevşetilsin
+  (gevşetme de yeni kol olarak, bot 14'e dokunmadan).
+- **Yapılmayacak:** kapıyı düşürmek (kademe/holdout kanıtı ters), aile
+  ağırlığı oynatmak (28 varyant çürüttü), iz/BE parametreleri (iki tarama
+  donuk dedi).
