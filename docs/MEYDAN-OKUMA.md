@@ -1246,3 +1246,21 @@ yeni kollar aynı tabloda ölçülür.
 5. Kabul edilen kol: 400 $ (BIST için 400 × 48,08), `rebased_at` = katılım
    anı, maraton tablosunda "katılım günü" etiketiyle görünür.
 6. Reddedilen varyantlar da deftere yazılır — çürütme de sonuçtur.
+
+## STRATEJİ TARAMASI ÖN-KAYDI — 2026-09-03 (Fable programı, B+C hatları)
+
+Kontrol = bot 1 ("taban") tanımının DB'deki hâli. 25 varyant, hepsi
+tanım-düzeyi yama (kod değişmez; kural 1). Pencere 15 Ağu→2 Eyl, kilitli
+son %30 bar holdout; maliyet modeli artık paper ile birebir (10+5 bp).
+Gruplar: kapı (70/75/85) · slot (2/6) · süre (120/240 sa) · aile ablasyonu
+(5 aile tek tek 0) · eğilim (trend-ağır, momentum-ağır) · düzenleyici
+(formasyon/mum/kalabalık kapalı) · boyut (vol_target 0,4/0,9; risk %2) ·
+iz kontrolleri (trail kapalı; BE kapalı) · kaldıraç (G8 sıkı; gevşek 3×;
+gevşek 2×).
+
+Kabul: Fable programı kuralı (in-sample VE holdout ≥ kontrol + 0,05R,
+düşüş ≤ 1,2×). 25 karşılaştırmada şansla ~1 "kazanan" beklenir — holdout
+şartı bunun için var; tek pencerede kazanan HİÇBİR ŞEY yeter sayılmaz.
+Ablasyon/eğilim grupları kabul için değil, ailelerin marjinal katkısını
+ÖLÇMEK için (indikatör sorusunun dürüst cevabı). Kaldıraç varyantlarında
+kontrol aynı tanımın 1× hâli.
