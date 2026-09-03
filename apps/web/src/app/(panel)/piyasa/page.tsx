@@ -129,8 +129,14 @@ function PiyasaContent() {
     refetchInterval: 60_000,
   });
   useEffect(() => {
-    if (!configKey && configs.data?.length) setConfigKey(keyOf(configs.data[0]));
-  }, [configs.data, configKey]);
+    const liste = configs.data ?? [];
+    if (!liste.length) return;
+    const secili = liste.find((config) => keyOf(config) === configKey);
+    if (secili && secili.market === market) return;
+    // Pazara uygun ilk ayar; yoksa listenin ilki (boş kesit yerine dürüst ipucu görünür).
+    const uygun = liste.find((config) => config.market === market) ?? liste[0];
+    setConfigKey(keyOf(uygun));
+  }, [configs.data, configKey, market]);
   const active = configs.data?.find((config) => keyOf(config) === configKey);
   const shorten = useMemo(
     () => stripCommonPrefix((configs.data ?? []).map((config) => config.label)),

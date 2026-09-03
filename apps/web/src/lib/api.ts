@@ -256,6 +256,8 @@ export interface Score {
  */
 export interface ScoreConfig {
   config_hash: string;
+  /** Kesitin pazarı — panel puan ayarını pazara göre otomatik seçer. */
+  market: "CRYPTO" | "BIST" | "US";
   /**
    * Sıralamanın karar zaman dilimi.
    *

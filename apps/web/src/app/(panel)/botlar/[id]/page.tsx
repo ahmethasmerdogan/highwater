@@ -8,7 +8,7 @@
  */
 
 import Link from "next/link";
-import { Suspense, use, useMemo } from "react";
+import { Suspense, use, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { StatusPill, UnderlineTabs } from "uicean";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -30,22 +30,7 @@ import {
   time,
 } from "@/lib/format";
 import { Page } from "@/shell/page";
-import {
-  Async,
-  BotStatePill,
-  Button,
-  Delta,
-  Dot,
-  Empty,
-  ExitReasonPill,
-  Field,
-  InfoDot,
-  Metric,
-  NumText,
-  Panel,
-  Tag,
-  type Tone,
-} from "@/design";
+import { Async, BotStatePill, Button, Delta, Dot, Empty, ExitReasonPill, Field, InfoDot, Metric, NumText, Panel, Segmented, Tag, type Tone } from "@/design";
 import { AreaCurve } from "@/design/chart";
 import { DataGrid } from "@/grid/data-grid";
 import { SimpleTable, type SimpleColumn } from "@/grid/simple-table";
@@ -187,7 +172,22 @@ function BotDetailContent({ params }: { params: Promise<{ id: string }> }) {
 
   const data = bot.data;
   const stats = metrics.data?.stats;
-  const curve = metrics.data?.equity_curve ?? [];
+  const marathon = useQuery({
+    queryKey: ["marathon-meta"],
+    queryFn: () => api.get<{ start: string | null }>("/system/marathon"),
+    staleTime: 300_000,
+  });
+  const [egriTumu, setEgriTumu] = useState(false);
+  const curveAll = metrics.data?.equity_curve ?? [];
+  /* Sermaye sıfırlaması öncesi noktalar başka bir taban cinsindendir — eğri
+     varsayılan olarak katılım anından (maraton başlangıcı ya da botun
+     kuruluşu, hangisi sonraysa) başlar; "tümü" uçurumu bilerek gösterir. */
+  const taban = (() => {
+    const start = marathon.data?.start ? new Date(marathon.data.start).getTime() : 0;
+    const created = data ? new Date(data.created_at).getTime() : 0;
+    return Math.max(start, created);
+  })();
+  const curve = egriTumu || !taban ? curveAll : curveAll.filter((p) => new Date(p.at).getTime() >= taban);
   const totalReturn =
     data && data.equity !== null && data.capital > 0 ? data.equity / data.capital - 1 : null;
 
@@ -335,7 +335,20 @@ function BotDetailContent({ params }: { params: Promise<{ id: string }> }) {
         <>
           {data && <RiskDurumu bot={data} />}
 
-          <Panel title="Özsermaye eğrisi" description="Botun toplam değerinin zaman içindeki seyri.">
+          <Panel
+            title="Özsermaye eğrisi"
+            description={egriTumu ? "Tüm geçmiş — sermaye sıfırlaması dahil." : "Katılım anından bu yana; sıfırlama öncesi taban farklıdır."}
+            actions={
+              <Segmented
+                value={egriTumu ? "tumu" : "katilim"}
+                onChange={(v) => setEgriTumu(v === "tumu")}
+                options={[
+                  { value: "katilim", label: "Katılımdan" },
+                  { value: "tumu", label: "Tümü" },
+                ]}
+              />
+            }
+          >
             <AreaCurve
               points={curve.map((point) => ({ at: point.at, value: point.equity }))}
               height={220}
