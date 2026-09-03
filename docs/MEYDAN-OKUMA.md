@@ -1381,3 +1381,53 @@ Canlı defter, temiz pencere (15 Ağu–3 Eyl), kripto 1h ailesi, 228 işlem.
 - **Yapılmayacak:** kapıyı düşürmek (kademe/holdout kanıtı ters), aile
   ağırlığı oynatmak (28 varyant çürüttü), iz/BE parametreleri (iki tarama
   donuk dedi).
+
+## KALDIRAÇ ARAŞTIRMASI — 2026-09-04 (sahibin isteği: "kaldıraçla para kazanmak")
+
+**1. Bu sistemde kaldıraç ne yapar, ne yapmaz.** Kaldıraç kararı riski
+ÇARPMAZ (tasarım kararı, OPEN-QUESTIONS §Kaldıraç): işlem başına risk
+`risk_pct × özsermaye` sabittir; kaldıraç yalnız nakit ve tek-pozisyon
+tavanını kaldırır. 400 $, 4 slot ve vol hedefiyle pozisyonlar ~%25'lik;
+nakit tavanı nadiren bağlar → kaldıraç tetiklense bile sonuç neredeyse
+aynı. 28 varyantlık taramada üç kaldıraç spec'inin kontrolle BİREBİR aynı
+çıkmasının iki sebebi var: teyit üçlüsü hiç tutmadı VE tutsa da risk
+değişmeyecekti. "Kaldıraçla daha çok kazanmak" bu mimaride "işlem başına
+riski artırmak" demek — kaldıraç onun için gereken nakdi sağlar, kenarı
+değil.
+
+**2. Kenarın büyüklüğü (canlı, 230 işlem, temiz pencere):** işlem başına
++0,46R, sapma 2,79R. Kelly kesri ≈ ort/var = 0,46/7,8 ≈ %5,9; yarı-Kelly
+≈ %3. Bugünkü risk %1–2. Filo genelinde en kötü gün −11,5R (6 bot
+toplamı; bot başına ~−2 ila −4R) → %3 riskte bot başına en kötü gün ≈
+−%6–12, %5'te −%10–20. Maraton dört gündür −21 $: kenar var ama ince ve
+gürültülü; bu kenarı 3× büyütmek düşüşü de 3× büyütür.
+
+**3. Ne ölçülüyor (G şeridi, backtest):** risk %3 (1×) · lev 2× trio'suz ·
+risk %3 + lev 2× · risk %5 + lev 3× · lev 2× yalnız headroom ≥1 ATR.
+Kontrol = bot 1 tanımı. Kabul kuralı aynen (R bazlı beklenti + düşüş).
+Not: R bazlı metrikler risk %'sini görmez; bu grupta NET getiri ve düşüş
+birlikte okunacak.
+
+**4. E ve F şeritleri (ara):** saat penceresi girişleri boğuyor (in n=7–8,
+holdout n=1–2) — kanıt yok, H1 park. Kısmi kâr alma (F): 1R %50 in +0,63R
+(kontrol +0,25), holdout −0,01 (kontrol −0,23), düşüş kontrolden düşük →
+ön-kayıtlı kuralı GEÇİYOR (n=14/3 uyarısıyla). Canlı yürütme worker'da
+yok; kol olabilmesi için önce worker'a dilim satışı + `partial_done`
+sütunu (migration) gerekir. Sıradaki iş bu.
+
+**5. Yapısal seçenekler (kod gerektirir, sırayla):**
+- **Kısa taraf (long/short kesitsel momentum):** puanlama zaten sıralıyor;
+  alt desili açığa satmak momentum sisteminin ders kitabı hâlidir ve
+  kenarı yalnız çarpmaz, yeni kenar ekler. Vadeli/perp adaptörü, kısa
+  pozisyon muhasebesi, fonlama oranı modeli gerekir — en büyük iş, en
+  büyük potansiyel.
+- **Fonlama oranı verisi** (perp): hem kısa tarafın maliyeti hem kalabalık
+  sinyali (crowding düzenleyicisine gerçek girdi).
+- **Gap/likidasyon dürüstlüğü** kaldıraçlı kollarda zaten var; kısa tarafta
+  likidasyon yukarıdan gelir — model simetrik olmalı.
+
+**Dürüst özet:** kaldıraç bir kazanç kaynağı değil, kazanç (ve kayıp)
+çarpanıdır. Bu sistemde çarpılacak kenar ince (+0,46R) ve dört günlük
+maraton örneklemi negatif. Ölçülebilir yol: (a) F'nin geçen varyantını
+canlıya taşımak, (b) G'nin net-getiri/düşüş tablosuna göre risk %3 + 2×
+kolu ("G10") açmak, (c) kısa tarafı yol haritasına almak.
