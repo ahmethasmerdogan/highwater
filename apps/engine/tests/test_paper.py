@@ -508,3 +508,71 @@ async def test_gap_fill_absent_uses_book_as_before():
     )
     assert result.status == OrderStatus.FILLED
     assert result.avg_price == pytest.approx(99.0)  # en iyi alıcı
+
+
+@pytest.mark.asyncio
+async def test_worker_gonullu_kismi_kar_alir(api_session, test_database):
+    """H2 canlı: karar partial_fraction=0,5 → yarısı satılır, pozisyon açık
+    kalır, partial_done işaretlenir, ikinci karar yeniden satmaz."""
+    from decimal import Decimal
+
+    from sarnic.bots.portfolio import OpenPosition, PortfolioSnapshot
+    from sarnic.bots.worker import BotWorker
+    from sarnic.core.enums import PositionStatus
+    from sarnic.db.models import Position
+    from sarnic.execution.exits import ExitDecision
+    from tests.conftest import utc
+    from tests.test_api import make_bot
+
+    bot, _ = await make_bot(api_session, "kısmi-kâr")
+    defterdeki = sum(q for _, q in BOOK.bids)
+    pozisyon = Position(
+        bot_id=bot.id,
+        symbol="TESTUSDT",
+        side="BUY",
+        qty=Decimal(str(defterdeki)),
+        entry_price=Decimal("100"),
+        entry_time=utc(2026, 8, 18, 0),
+        stop=Decimal("90"),
+        initial_stop=Decimal("90"),
+        score_at_entry=Decimal("85"),
+        entry_fees=Decimal("1"),
+        status="OPEN",
+    )
+    api_session.add(pozisyon)
+    await api_session.commit()
+
+    worker = BotWorker(bot.id, bus=_SessizVeriyolu())
+    worker._adapter = PaperAdapter(
+        book_source=StaticBookSource({"TESTUSDT": BOOK}), balance=0.0, config=NO_LATENCY
+    )
+    worker._adapter.restore_positions({"TESTUSDT": defterdeki})
+    acik = OpenPosition(
+        id=pozisyon.id,
+        symbol="TESTUSDT",
+        qty=defterdeki,
+        entry_price=100.0,
+        entry_time=utc(2026, 8, 18, 0),
+        stop=90.0,
+        initial_stop=90.0,
+        score_at_entry=85.0,
+        breakeven_locked=False,
+        entry_fees=1.0,
+    )
+    snapshot = PortfolioSnapshot(bot_id=bot.id, cash=0.0, positions=[acik])
+    karar = ExitDecision(False, None, "kısmi kâr", partial_fraction=0.5)
+
+    await worker._apply_exit_decision(api_session, bot, snapshot, acik, karar, 110.0)
+    await api_session.commit()
+    await api_session.refresh(pozisyon)
+    assert pozisyon.status == PositionStatus.OPEN
+    assert float(pozisyon.qty) == pytest.approx(defterdeki / 2)
+    assert pozisyon.partial_done is True and acik.partial_done is True
+    # Fikstür defteri girişin altında; işaret değil kayıt önemli.
+    assert float(pozisyon.realized_pnl) != 0.0
+    assert snapshot.cash > 0
+
+    # İkinci kez aynı karar gelse de satmaz.
+    kalan = acik.qty
+    await worker._apply_exit_decision(api_session, bot, snapshot, acik, karar, 110.0)
+    assert acik.qty == pytest.approx(kalan)

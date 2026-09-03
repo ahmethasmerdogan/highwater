@@ -144,17 +144,6 @@ class BotWorker:
     # ------------------------------------------------------------------ #
     async def run(self) -> None:
         log.info("worker_starting", bot_id=self.bot_id)
-        # Kısmi kâr alma (exit.partial_tp_r) kararı paylaşılır (evaluate_exit) ama
-        # canlı yürütmesi (dilim satışı + partial_done sütunu) henüz yok. Sessizce
-        # kesri yok saymak kural 1'i kırardı: backtest kısmi satar, canlı satmaz.
-        # Açıkça reddediyoruz — kaldıraç için backtest'in eskiden yaptığı gibi.
-        async with session_scope() as session:
-            bot = await self._load_bot(session)
-            if self._definition_of(bot).exit.partial_tp_r > 0:
-                raise ValueError(
-                    "exit.partial_tp_r canlı worker'da henüz desteklenmiyor — yalnız "
-                    "backtest'te ölçülür (H2). Tanımda 0 yapın."
-                )
         tasks = [
             asyncio.create_task(self._heartbeat_loop(), name=f"bot{self.bot_id}-heartbeat"),
             asyncio.create_task(self._decision_loop(), name=f"bot{self.bot_id}-decide"),
@@ -638,6 +627,19 @@ class BotWorker:
         position.mfe = max(position.mfe, r)
         position.mae = min(position.mae, r)
 
+        if decision.partial_fraction > 0 and not position.partial_done:
+            # Kısmi kâr alma (H2): kesri sat, kalan iz sürer. Aynı kararda stop
+            # güncellemesi de gelebilir; aşağıda uygulanır.
+            await self._close_position(
+                session,
+                bot,
+                snapshot,
+                position,
+                ExitReason.PARTIAL,
+                decision.message,
+                qty=position.qty * decision.partial_fraction,
+            )
+
         if decision.stop_moved and decision.new_stop is not None:
             position.stop = decision.new_stop
             position.breakeven_locked = True
@@ -683,7 +685,13 @@ class BotWorker:
         reason: ExitReason,
         message: str = "",
         gap_fill_price: float | None = None,
+        qty: float | None = None,
     ) -> None:
+        """Pozisyonu kapatır; `qty` verilirse yalnız o kadarını satar (kısmi kâr
+        alma, H2). Kısmi satışın muhasebesi istemsiz kısmi dolumla AYNI
+        koldan geçer: kalanla açık kal, dilimin sonucunu realized_*'da biriktir.
+        """
+        gonullu_kismi = qty is not None
         adapter = await self._get_adapter(session, bot)
         meta: dict = {}
         if gap_fill_price is not None:
@@ -695,7 +703,7 @@ class BotWorker:
                 symbol=position.symbol,
                 side=OrderSide.SELL,
                 type=OrderType.MARKET,
-                qty=position.qty,
+                qty=qty if qty is not None else position.qty,
                 bot_id=bot.id,
                 position_id=position.id,
                 meta=meta,
@@ -756,6 +764,24 @@ class BotWorker:
             )
             snapshot.cash += exit_price * result.filled_qty - result.fees - dilim_borc
             bot.cash = Decimal(str(round(snapshot.cash, 8)))
+            if gonullu_kismi:
+                position.partial_done = True
+                await session.execute(
+                    Position.__table__.update()
+                    .where(Position.id == position.id)
+                    .values(partial_done=True)
+                )
+                await self._emit(
+                    session,
+                    EventKind.LOG,
+                    level="INFO",
+                    symbol=position.symbol,
+                    message=(
+                        f"{position.symbol} kısmi kâr alındı: {result.filled_qty:.4f} satıldı "
+                        f"@ {exit_price:.6f} ({dilim_pnl - dilim_borc:+.2f}), {kalan:.4f} iz sürüyor."
+                    ),
+                )
+                return
             await self._emit(
                 session,
                 EventKind.ORDER_REJECTED,
@@ -778,9 +804,7 @@ class BotWorker:
             notional=position.entry_price * result.filled_qty,
             leverage=float(position.leverage or 1.0),
             hold_hours=hold_hours_now,
-            hourly_rate=LeverageSpec.from_sizing(
-                self._definition_of(bot).sizing
-            ).hourly_rate,
+            hourly_rate=LeverageSpec.from_sizing(self._definition_of(bot).sizing).hourly_rate,
         )
         fees = (
             total_fees(
@@ -1232,6 +1256,7 @@ def _view(position: OpenPosition) -> PositionView:
         stop=position.stop,
         initial_stop=position.initial_stop,
         breakeven_locked=position.breakeven_locked,
+        partial_done=position.partial_done,
     )
 
 
