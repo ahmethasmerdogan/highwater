@@ -791,3 +791,6 @@ maraton sonrası karara bağlanmalı.
    her red sebebini loglar, birkaç günde üçlünün hangi ayağının
    tıkadığını gösterir. Kabul kuralı gereği bunu ben eklemem; sahibin
    kararı ("G9 ekle" derse aynı akşam koşar).
+   **Karar (2026-09-03):** sahibi G9'u istedi; bot 14 olarak katıldı — kaynak
+   bot 3, eşik 80, kontrol bot 3'ün kendisi. İlk barda ilk sebep kaydı geldi:
+   "dirence yer yok (1,4 ATR < 2,0)".
