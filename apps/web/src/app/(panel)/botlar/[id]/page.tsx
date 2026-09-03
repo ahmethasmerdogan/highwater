@@ -20,7 +20,7 @@ import { botEylemleri, EYLEM_ETIKET } from "@/lib/bot-actions";
 import { humanizeEvent, payloadSummary, type Severity } from "@/lib/humanize";
 import { dateTime, duration, money, num, pct, pctSigned, price, relative, rMultiple, time } from "@/lib/format";
 import { Page } from "@/shell/page";
-import { Async, BotStatePill, Button, Delta, Dot, Empty, ExitReasonPill, Field, InfoDot, Metric, NumText, Panel, Segmented, Tag, type Tone } from "@/design";
+import { Async, BotStatePill, Button, Delta, Dot, ExitReasonPill, Field, InfoDot, Metric, NumText, Panel, Segmented, Tag, type Tone } from "@/design";
 import { AreaCurve } from "@/design/chart";
 import { DataGrid } from "@/grid/data-grid";
 import type { GridColumn } from "@/grid/types";
@@ -58,8 +58,60 @@ const TABS: { id: Tab; label: string }[] = [
 
 const SEVERITY_TONE: Record<Severity, Tone> = { error: "down", warn: "warn", success: "up", info: "neutral" };
 
-const TH = "px-5 py-2.5 text-[11.5px] font-semibold tracking-[0.04em] text-ink-3 uppercase";
-const TD = "px-5 py-2.5";
+/* Açık pozisyonlar — sütunlar satır verisinden başka bir şeye bakmaz. */
+const ACIK_COLUMNS: GridColumn<Position>[] = [
+  { id: "symbol", header: "Sembol", width: 124, pin: true, value: (r) => r.symbol, cell: (r) => <span className="sn-num text-ink">{r.symbol}</span> },
+  { id: "entry_price", header: "Giriş", width: 110, num: true, value: (r) => r.entry_price, cell: (r) => <NumText text={price(r.entry_price)} size="sm" /> },
+  { id: "last_price", header: "Güncel", width: 110, num: true, value: (r) => r.last_price, cell: (r) => <NumText text={price(r.last_price)} size="sm" /> },
+  { id: "stop", header: "Stop", width: 110, num: true, value: (r) => r.stop, cell: (r) => <NumText text={price(r.stop)} size="sm" /> },
+  { id: "score_at_entry", header: "Girişteki puan", width: 120, num: true, value: (r) => r.score_at_entry, cell: (r) => <NumText text={num(r.score_at_entry, 1)} size="sm" /> },
+  { id: "unrealized_pnl", header: "K/Z", width: 110, num: true, value: (r) => r.unrealized_pnl, cell: (r) => <Delta value={r.unrealized_pnl} format={(v) => money(v)} size="sm" /> },
+  {
+    id: "entry_time",
+    header: "Açılış",
+    width: 110,
+    num: true,
+    value: (r) => new Date(r.entry_time).getTime(),
+    cell: (r) => <span className="text-[12px] text-ink-3">{relative(r.entry_time)}</span>,
+  },
+];
+
+type EventRow = BotEventRow & { human: ReturnType<typeof humanizeEvent> };
+
+const olayAyrinti = (e: EventRow) =>
+  typeof e.payload?.message === "string" ? e.payload.message : (e.human.detail ?? payloadSummary(e.payload, 4));
+
+/* Olay defteri — düzey noktası, başlık, ayrıntı, saat. */
+const OLAY_COLUMNS: GridColumn<EventRow>[] = [
+  {
+    id: "created_at",
+    header: "Saat",
+    width: 80,
+    num: true,
+    pin: true,
+    value: (r) => new Date(r.created_at).getTime(),
+    cell: (r) => <span className="text-[11px] text-ink-3">{time(r.created_at)}</span>,
+  },
+  {
+    id: "duzey",
+    header: "Düzey",
+    width: 64,
+    value: (r) => r.human.severity,
+    cell: (r) => <Dot tone={SEVERITY_TONE[r.human.severity]} />,
+  },
+  { id: "olay", header: "Olay", width: 240, value: (r) => r.human.title, search: (r) => `${r.kind} ${r.human.title}`, cell: (r) => <span className="text-ink">{r.human.title}</span> },
+  {
+    id: "ayrinti",
+    header: "Ayrıntı",
+    width: 520,
+    value: (r) => olayAyrinti(r),
+    cell: (r) => {
+      const text = olayAyrinti(r);
+      return <span className="block max-w-full truncate text-[12.5px] text-ink-2" title={text}>{text}</span>;
+    },
+  },
+  { id: "kind", header: "Tür", width: 160, hidden: true, value: (r) => r.kind, cell: (r) => <span className="sn-num text-[12px] text-ink-3">{r.kind}</span> },
+];
 
 /**
  * Yürürlükteki kritik ayarlar — sürüm kimliği değil, davranışı belirleyen
@@ -457,34 +509,17 @@ function BotTrades({ botId }: { botId: number }) {
   return (
     <>
       <Panel title="Açık pozisyonlar" padded={false}>
-        {acik.length === 0 ? (
-          <Empty title="Açık pozisyon yok" hint="Bu bot şu an piyasada değil." />
-        ) : (
-          <div className="sn-scroll overflow-x-auto">
-            <table className="w-full border-collapse text-left text-[13px]">
-              <thead className="border-b border-line">
-                <tr>
-                  {["Sembol", "Giriş", "Güncel", "Stop", "Girişteki puan", "K/Z", "Açılış"].map((h, i) => (
-                    <th key={h} className={`${TH} ${i >= 1 && i <= 5 ? "text-right" : ""}`}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {acik.map((row) => (
-                  <tr key={row.id} className="border-b border-line last:border-0 hover:bg-inset/60">
-                    <td className={`${TD} sn-num text-ink`}>{row.symbol}</td>
-                    <td className={`${TD} text-right`}><NumText text={price(row.entry_price)} size="sm" /></td>
-                    <td className={`${TD} text-right`}><NumText text={price(row.last_price)} size="sm" /></td>
-                    <td className={`${TD} text-right`}><NumText text={price(row.stop)} size="sm" /></td>
-                    <td className={`${TD} text-right`}><NumText text={num(row.score_at_entry, 1)} size="sm" /></td>
-                    <td className={`${TD} text-right`}><Delta value={row.unrealized_pnl} format={(value) => money(value)} size="sm" /></td>
-                    <td className={`${TD} sn-num text-[12px] text-ink-3`}>{relative(row.entry_time)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <DataGrid
+          rows={acik}
+          columns={ACIK_COLUMNS}
+          rowKey={(row) => String(row.id)}
+          storageKey="bot-acik"
+          searchable={false}
+          density="compact"
+          defaultSort={[{ id: "entry_time", desc: true }]}
+          emptyTitle="Açık pozisyon yok"
+          emptyHint="Bu bot şu an piyasada değil."
+        />
       </Panel>
 
       <Panel title="Kapanmış işlemler" description="Sonuç hem para hem risk birimi (R) cinsinden." padded={false}>
@@ -518,7 +553,7 @@ function BotEvents({ botId }: { botId: number }) {
     refetchInterval: 30_000,
   });
 
-  const rows = useMemo(
+  const rows = useMemo<EventRow[]>(
     () => (query.data ?? []).map((event) => ({ ...event, human: humanizeEvent(event.kind, event.level, event.payload) })),
     [query.data],
   );
@@ -527,22 +562,16 @@ function BotEvents({ botId }: { botId: number }) {
     <Panel title="Olay kayıtları" description="Botun ne yaptığı ve neden yaptığı. Sistem geneli için Günlük." padded={false}>
       <Async query={query} empty={{ title: "Olay kaydı yok", hint: "Bot çalışmaya başladığında kararları burada görünür." }}>
         {() => (
-          <ul>
-            {rows.map((event) => (
-              <li key={event.id} className="flex gap-3 border-b border-line px-5 py-2.5 last:border-0">
-                <span className="mt-1.5"><Dot tone={SEVERITY_TONE[event.human.severity]} /></span>
-                <div className="min-w-0 flex-1">
-                  <div className="text-[13px] text-ink">{event.human.title}</div>
-                  <div className="text-[12.5px] leading-[1.45] text-ink-2">
-                    {typeof event.payload?.message === "string"
-                      ? event.payload.message
-                      : (event.human.detail ?? payloadSummary(event.payload, 4))}
-                  </div>
-                </div>
-                <span className="sn-num shrink-0 text-right text-[11px] whitespace-nowrap text-ink-3">{time(event.created_at)}</span>
-              </li>
-            ))}
-          </ul>
+          <DataGrid
+            rows={rows}
+            columns={OLAY_COLUMNS}
+            rowKey={(row) => String(row.id)}
+            storageKey="bot-olaylar"
+            searchPlaceholder="Olay ya da ayrıntı ara…"
+            density="compact"
+            defaultSort={[{ id: "created_at", desc: true }]}
+            maxHeight={560}
+          />
         )}
       </Async>
     </Panel>

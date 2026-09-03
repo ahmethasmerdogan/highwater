@@ -10,6 +10,7 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Reveal, StatusPill } from "uicean";
 import { api, type Benchmark, type Bot, type LivePnl, type Trade } from "@/lib/api";
@@ -19,6 +20,8 @@ import { useAttention } from "@/shell/attention";
 import { Delta, Metric, NumText, Panel, Tag } from "@/design";
 import { BotStatePill, ExitReasonPill } from "@/design/pills";
 import { CurveChart, Sparkline, type CurveSeries } from "@/design/chart";
+import { DataGrid } from "@/grid/data-grid";
+import type { GridColumn } from "@/grid/types";
 
 interface MarathonMeta {
   start: string | null;
@@ -34,11 +37,49 @@ const PALETTE = [
 const imzali = (v: number | null | undefined) => (v === null || v === undefined ? "—" : `${v > 0 ? "+" : ""}${money(v)}`);
 const kisa = (name: string) => name.replace("Havuz Momentum · ", "").replace("MEYDAN OKUMA · ", "MO · ");
 
+interface FleetRow {
+  bot: Bot;
+  live: LivePnl["bots"][number] | undefined;
+  spark: number[];
+  color: string;
+  blocked: boolean;
+  getiri: number | null;
+}
+
+const pazar = (bot: Bot) =>
+  bot.market === "BIST" ? <Tag tone="info">BIST</Tag> : bot.market === "US" ? <Tag tone="info">ABD</Tag> : <span className="text-ink-3">Kripto</span>;
+
+/* Filo defteri — sütunlar satır verisinden başka bir şeye bakmaz. */
+const FILO_COLUMNS: GridColumn<FleetRow>[] = [
+  { id: "kol", header: "Kol", width: 200, pin: true, value: (r) => kisa(r.bot.name), cell: (r) => <span className="font-medium text-ink">{kisa(r.bot.name)}</span> },
+  { id: "pazar", header: "Pazar", width: 84, value: (r) => r.bot.market, cell: (r) => pazar(r.bot) },
+  { id: "bar", header: "Bar", width: 64, value: (r) => r.bot.timeframe, cell: (r) => <NumText text={r.bot.timeframe} size="sm" /> },
+  {
+    id: "durum",
+    header: "Durum",
+    width: 150,
+    value: (r) => (r.blocked ? "giriş yasağı" : r.bot.state),
+    cell: (r) => (r.blocked ? <StatusPill tone="amber" size="sm" dot>giriş yasağı</StatusPill> : <BotStatePill state={r.bot.state} hint={false} />),
+  },
+  { id: "getiri", header: "Getiri", width: 100, num: true, value: (r) => r.getiri, cell: (r) => <Delta value={r.getiri} format={(v) => pctSigned(v)} size="md" /> },
+  { id: "acik", header: "Açık", width: 72, num: true, value: (r) => r.live?.open_positions ?? r.bot.open_positions, cell: (r) => <NumText text={num(r.live?.open_positions ?? r.bot.open_positions, 0)} size="sm" /> },
+  {
+    id: "kagit",
+    header: "Kâğıt üstü",
+    width: 110,
+    num: true,
+    value: (r) => r.live?.unrealized_pnl ?? null,
+    cell: (r) => (r.live && r.live.unrealized_pnl !== 0 ? <Delta value={r.live.unrealized_pnl} format={(v) => money(v)} size="sm" /> : <NumText text="—" size="sm" />),
+  },
+  { id: "egri", header: "Eğri", width: 110, cell: (r) => <Sparkline points={r.spark} width={96} height={20} color={r.color} /> },
+];
+
 export default function BridgePage() {
   const live = useQuery({ queryKey: ["live-pnl"], queryFn: () => api.get<LivePnl>("/portfolio/live"), refetchInterval: 10_000 });
   const bots = useQuery({ queryKey: ["bots"], queryFn: () => api.get<Bot[]>("/bots"), refetchInterval: 30_000 });
   const meta = useQuery({ queryKey: ["marathon-meta"], queryFn: () => api.get<MarathonMeta>("/system/marathon"), staleTime: 300_000 });
   const attention = useAttention();
+  const router = useRouter();
   const start = meta.data?.start ?? null;
   const race = useQuery({
     queryKey: ["benchmark-since", start],
@@ -49,7 +90,7 @@ export default function BridgePage() {
   const trades = useQuery({ queryKey: ["trades", "kopru"], queryFn: () => api.get<Trade[]>("/trades", { limit: 40 }), refetchInterval: 60_000 });
 
   const now = Date.now();
-  const fleet = useMemo(() => {
+  const fleet = useMemo<FleetRow[]>(() => {
     const liveById = new Map((live.data?.bots ?? []).map((b) => [b.bot_id, b]));
     const curveById = new Map((race.data?.bots ?? []).map((b) => [b.bot_id, b.curve.map((p) => p.value)]));
     return (bots.data ?? [])
@@ -61,7 +102,8 @@ export default function BridgePage() {
         blocked: !!b.entries_blocked_until && new Date(b.entries_blocked_until).getTime() > now,
         getiri: b.equity !== null && b.capital > 0 ? b.equity / b.capital - 1 : null,
       }))
-      .sort((a, b) => (b.getiri ?? -Infinity) - (a.getiri ?? -Infinity));
+      .sort((a, b) => (b.getiri ?? -Infinity) - (a.getiri ?? -Infinity))
+      .map((row, i) => ({ ...row, color: PALETTE[i % PALETTE.length] }));
   }, [bots.data, live.data, race.data, now]);
 
   const raceSeries = useMemo<CurveSeries[]>(() => {
@@ -166,36 +208,17 @@ export default function BridgePage() {
 
       {/* ---- Filo: defter tablosu ------------------------------------- */}
       <Panel title="Filo" description="Her satır bir kol. Getiri katılım tabanına göre; eğri katılımdan bu yana." padded={false}>
-        <div className="scroll-thin overflow-x-auto">
-          <table className="w-full border-collapse text-left text-[13px]">
-            <thead className="border-b border-line">
-              <tr>
-                {["Kol", "Pazar", "Bar", "Durum", "Getiri", "Açık", "Kâğıt üstü", "Eğri"].map((h, i) => (
-                  <th key={h} className={`px-5 py-2.5 text-[11.5px] font-semibold tracking-[0.04em] text-ink-3 uppercase ${i >= 4 && i <= 6 ? "text-right" : ""}`}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {fleet.map(({ bot, live: lb, spark, blocked, getiri }, idx) => (
-                <tr key={bot.id} className="border-b border-line last:border-0 hover:bg-inset/60">
-                  <td className="px-5 py-2.5">
-                    <Link href={`/botlar/${bot.id}`} className="font-medium text-ink hover:text-brand">{kisa(bot.name)}</Link>
-                  </td>
-                  <td className="px-5 py-2.5">{bot.market === "BIST" ? <Tag tone="info">BIST</Tag> : bot.market === "US" ? <Tag tone="info">ABD</Tag> : <span className="text-ink-3">Kripto</span>}</td>
-                  <td className="px-5 py-2.5"><NumText text={bot.timeframe} size="sm" /></td>
-                  <td className="px-5 py-2.5">{blocked ? <StatusPill tone="amber" size="sm" dot>giriş yasağı</StatusPill> : <BotStatePill state={bot.state} hint={false} />}</td>
-                  <td className="px-5 py-2.5 text-right"><Delta value={getiri} format={(v) => pctSigned(v)} size="md" /></td>
-                  <td className="px-5 py-2.5 text-right"><NumText text={num(lb?.open_positions ?? bot.open_positions, 0)} size="sm" /></td>
-                  <td className="px-5 py-2.5 text-right">{lb && lb.unrealized_pnl !== 0 ? <Delta value={lb.unrealized_pnl} format={(v) => money(v)} size="sm" /> : <NumText text="—" size="sm" />}</td>
-                  <td className="px-5 py-2.5"><Sparkline points={spark} width={96} height={20} color={PALETTE[idx % PALETTE.length]} /></td>
-                </tr>
-              ))}
-              {fleet.length === 0 && (
-                <tr><td colSpan={8} className="px-5 py-8 text-center text-ink-3">Koşan kol yok.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <DataGrid
+          rows={fleet}
+          columns={FILO_COLUMNS}
+          rowKey={(r) => String(r.bot.id)}
+          storageKey="kopru-filo"
+          searchable={false}
+          density="compact"
+          defaultSort={[{ id: "getiri", desc: true }]}
+          onRowClick={(r) => router.push(`/botlar/${r.bot.id}`)}
+          emptyTitle="Koşan kol yok"
+        />
       </Panel>
 
       <div className="grid gap-5 xl:grid-cols-[3fr_2fr]">

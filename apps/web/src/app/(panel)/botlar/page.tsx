@@ -8,8 +8,8 @@
  * kapatmak botu durdurmaz — tablonun dipnotu bunu yazar.
  */
 
-import Link from "next/link";
 import { useMemo, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Collapsible } from "uicean";
 import { api, type Bot, type Strategy, type PortfolioEquity } from "@/lib/api";
@@ -33,15 +33,14 @@ import {
   Tag,
 } from "@/design";
 import { Sparkline } from "@/design/chart";
+import { DataGrid } from "@/grid/data-grid";
+import type { GridColumn } from "@/grid/types";
 import { girisYasagiBitis, GirisYasagiPill, KesiciPill } from "./risk";
 
 /** Arşiv: adı "ARŞİV" ile başlayan ya da kesicisiz durdurulmuş bot. */
 function arsivMi(bot: Bot): boolean {
   return bot.name.startsWith("ARŞİV") || (bot.state === "STOPPED" && !bot.halt_reason);
 }
-
-const TH = "px-5 py-2.5 text-[11.5px] font-semibold tracking-[0.04em] text-ink-3 uppercase";
-const TD = "px-5 py-2.5";
 
 export default function BotsPage() {
   const { can } = useAuth();
@@ -95,10 +94,11 @@ export default function BotsPage() {
   const openPositions = bots.reduce((sum, bot) => sum + bot.open_positions, 0);
   const totalReturn = totalCapital > 0 ? totalEquity / totalCapital - 1 : 0;
 
-  const tablo = (rows: Bot[], bos: string) => (
+  const tablo = (rows: Bot[], storageKey: string, bos: string) => (
     <KolTablosu
       rows={rows}
       egriler={egriler}
+      storageKey={storageKey}
       bos={bos}
       actions={can("TRADER") ? (bot) => botEylemleri(bot.state).map((verb) => (
         <Button key={verb} size="sm" variant="neutral" onClick={() => action.mutate({ id: bot.id, verb })}>
@@ -194,7 +194,7 @@ export default function BotsPage() {
             ) : undefined,
           }}
         >
-          {() => tablo(kollar, "Koşan kol yok — tüm botlar arşivde.")}
+          {() => tablo(kollar, "botlar-kollar", "Koşan kol yok — tüm botlar arşivde.")}
         </Async>
       </Panel>
 
@@ -208,7 +208,7 @@ export default function BotsPage() {
               </span>
             }
           >
-            <div className="-mx-5 border-t border-line">{tablo(arsiv, "Arşiv boş.")}</div>
+            <div className="-mx-5 border-t border-line">{tablo(arsiv, "botlar-arsiv", "Arşiv boş.")}</div>
           </Collapsible>
         </Panel>
       )}
@@ -239,68 +239,98 @@ function DurumHucresi({ bot }: { bot: Bot }) {
   );
 }
 
+interface KolRow {
+  bot: Bot;
+  spark: number[];
+  getiri: number | null;
+}
+
 function KolTablosu({
   rows,
   egriler,
+  storageKey,
   bos,
   actions,
 }: {
   rows: Bot[];
   egriler: Map<number, number[]>;
+  storageKey: string;
   bos: string;
   actions?: (bot: Bot) => ReactNode;
 }) {
-  const basliklar: [string, string?][] = [
-    ["Kol"], ["Pazar"], ["Bar"], ["Durum"], ["Özsermaye", "text-right"], ["Getiri", "text-right"],
-    ["Açık", "text-right"], ["Yaşam sinyali", "text-right"], ["Eğri"],
-  ];
+  const router = useRouter();
+  const satirlar = useMemo<KolRow[]>(
+    () =>
+      rows.map((bot) => ({
+        bot,
+        spark: egriler.get(bot.id) ?? [],
+        getiri: bot.equity !== null && bot.capital > 0 ? bot.equity / bot.capital - 1 : null,
+      })),
+    [rows, egriler],
+  );
+
+  const columns = useMemo<GridColumn<KolRow>[]>(() => {
+    const list: GridColumn<KolRow>[] = [
+      { id: "kol", header: "Kol", width: 220, pin: true, value: (r) => r.bot.name, cell: (r) => <span className="font-medium text-ink">{r.bot.name}</span> },
+      {
+        id: "pazar",
+        header: "Pazar",
+        width: 84,
+        value: (r) => r.bot.market,
+        cell: (r) => (r.bot.market === "BIST" ? <Tag tone="info">BIST</Tag> : r.bot.market === "US" ? <Tag tone="info">ABD</Tag> : <span className="text-ink-3">Kripto</span>),
+      },
+      { id: "bar", header: "Bar", width: 64, value: (r) => r.bot.timeframe, cell: (r) => <NumText text={r.bot.timeframe} size="sm" /> },
+      { id: "durum", header: "Durum", width: 180, value: (r) => r.bot.state, search: (r) => `${r.bot.state} ${r.bot.halt_reason ?? ""}`, cell: (r) => <DurumHucresi bot={r.bot} /> },
+      { id: "ozsermaye", header: "Özsermaye", width: 120, num: true, value: (r) => r.bot.equity, cell: (r) => <NumText text={money(r.bot.equity)} size="sm" /> },
+      { id: "getiri", header: "Getiri", width: 100, num: true, value: (r) => r.getiri, cell: (r) => <Delta value={r.getiri} format={(v) => pctSigned(v)} size="md" /> },
+      { id: "acik", header: "Açık", width: 72, num: true, value: (r) => r.bot.open_positions, cell: (r) => <NumText text={num(r.bot.open_positions, 0)} size="sm" /> },
+      {
+        id: "sinyal",
+        header: "Yaşam sinyali",
+        width: 120,
+        num: true,
+        value: (r) => (r.bot.last_heartbeat_at ? new Date(r.bot.last_heartbeat_at).getTime() : null),
+        cell: (r) => <span className="text-[12px] text-ink-3">{relative(r.bot.last_heartbeat_at)}</span>,
+      },
+      {
+        id: "egri",
+        header: "Eğri",
+        width: 110,
+        cell: (r) => {
+          const yukari = (r.spark.at(-1) ?? 0) >= (r.spark[0] ?? 0);
+          return <Sparkline points={r.spark} width={96} height={20} color={yukari ? "var(--sn-up)" : "var(--sn-down)"} />;
+        },
+      },
+    ];
+    if (actions) {
+      list.push({
+        id: "eylem",
+        header: "",
+        width: 150,
+        num: true,
+        /* Düğme tıkı satıra sızmasın — satır tıkı bot sayfasına götürür. */
+        cell: (r) => (
+          <span className="inline-flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+            {actions(r.bot)}
+          </span>
+        ),
+      });
+    }
+    return list;
+  }, [actions]);
+
   return (
-    <div className="sn-scroll overflow-x-auto">
-      <table className="w-full border-collapse text-left text-[13px]">
-        <thead className="border-b border-line">
-          <tr>
-            {basliklar.map(([h, align]) => (
-              <th key={h} className={`${TH} ${align ?? ""}`}>{h}</th>
-            ))}
-            {actions && <th className={TH} />}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((bot) => {
-            const spark = egriler.get(bot.id) ?? [];
-            const yukari = (spark.at(-1) ?? 0) >= (spark[0] ?? 0);
-            const getiri = bot.equity !== null && bot.capital > 0 ? bot.equity / bot.capital - 1 : null;
-            return (
-              <tr key={bot.id} className="border-b border-line last:border-0 hover:bg-inset/60">
-                <td className={TD}>
-                  <Link href={`/botlar/${bot.id}`} className="font-medium text-ink hover:text-brand">{bot.name}</Link>
-                </td>
-                <td className={TD}>
-                  {bot.market === "BIST" ? <Tag tone="info">BIST</Tag> : bot.market === "US" ? <Tag tone="info">ABD</Tag> : <span className="text-ink-3">Kripto</span>}
-                </td>
-                <td className={TD}><NumText text={bot.timeframe} size="sm" /></td>
-                <td className={TD}><DurumHucresi bot={bot} /></td>
-                <td className={`${TD} text-right`}><NumText text={money(bot.equity)} size="sm" /></td>
-                <td className={`${TD} text-right`}><Delta value={getiri} format={(v) => pctSigned(v)} size="md" /></td>
-                <td className={`${TD} text-right`}><NumText text={num(bot.open_positions, 0)} size="sm" /></td>
-                <td className={`${TD} sn-num text-right text-[12px] text-ink-3`}>{relative(bot.last_heartbeat_at)}</td>
-                <td className={TD}>
-                  <Sparkline points={spark} width={96} height={20} color={yukari ? "var(--sn-up)" : "var(--sn-down)"} />
-                </td>
-                {actions && (
-                  <td className={`${TD} text-right`}>
-                    <span className="inline-flex items-center justify-end gap-1">{actions(bot)}</span>
-                  </td>
-                )}
-              </tr>
-            );
-          })}
-          {rows.length === 0 && (
-            <tr><td colSpan={actions ? 10 : 9} className="px-5 py-8 text-center text-ink-3">{bos}</td></tr>
-          )}
-        </tbody>
-      </table>
-    </div>
+    <DataGrid
+      rows={satirlar}
+      columns={columns}
+      rowKey={(r) => String(r.bot.id)}
+      storageKey={storageKey}
+      searchPlaceholder="Kol ara…"
+      density="compact"
+      defaultSort={[{ id: "kol", desc: false }]}
+      onRowClick={(r) => router.push(`/botlar/${r.bot.id}`)}
+      emptyTitle={bos}
+    />
   );
 }
 

@@ -13,6 +13,7 @@
  */
 
 import { useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Reveal } from "uicean";
 import { api, type Benchmark, type Bot, type Trade } from "@/lib/api";
@@ -20,6 +21,8 @@ import { dateOnly, dateTime, money, num, pct, pctSigned } from "@/lib/format";
 import { Page, GuideSection } from "@/shell/page";
 import { Delta, Metric, NumText, Panel, Tag, TextMetric } from "@/design";
 import { CurveChart, type CurveSeries } from "@/design/chart";
+import { DataGrid } from "@/grid/data-grid";
+import type { GridColumn } from "@/grid/types";
 
 interface MarathonMeta {
   start: string | null;
@@ -37,9 +40,60 @@ const kisa = (name: string) => name.replace("Havuz Momentum · ", "").replace("M
 
 interface Ozet { islem: number; kazanan: number; toplamR: number }
 
+interface LigRow {
+  sira: number;
+  bot: Bot;
+  getiri: number | null;
+  ozet: Ozet | undefined;
+  /** Maratondan sonra kurulan kol — geç katılımcı. */
+  gec: boolean;
+}
+
+/* Lig defteri — sütunlar satır verisinden başka bir şeye bakmaz. */
+const LIG_COLUMNS: GridColumn<LigRow>[] = [
+  { id: "sira", header: "#", width: 56, num: true, pin: true, value: (r) => r.sira, cell: (r) => <NumText text={String(r.sira)} size="sm" tone={r.sira === 1 ? "var(--sn-brand)" : "var(--sn-ink-3)"} /> },
+  { id: "kol", header: "Kol", width: 200, pin: true, value: (r) => kisa(r.bot.name), cell: (r) => <span className="font-medium text-ink">{kisa(r.bot.name)}</span> },
+  {
+    id: "pazar",
+    header: "Pazar",
+    width: 84,
+    value: (r) => r.bot.market,
+    cell: (r) => (r.bot.market === "BIST" ? <Tag tone="info">BIST</Tag> : r.bot.market === "US" ? <Tag tone="info">ABD</Tag> : <span className="text-ink-3">Kripto</span>),
+  },
+  { id: "bar", header: "Bar", width: 64, value: (r) => r.bot.timeframe, cell: (r) => <NumText text={r.bot.timeframe} size="sm" /> },
+  {
+    id: "katilim",
+    header: "Katılım",
+    width: 110,
+    value: (r) => (r.gec ? new Date(r.bot.created_at).getTime() : 0),
+    cell: (r) => (r.gec ? <NumText text={dateOnly(r.bot.created_at)} size="sm" /> : <span className="text-ink-3">başlangıç</span>),
+  },
+  { id: "getiri", header: "Getiri", width: 100, num: true, value: (r) => r.getiri, cell: (r) => <Delta value={r.getiri} format={(v) => pctSigned(v)} size="md" /> },
+  { id: "ozsermaye", header: "Özsermaye", width: 120, num: true, value: (r) => r.bot.equity, cell: (r) => <NumText text={money(r.bot.equity)} size="sm" /> },
+  { id: "islem", header: "İşlem", width: 76, num: true, value: (r) => r.ozet?.islem ?? 0, cell: (r) => <NumText text={num(r.ozet?.islem ?? 0, 0)} size="sm" /> },
+  {
+    id: "isabet",
+    header: "İsabet",
+    width: 84,
+    num: true,
+    value: (r) => (r.ozet && r.ozet.islem > 0 ? r.ozet.kazanan / r.ozet.islem : null),
+    cell: (r) => <NumText text={r.ozet && r.ozet.islem > 0 ? pct(r.ozet.kazanan / r.ozet.islem, 0) : "—"} size="sm" />,
+  },
+  {
+    id: "ortR",
+    header: "Ortalama R",
+    width: 110,
+    num: true,
+    hint: "Maraton işlemlerinin ortalama sonucu, risk birimi (R) cinsinden.",
+    value: (r) => (r.ozet && r.ozet.islem > 0 ? r.ozet.toplamR / r.ozet.islem : null),
+    cell: (r) => (r.ozet && r.ozet.islem > 0 ? <Delta value={r.ozet.toplamR / r.ozet.islem} format={(v) => num(v, 2)} size="sm" /> : <NumText text="—" size="sm" />),
+  },
+];
+
 export default function MarathonPage() {
   const meta = useQuery({ queryKey: ["marathon-meta"], queryFn: () => api.get<MarathonMeta>("/system/marathon"), staleTime: 300_000 });
   const bots = useQuery({ queryKey: ["bots"], queryFn: () => api.get<Bot[]>("/bots"), refetchInterval: 30_000 });
+  const router = useRouter();
   const start = meta.data?.start ?? null;
   const gunSayisi = meta.data?.days ?? 30;
 
@@ -67,15 +121,21 @@ export default function MarathonPage() {
     return map;
   }, [maratonIslemleri]);
 
-  const siralama = useMemo(
+  const startMs = start ? new Date(start).getTime() : null;
+  const siralama = useMemo<LigRow[]>(
     () =>
       [...kosanlar]
         .map((b) => ({ bot: b, getiri: b.equity !== null && b.capital > 0 ? b.equity / b.capital - 1 : null }))
-        .sort((a, b) => (b.getiri ?? -Infinity) - (a.getiri ?? -Infinity)),
-    [kosanlar],
+        .sort((a, b) => (b.getiri ?? -Infinity) - (a.getiri ?? -Infinity))
+        .map((r, i) => ({
+          ...r,
+          sira: i + 1,
+          ozet: perBot.get(r.bot.id),
+          gec: startMs !== null && new Date(r.bot.created_at).getTime() > startMs,
+        })),
+    [kosanlar, perBot, startMs],
   );
 
-  const startMs = start ? new Date(start).getTime() : null;
   const gecenGun = startMs !== null ? Math.max(0, (Date.now() - startMs) / 86_400_000) : null;
   const gun = gecenGun === null ? null : Math.min(gunSayisi, Math.floor(gecenGun) + 1);
   const lider = siralama[0];
@@ -170,42 +230,17 @@ export default function MarathonPage() {
 
       {/* ---- Lig: sıralama defteri ------------------------------------ */}
       <Panel title="Lig" description="Tek dürüst ölçü: sıfırlanmış sermayeye göre yüzde getiri. Maratondan sonra kurulan kol geç katılımcıdır." padded={false}>
-        <div className="scroll-thin overflow-x-auto">
-          <table className="w-full border-collapse text-left text-[13px]">
-            <thead className="border-b border-line">
-              <tr>
-                {["#", "Kol", "Pazar", "Bar", "Katılım", "Getiri", "Özsermaye", "İşlem", "İsabet", "Ortalama R"].map((h, i) => (
-                  <th key={h} className={`px-5 py-2.5 text-[11.5px] font-semibold tracking-[0.04em] text-ink-3 uppercase ${i === 0 || i >= 5 ? "text-right" : ""}`}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {siralama.map(({ bot, getiri }, idx) => {
-                const s = perBot.get(bot.id);
-                const gec = startMs !== null && new Date(bot.created_at).getTime() > startMs;
-                return (
-                  <tr key={bot.id} className="border-b border-line last:border-0 hover:bg-inset/60">
-                    <td className="px-5 py-2.5 text-right"><NumText text={String(idx + 1)} size="sm" tone={idx === 0 ? "var(--sn-brand)" : "var(--sn-ink-3)"} /></td>
-                    <td className="px-5 py-2.5 font-medium text-ink">{kisa(bot.name)}</td>
-                    <td className="px-5 py-2.5">{bot.market === "BIST" ? <Tag tone="info">BIST</Tag> : bot.market === "US" ? <Tag tone="info">ABD</Tag> : <span className="text-ink-3">Kripto</span>}</td>
-                    <td className="px-5 py-2.5"><NumText text={bot.timeframe} size="sm" /></td>
-                    <td className="px-5 py-2.5">{gec ? <NumText text={dateOnly(bot.created_at)} size="sm" /> : <span className="text-ink-3">başlangıç</span>}</td>
-                    <td className="px-5 py-2.5 text-right"><Delta value={getiri} format={(v) => pctSigned(v)} size="md" /></td>
-                    <td className="px-5 py-2.5 text-right"><NumText text={money(bot.equity)} size="sm" /></td>
-                    <td className="px-5 py-2.5 text-right"><NumText text={num(s?.islem ?? 0, 0)} size="sm" /></td>
-                    <td className="px-5 py-2.5 text-right"><NumText text={s && s.islem > 0 ? pct(s.kazanan / s.islem, 0) : "—"} size="sm" /></td>
-                    <td className="px-5 py-2.5 text-right">
-                      {s && s.islem > 0 ? <Delta value={s.toplamR / s.islem} format={(v) => num(v, 2)} size="sm" /> : <NumText text="—" size="sm" />}
-                    </td>
-                  </tr>
-                );
-              })}
-              {siralama.length === 0 && (
-                <tr><td colSpan={10} className="px-5 py-8 text-center text-ink-3">{bots.isLoading ? "Yükleniyor…" : "Koşan kol yok."}</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <DataGrid
+          rows={siralama}
+          columns={LIG_COLUMNS}
+          rowKey={(r) => String(r.bot.id)}
+          storageKey="maraton-lig"
+          searchable={false}
+          density="compact"
+          defaultSort={[{ id: "sira", desc: false }]}
+          onRowClick={(r) => router.push(`/botlar/${r.bot.id}`)}
+          emptyTitle={bots.isLoading ? "Yükleniyor…" : "Koşan kol yok"}
+        />
       </Panel>
     </Page>
   );
