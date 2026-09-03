@@ -86,7 +86,7 @@ function JournalContent() {
         )
       }
     >
-      <UnderlineTabs items={visible} value={tab} onChange={setTab} />
+      <UnderlineTabs accent="var(--brand)" items={visible} value={tab} onChange={setTab} />
 
       {tab === "akis" && isAdmin && <AkisTab />}
       {tab === "bildirimler" && <BildirimlerTab />}

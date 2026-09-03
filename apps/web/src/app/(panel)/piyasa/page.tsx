@@ -159,7 +159,7 @@ function PiyasaContent() {
             </Reveal>
 
             <div className="flex flex-wrap items-end justify-between gap-3">
-              <UnderlineTabs
+              <UnderlineTabs accent="var(--brand)"
                 items={[
                   { id: "havuz", label: "Havuz" },
                   { id: "puanlar", label: "Puanlar" },

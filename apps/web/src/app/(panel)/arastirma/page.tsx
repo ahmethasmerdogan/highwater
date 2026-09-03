@@ -102,7 +102,7 @@ function ResearchContent() {
         )
       }
     >
-      <UnderlineTabs items={TABS} value={tab} onChange={setTab} />
+      <UnderlineTabs accent="var(--brand)" items={TABS} value={tab} onChange={setTab} />
 
       {tab === "stratejiler" && (
         <StratejilerTab
