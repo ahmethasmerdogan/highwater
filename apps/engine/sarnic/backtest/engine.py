@@ -51,7 +51,7 @@ from sarnic.sizing.leverage import (
     decide_leverage,
     liquidation_price,
 )
-from sarnic.strategy.definition import StrategyDefinition
+from sarnic.strategy.definition import StrategyDefinition, entry_hour_allowed
 
 log = get_logger(__name__)
 
@@ -680,6 +680,8 @@ class BacktestEngine:
             for s in sorted(scores.values(), key=lambda x: -x.score)
             if s.score >= self.definition.entry.min_score and s.symbol not in held
         ]
+        if not entry_hour_allowed(self.definition.entry, bar):
+            candidates = []
         turnover = 0.0
         exposures = {p.symbol: p.qty * prices.get(p.symbol, p.entry_price) for p in positions}
 

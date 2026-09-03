@@ -74,6 +74,11 @@ class EntrySpec:
     """
 
     min_score: float = 80.0
+    #: Girişe izin verilen UTC saatleri (0–23). None = her saat. Canlı defter
+    #: (228 işlem, 15 Ağu–3 Eyl) 00–06 UTC girişlerinde +1,20R, 06–12'de
+    #: +0,08R gösterdi — ölçülebilir bir hipotez; bu düğme onu backtest'te ve
+    #: yeni bir kolda sınamak için var. Çıkışlar saatten bağımsızdır.
+    hours_utc: list[int] | None = None
     #: Eşzamanlı pozisyon sayısı.
     #:
     #: Portföy simülasyonunda (60 gün, kapı 80, %80 maruziyet tavanı, gerçek
@@ -188,6 +193,9 @@ class StrategyDefinition:
         # burası unutulduğunda strateji doğrulaması onu reddediyordu.
         if self.timeframe not in TIMEFRAME_MINUTES:
             errors.append(f"bilinmeyen zaman dilimi: {self.timeframe}")
+        saatler = self.entry.hours_utc
+        if saatler is not None and (not saatler or any(not 0 <= h <= 23 for h in saatler)):
+            raise ValueError("entry.hours_utc: 0–23 arası saatlerden oluşan boş olmayan liste olmalı")
         if not 0 <= self.entry.min_score <= 100:
             errors.append("entry.min_score 0–100 aralığında olmalı")
         if self.entry.max_positions < 1:
@@ -213,3 +221,11 @@ class StrategyDefinition:
 
 
 DEFAULT_STRATEGY = StrategyDefinition()
+
+
+def entry_hour_allowed(entry: EntrySpec, moment) -> bool:
+    """Bu bar kapanışında giriş saati serbest mi? Tek karar yolu: worker ve
+    backtest aynı fonksiyonu çağırır (kural 1). `moment` UTC datetime."""
+    if entry.hours_utc is None:
+        return True
+    return moment.hour in entry.hours_utc

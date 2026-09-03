@@ -64,7 +64,7 @@ from sarnic.scoring.engine import ScoreResult, ScoringEngine
 from sarnic.sizing.clusters import cluster_exposure, latest_clusters
 from sarnic.sizing.engine import SizingEngine, SizingInput
 from sarnic.sizing.leverage import LeverageSpec, borrow_cost, decide_leverage
-from sarnic.strategy.definition import StrategyDefinition
+from sarnic.strategy.definition import StrategyDefinition, entry_hour_allowed
 from sarnic.universe.engine import UniverseEngine
 
 log = get_logger(__name__)
@@ -857,7 +857,7 @@ class BotWorker:
             for s in sorted(ctx.scores.values(), key=lambda x: -x.score)
             if s.score >= definition.entry.min_score and s.symbol not in snapshot.symbols
         ]
-        if not candidates:
+        if not candidates or not entry_hour_allowed(definition.entry, ctx.bar_time):
             return
 
         clusters = await latest_clusters(session, at=ctx.bar_time)
