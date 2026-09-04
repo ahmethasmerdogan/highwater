@@ -14,12 +14,18 @@
 > kârlı kol 24 saatte 22 giriş kaybetmiş. Üçü de düzeltildi (defter:
 > MEYDAN-OKUMA "Sistem felci ve kurtarma").
 >
-> Bunun anlamı: **§2'deki işlem defteri (−0,083R beklenti) bozuk bir sistemin
-> çıktısıdır.** Buna karşılık §6–§7'deki IC ve seçim-kuralı ölçümleri
-> `scores` tablosundan gelir ve bar kararının tamamlanmasına bağlı değildir
-> (puanlar kesilmeden önce yazılıyor); onlar geçerliliğini korur. Yani
-> "hangi sinyal öngörülü" sorusunun cevabı ayakta, "sistem ne kadar kaybetti"
-> sorusunun cevabı yeniden ölçülmeli.
+> Etkisi sonradan ölçüldü ve **sanılandan dar çıktı**: `scores.updated` olayı
+> `run_bar`'ın sonunda yazıldığı için varlığı barın tamamlandığını kanıtlar ve
+> son 24 saatte 1h kollarının hepsi **24/24 barı tamamlamış** (30m %2, 15m %16
+> kaçırmış). Yani kararlar yarıda kesilmemiş; kaybedilen şey **zaman**. Bar
+> kapanışından 157 saniye sonra verilen giriş emri, kararın alındığı fiyattan
+> uzaklaşmış oluyor — §1'de "sorun değil" diye geçilen 4 bps'lik ortalama
+> dolum sapmasının (p90 34 bps) kaynağı büyük olasılıkla bu gecikme. Karar
+> süresini düşürmek bu yüzden yalnız bir performans işi değil, doğrudan kâr
+> kalemidir.
+>
+> Özet: §2'deki işlem defteri geçerli ama **gecikme yanlılığı taşıyor**;
+> §6–§7'deki IC ve seçim ölçümleri etkilenmedi.
 
 ## 1. Kısa cevap
 
