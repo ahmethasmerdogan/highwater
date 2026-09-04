@@ -30,9 +30,15 @@ from sarnic.core.enums import TIMEFRAME_MINUTES, ExitReason
 from sarnic.core.logging import get_logger
 from sarnic.data.store import load_frames
 from sarnic.db.models import UniverseSnapshot
-from sarnic.execution.accounting import net_pnl, total_fees, weighted_r
+from sarnic.execution.accounting import (
+    net_pnl,
+    price_points,
+    risk_per_unit,
+    total_fees,
+    weighted_r,
+)
 from sarnic.execution.exits import MarketView, PositionView, evaluate_exit, rotation_candidate
-from sarnic.execution.gapfill import stop_fill_price
+from sarnic.execution.gapfill import adverse_extreme, stop_fill_price, stop_hit
 from sarnic.features.indicators import ema, realized_vol
 from sarnic.features.pipeline import (
     BARS_NEEDED,
@@ -122,6 +128,8 @@ class SimPosition:
     realized_points: float = 0.0
     realized_pnl: float = 0.0
     realized_fees: float = 0.0
+    #: +1 uzun, −1 kısa (KISA-YON-PLANI §0). Uzun için aritmetik birebir.
+    direction: int = 1
 
     def view(self) -> PositionView:
         return PositionView(
@@ -133,6 +141,7 @@ class SimPosition:
             initial_stop=self.initial_stop,
             breakeven_locked=self.breakeven_locked,
             partial_done=self.partial_done,
+            direction=self.direction,
         )
 
 
@@ -343,6 +352,7 @@ class BacktestEngine:
         entries_blocked_until: datetime | None = None
         clusters = self._compute_clusters(data)
         btc_regime: dict[datetime, str] = {}
+        yonler = self.definition.entry.directions()
 
         # Göstergeler nedenseldir; bir kez hesaplanıp bar bar satır okunur.
         # S/R ve formasyon motorları pencere tabanlı olduğu için bar bar
@@ -369,15 +379,24 @@ class BacktestEngine:
                 )
                 for symbol, symbol_cuts in cuts.items()
             ]
-            results = scoring.score_cross_section([b.features for b in bundles])
+            feats = [b.features for b in bundles]
+            results = scoring.score_cross_section(feats) if 1 in yonler else []
             scores = {r.symbol: r for r in results}
+            # Kısa puan aynı özelliklerden, yönlü aileler ters (tanım opt-in).
+            short_scores = (
+                {r.symbol: r for r in scoring.score_cross_section(feats, -1)}
+                if -1 in yonler
+                else {}
+            )
 
             prices: dict[str, float] = {}
             atrs: dict[str, float] = {}
             rvols: dict[str, float] = {}
             stops: dict[str, float] = {}
+            short_stops: dict[str, float] = {}
             adv: dict[str, float] = {}
             headrooms: dict[str, float] = {}
+            support_rooms: dict[str, float] = {}
             pattern_mods: dict[str, float] = {}
             for b in bundles:
                 h1 = b.indicators.get(self.timeframe)
@@ -391,6 +410,13 @@ class BacktestEngine:
                     if stop is not None:
                         stops[b.symbol] = stop
                     headrooms[b.symbol] = b.sr.resistance_distance_atr
+                    if -1 in yonler:
+                        kisa_stop = stop_from_sr(
+                            b.sr, exit_spec.stop_atr_multiple, entry=h1.close, direction=-1
+                        )
+                        if kisa_stop is not None:
+                            short_stops[b.symbol] = kisa_stop
+                        support_rooms[b.symbol] = b.sr.support_distance_atr
                 if b.patterns is not None:
                     pattern_mods[b.symbol] = b.patterns.modifier()
                 cut = cuts[b.symbol].get(self.timeframe, 0)
@@ -412,7 +438,7 @@ class BacktestEngine:
                 price = prices.get(position.symbol)
                 if price is None:
                     continue
-                score = scores.get(position.symbol)
+                score = (short_scores if position.direction < 0 else scores).get(position.symbol)
                 decision = evaluate_exit(
                     position.view(),
                     MarketView(
@@ -424,9 +450,7 @@ class BacktestEngine:
                     exit_spec,
                     bar,
                 )
-                r = (price - position.entry_price) / max(
-                    position.entry_price - position.initial_stop, 1e-12
-                )
+                r = position.view().r_multiple(price)
                 position.mfe = max(position.mfe, r)
                 position.mae = min(position.mae, r)
 
@@ -441,7 +465,9 @@ class BacktestEngine:
                     turnover += position.qty * price
                     positions.remove(position)
 
-            equity = cash + sum(p.qty * prices.get(p.symbol, p.entry_price) for p in positions)
+            equity = cash + sum(
+                p.direction * p.qty * prices.get(p.symbol, p.entry_price) for p in positions
+            )
             equity_peak = max(equity_peak, equity)
             day_anchor, week_anchor = self._roll_anchors(bar, equity, day_anchor, week_anchor)
 
@@ -487,12 +513,19 @@ class BacktestEngine:
                     trades,
                     headrooms,
                     pattern_mods,
+                    short_scores,
+                    short_stops,
+                    support_rooms,
                 )
                 turnover += added
 
-            equity = cash + sum(p.qty * prices.get(p.symbol, p.entry_price) for p in positions)
+            equity = cash + sum(
+                p.direction * p.qty * prices.get(p.symbol, p.entry_price) for p in positions
+            )
             curve.append((bar, equity))
-            exposure_series.append((equity - cash) / equity if equity > 0 else 0.0)
+            # Maruziyet brüt: kısa pozisyon da sermaye bağlar (tavanlarla aynı ölçü).
+            brut = sum(p.qty * prices.get(p.symbol, p.entry_price) for p in positions)
+            exposure_series.append(brut / equity if equity > 0 else 0.0)
 
         metrics = compute_metrics(
             curve,
@@ -594,21 +627,24 @@ class BacktestEngine:
             row = df.iloc[cut - 1]
             if row["open_time"].to_pydatetime().timestamp() != bar.timestamp():
                 continue
-            low = float(row["low"])
+            d = position.direction
+            # Aleyhte uç: uzun için low, kısa için high.
+            uc = adverse_extreme(float(row["low"]), float(row["high"]), d)
             if position.leverage > 1.0:
-                # Likidasyon stopun ÜSTÜNDEYSE önce o tetiklenir (stop-marj
-                # sığması bunu normalde yasaklar; boşlukta yine de mümkündür).
-                liq = liquidation_price(position.entry_price, position.leverage)
-                if liq >= position.stop and low <= liq:
-                    fill = stop_fill_price(liq, float(row["open"]))
+                # Likidasyon stoptan ÖNCE geliyorsa (uzun: üstünde, kısa: altında)
+                # önce o tetiklenir (stop-marj sığması bunu normalde yasaklar;
+                # boşlukta yine de mümkündür).
+                liq = liquidation_price(position.entry_price, position.leverage, direction=d)
+                if d * (liq - position.stop) >= 0 and stop_hit(liq, uc, d):
+                    fill = stop_fill_price(liq, float(row["open"]), d)
                     cash += self._close(
                         position, fill, bar, ExitReason.LIQUIDATION, cost_bps, trades
                     )
                     turnover += position.qty * fill
                     positions.remove(position)
                     continue
-            if low <= position.stop:
-                fill = stop_fill_price(position.stop, float(row["open"]))
+            if stop_hit(position.stop, uc, d):
+                fill = stop_fill_price(position.stop, float(row["open"]), d)
                 cash += self._close(position, fill, bar, ExitReason.STOP, cost_bps, trades)
                 turnover += position.qty * fill
                 positions.remove(position)
@@ -623,23 +659,30 @@ class BacktestEngine:
         realized_* alanlarında birikir ve nihai işlemde tek satırda raporlanır
         (işlem sayısı 1 kalır). Borç maliyeti dilim için burada tahakkuk eder.
         """
+        d = position.direction
         qty = position.qty * fraction
-        fiyat = price * (1 - cost_bps * SLIP_RATIO / 10_000)
+        # Çıkış kayması işlem yönünün tersine: uzun satar (aşağı), kısa alır (yukarı).
+        fiyat = price * (1 - d * cost_bps * SLIP_RATIO / 10_000)
         gross = fiyat * qty
         fee = gross * cost_bps / 10_000
         hold_hours = (at - position.entry_time).total_seconds() / 3600
         borc = borrow_cost(
-            position.entry_price * qty, position.leverage, hold_hours, self.lev_spec.hourly_rate
+            position.entry_price * qty,
+            position.leverage,
+            hold_hours,
+            self.lev_spec.hourly_rate,
+            direction=d,
         )
         giris_payi = position.entry_fees * fraction
-        position.realized_points += (fiyat - position.entry_price) * qty
-        position.realized_pnl += (fiyat - position.entry_price) * qty - fee - borc - giris_payi
+        puan = price_points(position.entry_price, fiyat, qty, d)
+        position.realized_points += puan
+        position.realized_pnl += puan - fee - borc - giris_payi
         position.realized_fees += fee + borc + giris_payi
         position.qty -= qty
         position.entry_fees -= giris_payi
         position.entry_notional *= 1 - fraction
         position.partial_done = True
-        return gross - fee - borc
+        return d * gross - fee - borc
 
     def _close(
         self,
@@ -656,38 +699,46 @@ class BacktestEngine:
         Borç maliyeti worker ile aynı aritmetik: kapanışta tek seferde, tutulan
         saat kadar, komisyona eklenir ve kârdan düşer.
         """
-        price = price * (1 - cost_bps * SLIP_RATIO / 10_000)
+        d = position.direction
+        price = price * (1 - d * cost_bps * SLIP_RATIO / 10_000)
         gross = price * position.qty
         fee = gross * cost_bps / 10_000
         hold_hours = (at - position.entry_time).total_seconds() / 3600
         borc = borrow_cost(
-            position.entry_notional, position.leverage, hold_hours, self.lev_spec.hourly_rate
+            position.entry_notional,
+            position.leverage,
+            hold_hours,
+            self.lev_spec.hourly_rate,
+            direction=d,
         )
         fee += borc
-        proceeds = gross - fee
+        # Nakde dönen tutar: uzun satış geliri, kısa kapatma ödemesi (negatif).
+        proceeds = d * gross - fee
         pnl = (
             net_pnl(
-                gross=(price - position.entry_price) * position.qty,
+                gross=price_points(position.entry_price, price, position.qty, d),
                 entry_fees=position.entry_fees,
                 exit_fees=fee,
             )
             + position.realized_pnl
         )
         fee += position.realized_fees
-        risk_per_unit = max(position.entry_price - position.initial_stop, 1e-12)
+        risk_birim = risk_per_unit(position.entry_price, position.initial_stop, d)
         # R: giriş miktarına göre ağırlıklı fiyat-puanı — kısmi satış yoksa
         # eski formülle birebir aynı ((price − entry)/risk).
         r_carpani = weighted_r(
             position.entry_price,
             price,
             position.qty,
-            risk_per_unit,
+            risk_birim,
             realized_points=position.realized_points,
             entry_qty=position.entry_qty,
+            direction=d,
         )
         trades.append(
             {
                 "symbol": position.symbol,
+                "side": "BUY" if d > 0 else "SELL",
                 "entry_time": position.entry_time.isoformat(),
                 "exit_time": at.isoformat(),
                 "entry_price": round(position.entry_price, 10),
@@ -728,21 +779,34 @@ class BacktestEngine:
         trades,
         headrooms=None,
         pattern_mods=None,
+        short_scores=None,
+        short_stops=None,
+        support_rooms=None,
     ) -> tuple[float, float]:
         headrooms = headrooms or {}
         pattern_mods = pattern_mods or {}
+        short_scores = short_scores or {}
+        short_stops = short_stops or {}
+        support_rooms = support_rooms or {}
         held = {p.symbol for p in positions}
-        candidates = [
-            s
-            for s in sorted(scores.values(), key=lambda x: -x.score)
-            if s.score >= self.definition.entry.min_score and s.symbol not in held
-        ]
+        kapi = self.definition.entry.min_score
+        # Adaylar (puan, yön) çiftleri; iki yön açıksa puana göre tek sırada.
+        # Aynı sembol herhangi bir yönde tutuluyorsa atlanır (hedge yok).
+        candidates: list[tuple] = []
+        for d in self.definition.entry.directions():
+            kaynak = scores if d > 0 else short_scores
+            candidates += [
+                (s, d) for s in kaynak.values() if s.score >= kapi and s.symbol not in held
+            ]
+        candidates.sort(key=lambda x: -x[0].score)
         if not entry_hour_allowed(self.definition.entry, bar):
             candidates = []
         turnover = 0.0
         exposures = {p.symbol: p.qty * prices.get(p.symbol, p.entry_price) for p in positions}
 
-        for candidate in candidates:
+        for candidate, d in candidates:
+            if candidate.symbol in {p.symbol for p in positions}:
+                continue
             if len(positions) >= self.definition.entry.max_positions:
                 victim = rotation_candidate(
                     [(p.symbol, p.score_at_entry) for p in positions],
@@ -762,7 +826,7 @@ class BacktestEngine:
                     exposures.pop(victim, None)
 
             entry = prices.get(candidate.symbol)
-            stop = stops.get(candidate.symbol)
+            stop = (stops if d > 0 else short_stops).get(candidate.symbol)
             if entry is None or stop is None:
                 continue
 
@@ -771,9 +835,11 @@ class BacktestEngine:
                 self.lev_spec,
                 score=candidate.score,
                 pattern_modifier=pattern_mods.get(candidate.symbol),
-                headroom_atr=headrooms.get(candidate.symbol),
+                # İşlem yönündeki yer: uzun dirence, kısa desteğe uzaklık.
+                headroom_atr=(headrooms if d > 0 else support_rooms).get(candidate.symbol),
                 entry=entry,
                 stop=stop,
+                direction=d,
             )
             decision = sizing.size(
                 SizingInput(
@@ -782,6 +848,7 @@ class BacktestEngine:
                     entry=entry,
                     stop=stop,
                     leverage=lev.leverage,
+                    direction=d,
                     risk_scale=lev.leverage if self.lev_spec.scale_risk else 1.0,
                     equity=equity,
                     free_cash=cash,
@@ -797,14 +864,16 @@ class BacktestEngine:
             if not decision.accepted:
                 continue
 
-            fill = entry * (1 + cost_bps * SLIP_RATIO / 10_000)
+            # Giriş kayması işlem yönünde: uzun alır (yukarı), kısa satar (aşağı).
+            fill = entry * (1 + d * cost_bps * SLIP_RATIO / 10_000)
             gross = fill * decision.qty
             fee = gross * cost_bps / 10_000
             # Marj kuralı = PaperAdapter: notional/lev + komisyon ≤ serbest nakit;
-            # nakitten TAM notional düşer, eksiye inen nakit görünür borçtur.
+            # nakitten TAM notional düşer (kısa: satış geliri girer), eksiye
+            # inen nakit görünür borçtur.
             if gross / lev.leverage + fee > cash + 1e-9:
                 continue
-            cash -= gross + fee
+            cash -= d * gross + fee
             turnover += gross
             positions.append(
                 SimPosition(
@@ -819,6 +888,7 @@ class BacktestEngine:
                     leverage=lev.leverage,
                     entry_notional=gross,
                     entry_qty=decision.qty,
+                    direction=d,
                 )
             )
             exposures[candidate.symbol] = gross
