@@ -1563,3 +1563,19 @@ girişte 399,64 (nakit − ödünç varlık değeri; fark komisyon). Emir kaydı
 MARKET SELL dolu; bekleyen stop emri (uzunda da) adaptör belleğinde, tabloya
 yazılmıyor — eskiden beri böyle. Küçük pürüz: açılış mesajındaki "R" kısa
 için ters okunuyor (rr_geometry uzun geometrisi) — gösterim, karar değil.
+
+**Olay 2 (2026-09-04 12:30Z, bot 4 "Havuz Momentum · 15 dakika") — yarış:**
+Gözetim döngüsü 12:30:25'te ADA ve DASH'i kapatıp nakdi 307'ye yazdı; karar
+döngüsü botu 12:30:07'de (nakit 140) okumuş, pozisyonları daha sonra kapanmış
+bulmuş, özsermayeyi 214 sanmış → "günlük zarar %44,6", haftalık %46, drawdown
+%46,5 → kill switch (ZEC kapandı) → kendi eski nakdini üstüne yazdı. ADA+DASH
+satış geliri 166,96 $ buharlaştı, bot hayalet zararla STOPPED. Kanıt:
+`bot_events.created_at` = işlem başlangıcı (iki ayrı transaction), emir
+`filled_at` damgaları, 12:15 özsermaye noktası (214,31 = 140,52 + yalnız ZEC).
+Onarım: nakit +166,96 (381,27), 12:15 noktası düzeltildi, halt/blok
+temizlendi, bot yeniden PAPER_RUNNING (16:35Z). Kod: bar kararı ve gözetim
+turu artık tek `asyncio.Lock` ile sırayla koşar. Denetim: emir tabanlı
+yeniden hesap (400 + Σsatış − Σalış, komisyon dâhil) 23 botun hepsinde
+kuruşuna kadar tutuyor; bot 5'teki +18 $ görünümü re-base öncesi açılıp
+sonra kapanan pozisyonun artığıydı, gerçek fark yok. Bu bir hata düzeltmesi;
+bot 4'ün stratejisi değişmedi, zarar sayılmayan hayalet stop geri alındı.
