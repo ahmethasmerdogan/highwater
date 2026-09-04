@@ -1579,3 +1579,22 @@ yeniden hesap (400 + Σsatış − Σalış, komisyon dâhil) 23 botun hepsinde
 kuruşuna kadar tutuyor; bot 5'teki +18 $ görünümü re-base öncesi açılıp
 sonra kapanan pozisyonun artığıydı, gerçek fark yok. Bu bir hata düzeltmesi;
 bot 4'ün stratejisi değişmedi, zarar sayılmayan hayalet stop geri alındı.
+
+## Kâr teşhisi ve H şeridi — 2026-09-04 akşamı
+
+Belge: `docs/KAR-TESHISI-2026-09-04.md`. Özet: maliyet, dolum, rejim ve stop
+genişliği temize çıktı; kayıp giriş seçiminde — bileşik puanın canlı IC'si ≈ 0,
+yalnız `vol` öngörülü (24s t +10,8), momentum negatif (t −3,1); kapı 80–82
+girişleri −52 $, 06–12 UTC girişleri −51 $; LINK 11 kolda −52 $ (filo tek bahis).
+
+**Ön-kayıt — H şeridi (75 gün, 20 Haz → 2 Eyl, holdout son %30, 114 sembol):**
+H1 kontrol / vol 60 / vol 75·momentum 0 / momentum 0; H2 gece 18–05 / kapı 82 /
+kapı 85 / gece+kapı 82; H3 gece+vol 60 / gece+vol 60+kapı 82 / vol 100 / vol 60+kapı
+82; H4 KISA kontrol / KISA vol 60 / İKİ YÖN vol 60 / KISA gece. Kabul kuralı aynı:
+in-sample VE holdout beklenti ≥ kontrol + 0,05R, düşüş ≤ 1,2×; kabul edilen
+varyant maraton bitene kadar yalnız YENİ kol olur. Bellek (7 GB) yüzünden aynı
+anda 2 şerit; sonuçlar `scratchpad/tarama_H*.out`, deftere işlenecek.
+
+**Yeni kollar (400 $, deney, 19:53Z):** N1 gece penceresi 18–05 (bot 28), N2
+kapı 85 · 3 slot (bot 29), N3 gece + vol 60 + kapı 82 (bot 30). Hepsi bot 1'in
+tanımından türedi; 14 gün eleme kuralına tabi.
