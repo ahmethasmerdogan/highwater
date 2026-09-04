@@ -6,14 +6,17 @@
  * Manşet · "Bugün" (makine yazımı hikâye) · Para (dört figür, tek blokta)
  * · Filo (defter tablosu, kart değil) · Yarış · Dikkat. Her sayı mono;
  * her satır bir yere götürür; süs yok. Eğriler katılım anına endeksli.
+ *
+ * Filo tek uçtan beslenir (`/bots/fleet`): getiri pencereleri, kazanma
+ * oranı, seri ve nabız sunucuda hesaplanır; panel türetmez.
  */
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Reveal, StatusPill } from "uicean";
-import { api, type Benchmark, type Bot, type LivePnl, type Trade } from "@/lib/api";
+import { Reveal, StatusPill, Toggle as PressToggle } from "uicean";
+import { api, type Benchmark, type FleetRow, type LivePnl, type Trade } from "@/lib/api";
 import { money, num, pctSigned, relative, rMultiple } from "@/lib/format";
 import { Page } from "@/shell/page";
 import { useAttention } from "@/shell/attention";
@@ -35,48 +38,162 @@ const PALETTE = [
 ];
 
 const imzali = (v: number | null | undefined) => (v === null || v === undefined ? "—" : `${v > 0 ? "+" : ""}${money(v)}`);
-const kisa = (name: string) => name.replace("Havuz Momentum · ", "").replace("MEYDAN OKUMA · ", "MO · ");
+const kisa = (name: string) => name.replace("Havuz Momentum · ", "").replace("MEYDAN OKUMA · ", "MO · ").replace("ARŞİV · ", "");
+const yuzde = (v: number | null | undefined, digits = 1) => (v === null || v === undefined ? "—" : `%${num(v * 100, digits)}`);
 
-interface FleetRow {
-  bot: Bot;
-  live: LivePnl["bots"][number] | undefined;
+/* Filo satırı: sunucu satırı + eğri + renk. Sütunlar başka bir şeye bakmaz. */
+interface FiloSatir {
+  row: FleetRow;
   spark: number[];
   color: string;
   blocked: boolean;
-  getiri: number | null;
 }
 
-const pazar = (bot: Bot) =>
-  bot.market === "BIST" ? <Tag tone="info">BIST</Tag> : bot.market === "US" ? <Tag tone="info">ABD</Tag> : <span className="text-ink-3">Kripto</span>;
+type Grup = "maraton" | "deney" | "arsiv";
+const GRUP_ETIKET: Record<Grup, string> = { maraton: "Maraton", deney: "Deney", arsiv: "Arşiv" };
+const GRUP_ANAHTAR = "sarnic.kopru.filo.gruplar";
+const NABIZ_ESIK_S = 300;
+
+const pazar = (r: FleetRow) =>
+  r.market === "BIST" ? <Tag tone="info">BIST</Tag> : r.market === "US" ? <Tag tone="info">ABD</Tag> : <span className="text-ink-3">Kripto</span>;
+
+function KolHucresi({ r }: { r: FleetRow }) {
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1.5">
+      <span className="truncate font-medium text-ink">{kisa(r.name)}</span>
+      {r.direction === "SHORT" && <Tag tone="down">kısa</Tag>}
+      {r.direction === "BOTH" && <Tag tone="info">iki yön</Tag>}
+      {r.agresif && <Tag tone="warn">agresif</Tag>}
+      {!r.agresif && r.deney && <Tag tone="neutral">deney</Tag>}
+      {r.max_leverage > 1 && (
+        <Tag tone="brand" mono>{`${num(r.max_leverage, 0)}×`}</Tag>
+      )}
+    </span>
+  );
+}
+
+function DurumHucresi({ s }: { s: FiloSatir }) {
+  const r = s.row;
+  if (s.blocked) return <StatusPill tone="amber" size="sm" dot>giriş yasağı</StatusPill>;
+  if (r.state === "STOPPED" && r.halt_reason) return <StatusPill tone="red" size="sm" dot>{`durdu · ${r.halt_reason}`}</StatusPill>;
+  return <BotStatePill state={r.state} hint={false} />;
+}
+
+function NabizHucresi({ r }: { r: FleetRow }) {
+  const kosuyor = r.state === "PAPER_RUNNING" || r.state === "DEGRADED";
+  const gec = kosuyor && r.heartbeat_age_s !== null && r.heartbeat_age_s > NABIZ_ESIK_S;
+  if (!r.last_heartbeat_at) return <NumText text="—" size="sm" />;
+  return gec ? (
+    <StatusPill tone="amber" size="sm" dot>{relative(r.last_heartbeat_at)}</StatusPill>
+  ) : (
+    <span className="sn-num text-[12px] text-ink-3">{relative(r.last_heartbeat_at)}</span>
+  );
+}
+
+const para = (v: number | null | undefined) => <Delta value={v} format={(x) => money(x)} size="sm" />;
 
 /* Filo defteri — sütunlar satır verisinden başka bir şeye bakmaz. */
-const FILO_COLUMNS: GridColumn<FleetRow>[] = [
-  { id: "kol", header: "Kol", width: 200, pin: true, value: (r) => kisa(r.bot.name), cell: (r) => <span className="font-medium text-ink">{kisa(r.bot.name)}</span> },
-  { id: "pazar", header: "Pazar", width: 84, value: (r) => r.bot.market, cell: (r) => pazar(r.bot) },
-  { id: "bar", header: "Bar", width: 64, value: (r) => r.bot.timeframe, cell: (r) => <NumText text={r.bot.timeframe} size="sm" /> },
+const FILO_COLUMNS: GridColumn<FiloSatir>[] = [
+  { id: "kol", header: "Kol", width: 260, pin: true, value: (s) => kisa(s.row.name), search: (s) => `${s.row.name} ${s.row.market} ${s.row.state}`, cell: (s) => <KolHucresi r={s.row} /> },
+  { id: "pazar", header: "Pazar", width: 80, value: (s) => s.row.market, cell: (s) => pazar(s.row) },
+  { id: "bar", header: "Bar", width: 60, value: (s) => s.row.timeframe, cell: (s) => <NumText text={s.row.timeframe} size="sm" /> },
+  { id: "durum", header: "Durum", width: 160, value: (s) => (s.blocked ? "giriş yasağı" : s.row.state), cell: (s) => <DurumHucresi s={s} /> },
+  { id: "ozsermaye", header: "Özsermaye", width: 110, num: true, value: (s) => s.row.equity, cell: (s) => <NumText text={money(s.row.equity)} size="sm" /> },
   {
-    id: "durum",
-    header: "Durum",
-    width: 150,
-    value: (r) => (r.blocked ? "giriş yasağı" : r.bot.state),
-    cell: (r) => (r.blocked ? <StatusPill tone="amber" size="sm" dot>giriş yasağı</StatusPill> : <BotStatePill state={r.bot.state} hint={false} />),
+    id: "getiri",
+    header: "Getiri",
+    hint: "Özsermaye / katılım sermayesi − 1. Katılım tabanı re-base anındaki sermayedir.",
+    width: 96,
+    num: true,
+    value: (s) => s.row.return_pct,
+    cell: (s) => <Delta value={s.row.return_pct} format={(v) => pctSigned(v)} size="md" />,
   },
-  { id: "getiri", header: "Getiri", width: 100, num: true, value: (r) => r.getiri, cell: (r) => <Delta value={r.getiri} format={(v) => pctSigned(v)} size="md" /> },
-  { id: "acik", header: "Açık", width: 72, num: true, value: (r) => r.live?.open_positions ?? r.bot.open_positions, cell: (r) => <NumText text={num(r.live?.open_positions ?? r.bot.open_positions, 0)} size="sm" /> },
+  { id: "bugun", header: "Bugün", hint: "UTC günü içinde cebe giren (kapanan işlemler).", width: 92, num: true, value: (s) => s.row.realized_today, cell: (s) => para(s.row.realized_today) },
+  { id: "s24", header: "24s", width: 92, num: true, value: (s) => s.row.realized_24h, cell: (s) => para(s.row.realized_24h) },
+  { id: "g7", header: "7g", width: 92, num: true, hidden: true, value: (s) => s.row.realized_7d, cell: (s) => para(s.row.realized_7d) },
+  { id: "katilim", header: "Katılımdan beri", hint: "Re-base anından bu yana kapanan işlemlerin net toplamı.", width: 120, num: true, value: (s) => s.row.realized_since_rebase, cell: (s) => para(s.row.realized_since_rebase) },
   {
     id: "kagit",
     header: "Kâğıt üstü",
-    width: 110,
+    hint: "Açık pozisyonların canlı fiyatla kâr/zararı; henüz cebe girmedi.",
+    width: 100,
     num: true,
-    value: (r) => r.live?.unrealized_pnl ?? null,
-    cell: (r) => (r.live && r.live.unrealized_pnl !== 0 ? <Delta value={r.live.unrealized_pnl} format={(v) => money(v)} size="sm" /> : <NumText text="—" size="sm" />),
+    value: (s) => s.row.unrealized_pnl,
+    cell: (s) => (s.row.open_positions > 0 ? para(s.row.unrealized_pnl) : <NumText text="—" size="sm" />),
   },
-  { id: "egri", header: "Eğri", width: 110, cell: (r) => <Sparkline points={r.spark} width={96} height={20} color={r.color} /> },
+  {
+    id: "dd",
+    header: "Drawdown",
+    hint: "Tepeden uzaklık: özsermaye / tepe − 1.",
+    width: 96,
+    num: true,
+    value: (s) => s.row.drawdown_pct,
+    cell: (s) => <Delta value={s.row.drawdown_pct} format={(v) => pctSigned(v)} size="sm" />,
+  },
+  {
+    id: "maruziyet",
+    header: "Maruziyet",
+    hint: "Brüt pozisyon değeri / özsermaye. Kaldıraçlı kollarda %100'ü aşabilir.",
+    width: 96,
+    num: true,
+    value: (s) => s.row.exposure_pct,
+    cell: (s) => <NumText text={yuzde(s.row.exposure_pct, 0)} size="sm" />,
+  },
+  {
+    id: "acik",
+    header: "Açık",
+    hint: "Açık pozisyon sayısı; kısa ve kaldıraçlı olanlar ayrıca yazılır.",
+    width: 120,
+    num: true,
+    value: (s) => s.row.open_positions,
+    cell: (s) => {
+      const r = s.row;
+      const ek = [r.open_short > 0 ? `${num(r.open_short, 0)} kısa` : null, r.open_leveraged > 0 ? `${num(r.open_leveraged, 0)} kald.` : null].filter(Boolean);
+      return (
+        <span className="inline-flex items-baseline gap-1.5">
+          <NumText text={num(r.open_positions, 0)} size="sm" />
+          {ek.length > 0 && <span className="sn-num text-[11px] text-ink-3">{ek.join(" · ")}</span>}
+        </span>
+      );
+    },
+  },
+  { id: "islem", header: "İşlem", hint: "Katılımdan bu yana kapanan işlem sayısı.", width: 70, num: true, value: (s) => s.row.trades, cell: (s) => <NumText text={num(s.row.trades, 0)} size="sm" /> },
+  { id: "kazanma", header: "Kazanma", width: 88, num: true, value: (s) => s.row.win_rate, cell: (s) => <NumText text={yuzde(s.row.win_rate, 0)} size="sm" /> },
+  { id: "ortr", header: "Ort. R", hint: "İşlem başına ortalama R çarpanı (kâr / ilk risk).", width: 80, num: true, value: (s) => s.row.avg_r, cell: (s) => <NumText text={s.row.avg_r === null ? "—" : rMultiple(s.row.avg_r)} size="sm" /> },
+  { id: "pf", header: "Kâr çarpanı", hint: "Brüt kâr / brüt zarar.", width: 96, num: true, hidden: true, value: (s) => s.row.profit_factor, cell: (s) => <NumText text={s.row.profit_factor === null ? "—" : num(s.row.profit_factor, 2)} size="sm" /> },
+  {
+    id: "seri",
+    header: "Seri",
+    hint: "Ardışık zarar sayısı (son 20 işlem). Kesici 6+ da devreye girer.",
+    width: 64,
+    num: true,
+    value: (s) => s.row.consecutive_losses,
+    cell: (s) =>
+      s.row.consecutive_losses >= 3 ? (
+        <StatusPill tone="amber" size="sm">{num(s.row.consecutive_losses, 0)}</StatusPill>
+      ) : (
+        <NumText text={num(s.row.consecutive_losses, 0)} size="sm" />
+      ),
+  },
+  { id: "risk", header: "Risk/işlem", hint: "Tanımdaki risk_pct (özsermaye yüzdesi).", width: 90, num: true, hidden: true, value: (s) => s.row.risk_pct, cell: (s) => <NumText text={yuzde(s.row.risk_pct, 1)} size="sm" /> },
+  { id: "sonbar", header: "Son bar", width: 96, num: true, value: (s) => (s.row.last_bar_at ? new Date(s.row.last_bar_at).getTime() : null), cell: (s) => <span className="sn-num text-[12px] text-ink-3">{relative(s.row.last_bar_at)}</span> },
+  { id: "nabiz", header: "Nabız", hint: "Son yaşam sinyali; 5 dakikayı aşınca amber.", width: 100, num: true, value: (s) => s.row.heartbeat_age_s, cell: (s) => <NabizHucresi r={s.row} /> },
+  { id: "egri", header: "Eğri", width: 110, cell: (s) => <Sparkline points={s.spark} width={96} height={20} color={s.color} /> },
 ];
+
+function gruplariOku(): Record<Grup, boolean> {
+  const varsayilan: Record<Grup, boolean> = { maraton: true, deney: true, arsiv: false };
+  try {
+    const ham = window.localStorage.getItem(GRUP_ANAHTAR);
+    return ham ? { ...varsayilan, ...(JSON.parse(ham) as Partial<Record<Grup, boolean>>) } : varsayilan;
+  } catch {
+    return varsayilan;
+  }
+}
 
 export default function BridgePage() {
   const live = useQuery({ queryKey: ["live-pnl"], queryFn: () => api.get<LivePnl>("/portfolio/live"), refetchInterval: 10_000 });
-  const bots = useQuery({ queryKey: ["bots"], queryFn: () => api.get<Bot[]>("/bots"), refetchInterval: 30_000 });
+  const filo = useQuery({ queryKey: ["bots-fleet"], queryFn: () => api.get<FleetRow[]>("/bots/fleet"), refetchInterval: 30_000 });
   const meta = useQuery({ queryKey: ["marathon-meta"], queryFn: () => api.get<MarathonMeta>("/system/marathon"), staleTime: 300_000 });
   const attention = useAttention();
   const router = useRouter();
@@ -89,25 +206,44 @@ export default function BridgePage() {
   });
   const trades = useQuery({ queryKey: ["trades", "kopru"], queryFn: () => api.get<Trade[]>("/trades", { limit: 40 }), refetchInterval: 60_000 });
 
-  const fleet = useMemo<FleetRow[]>(() => {
+  const [gruplar, setGruplar] = useState<Record<Grup, boolean>>({ maraton: true, deney: true, arsiv: false });
+  useEffect(() => {
+    setGruplar(gruplariOku());
+  }, []);
+  const grupSec = (g: Grup, acik: boolean) =>
+    setGruplar((eski) => {
+      const yeni = { ...eski, [g]: acik };
+      try {
+        window.localStorage.setItem(GRUP_ANAHTAR, JSON.stringify(yeni));
+      } catch {
+        /* depolama yoksa yalnız oturum içi */
+      }
+      return yeni;
+    });
+
+  const fleet = useMemo<FiloSatir[]>(() => {
     const now = Date.now();
-    const liveById = new Map((live.data?.bots ?? []).map((b) => [b.bot_id, b]));
     const curveById = new Map((race.data?.bots ?? []).map((b) => [b.bot_id, b.curve.map((p) => p.value)]));
-    return (bots.data ?? [])
-      .filter((b) => b.state === "PAPER_RUNNING" || b.state === "DEGRADED" || b.state === "ERROR" || (b.state === "STOPPED" && b.halt_reason))
-      .map((b) => ({
-        bot: b,
-        live: liveById.get(b.id),
-        spark: curveById.get(b.id) ?? [],
-        blocked: !!b.entries_blocked_until && new Date(b.entries_blocked_until).getTime() > now,
-        getiri: b.equity !== null && b.capital > 0 ? b.equity / b.capital - 1 : null,
+    return (filo.data ?? [])
+      .filter((r) => r.state !== "DRAFT" && gruplar[(r.group as Grup) ?? "maraton"])
+      .map((r) => ({
+        row: r,
+        spark: curveById.get(r.id) ?? [],
+        blocked: !!r.entries_blocked_until && new Date(r.entries_blocked_until).getTime() > now,
+        color: "",
       }))
-      .sort((a, b) => (b.getiri ?? -Infinity) - (a.getiri ?? -Infinity))
-      .map((row, i) => ({ ...row, color: PALETTE[i % PALETTE.length] }));
-  }, [bots.data, live.data, race.data]);
+      .sort((a, b) => (b.row.return_pct ?? -Infinity) - (a.row.return_pct ?? -Infinity))
+      .map((s, i) => ({ ...s, color: PALETTE[i % PALETTE.length] }));
+  }, [filo.data, race.data, gruplar]);
+
+  const sayilar = useMemo(() => {
+    const out: Record<Grup, number> = { maraton: 0, deney: 0, arsiv: 0 };
+    for (const r of filo.data ?? []) if (r.state !== "DRAFT") out[(r.group as Grup) ?? "maraton"] += 1;
+    return out;
+  }, [filo.data]);
 
   const raceSeries = useMemo<CurveSeries[]>(() => {
-    const running = new Set(fleet.map((f) => f.bot.id));
+    const running = new Set(fleet.filter((f) => f.row.group !== "arsiv").map((f) => f.row.id));
     const out: CurveSeries[] = [];
     let i = 0;
     for (const bot of race.data?.bots ?? []) {
@@ -134,8 +270,9 @@ export default function BridgePage() {
     return { bugunku, kar, toplam, enIyi };
   }, [trades.data]);
 
+  const adlar = useMemo(() => new Map((filo.data ?? []).map((r) => [r.id, r.name])), [filo.data]);
   const gun = start ? Math.floor((Date.now() - new Date(start).getTime()) / 86_400_000) + 1 : null;
-  const hata = bots.isError ? bots : live.isError ? live : null;
+  const hata = filo.isError ? filo : live.isError ? live : null;
   const l = live.data;
   const exposurePct = l && l.equity > 0 ? l.exposure / l.equity : null;
   const items = attention.data?.items ?? [];
@@ -218,17 +355,33 @@ export default function BridgePage() {
       </Reveal>
 
       {/* ---- Filo: defter tablosu ------------------------------------- */}
-      <Panel title="Filo" description="Her satır bir kol. Getiri katılım tabanına göre; eğri katılımdan bu yana." padded={false}>
+      <Panel
+        title="Filo"
+        description="Her satır bir kol. Getiri katılım tabanına göre; pencereler UTC; eğri katılımdan bu yana. Sütunlar başlıktan gizlenip sıralanabilir."
+        padded={false}
+      >
         <DataGrid
           rows={fleet}
           columns={FILO_COLUMNS}
-          rowKey={(r) => String(r.bot.id)}
-          storageKey="kopru-filo"
-          searchable={false}
+          rowKey={(s) => String(s.row.id)}
+          storageKey="kopru-filo-v2"
+          searchPlaceholder="Kol ara…"
           density="compact"
+          maxHeight={720}
           defaultSort={[{ id: "getiri", desc: true }]}
-          onRowClick={(r) => router.push(`/botlar/${r.bot.id}`)}
-          emptyTitle="Koşan kol yok"
+          onRowClick={(s) => router.push(`/botlar/${s.row.id}`)}
+          emptyTitle="Seçili grupta kol yok"
+          emptyHint="Üstteki grup düğmelerinden en az birini açın."
+          toolbar={
+            <span className="inline-flex items-center gap-1.5">
+              {(Object.keys(GRUP_ETIKET) as Grup[]).map((g) => (
+                <PressToggle key={g} size="sm" pressed={gruplar[g]} onChange={(acik: boolean) => grupSec(g, acik)}>
+                  {GRUP_ETIKET[g]} <span className="sn-num">{num(sayilar[g], 0)}</span>
+                </PressToggle>
+              ))}
+            </span>
+          }
+          footNote={`Kaynak /bots/fleet · 30 sn'de bir tazelenir · ${num(fleet.length, 0)} kol gösteriliyor`}
         />
       </Panel>
 
@@ -244,11 +397,12 @@ export default function BridgePage() {
         <Panel title="Son işlemler" description="En yenisi üstte." padded={false} actions={<Link href="/pozisyonlar?tab=islemler" className="text-[12.5px] text-brand hover:underline">Tümü →</Link>}>
           <ul>
             {(trades.data ?? []).slice(0, 9).map((t) => {
-              const bot = bots.data?.find((b) => b.id === t.bot_id);
+              const ad = adlar.get(t.bot_id);
               return (
                 <li key={t.id} className="flex items-center gap-3 border-b border-line px-5 py-2.5 last:border-0">
                   <span className="sn-num w-24 shrink-0 truncate text-[13px] text-ink">{t.symbol}</span>
-                  <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink-3">{bot ? kisa(bot.name) : `bot ${t.bot_id}`}</span>
+                  <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink-3">{ad ? kisa(ad) : `bot ${t.bot_id}`}</span>
+                  {t.side === "SELL" && <Tag tone="down">kısa</Tag>}
                   <ExitReasonPill reason={t.exit_reason} />
                   <Delta value={t.pnl} format={(v) => money(v)} size="sm" />
                   <NumText text={rMultiple(t.pnl_r)} size="sm" />

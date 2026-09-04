@@ -321,6 +321,50 @@ export interface Bot {
   created_at: string;
 }
 
+/** Filo defteri satırı — `GET /bots/fleet`. Değer ve kâr işaretli, maruziyet brüt. */
+export interface FleetRow {
+  id: number;
+  name: string;
+  state: string;
+  /** maraton | deney | arsiv */
+  group: string;
+  market: string;
+  timeframe: string;
+  direction: string;
+  deney: boolean;
+  agresif: boolean;
+  kisa: boolean;
+  capital: number;
+  cash: number;
+  equity: number;
+  exposure: number;
+  exposure_pct: number | null;
+  open_positions: number;
+  open_long: number;
+  open_short: number;
+  open_leveraged: number;
+  unrealized_pnl: number;
+  realized_today: number;
+  realized_24h: number;
+  realized_7d: number;
+  realized_since_rebase: number;
+  return_pct: number | null;
+  drawdown_pct: number | null;
+  trades: number;
+  win_rate: number | null;
+  avg_r: number | null;
+  profit_factor: number | null;
+  consecutive_losses: number;
+  max_leverage: number;
+  risk_pct: number;
+  rebased_at: string | null;
+  last_bar_at: string | null;
+  last_heartbeat_at: string | null;
+  heartbeat_age_s: number | null;
+  entries_blocked_until: string | null;
+  halt_reason: string | null;
+}
+
 export interface Position {
   id: number;
   bot_id: number;
