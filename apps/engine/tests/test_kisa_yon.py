@@ -18,7 +18,7 @@ from sarnic.execution.accounting import price_points, risk_per_unit, weighted_r
 from sarnic.execution.exits import MarketView, PositionView, evaluate_exit, update_stop
 from sarnic.execution.gapfill import adverse_extreme, stop_fill_price, stop_hit
 from sarnic.features.sr import Level, SRResult, stop_from_sr
-from sarnic.sizing.engine import SizingEngine, SizingInput
+from sarnic.sizing.engine import SizingEngine, SizingInput, stop_anchored_to_fill
 from sarnic.sizing.leverage import LeverageSpec, borrow_cost, decide_leverage, liquidation_price
 from sarnic.strategy.definition import ExitSpec
 
@@ -226,3 +226,23 @@ def test_kisa_likidasyon_girisin_ustunde_ve_borc_tam_notional():
     assert borrow_cost(1000.0, 1.0, 10.0, 0.001, direction=-1) == pytest.approx(10.0)
     assert borrow_cost(1000.0, 1.0, 10.0, 0.001) == 0.0
     assert borrow_cost(1000.0, 2.0, 10.0, 0.001) == pytest.approx(5.0)
+
+
+# --------------------------------------------------------------------------- #
+#  Dolum stopu geçerse stop dolumdan çapalanır (bot 5 / MSTRBUSDT, 2026-09-04)
+# --------------------------------------------------------------------------- #
+def test_stop_doluma_capalanir():
+    # Uzun: karar 141, stop 138,92 (mesafe 2,08); dolum 136,87 stopun ALTINDA.
+    assert stop_anchored_to_fill(136.87, 141.0, 138.92, 1) == pytest.approx(136.87 - 2.08)
+    # Doğru taraftaysa stop aynen kalır.
+    assert stop_anchored_to_fill(141.3, 141.0, 138.92, 1) == 138.92
+    # Kısa: karar 100, stop 104; dolum 105 stopun ÜSTÜNDE → 105 + 4 = 109.
+    assert stop_anchored_to_fill(105.0, 100.0, 104.0, -1) == pytest.approx(109.0)
+    assert stop_anchored_to_fill(99.5, 100.0, 104.0, -1) == 104.0
+
+
+def test_stop_capasi_kismi_r_sinirli():
+    """1R≈0 pozisyonda r_multiple patlar; worker tavanı 9 999'da keser."""
+    p = PositionView("X", 1.0, 100.0, ENTRY_TIME, 100.0, 100.0)
+    assert p.r_multiple(101.0) > 9_999.0
+    assert max(-9_999.0, min(9_999.0, p.r_multiple(101.0))) == 9_999.0

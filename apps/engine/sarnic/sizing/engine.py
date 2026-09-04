@@ -156,6 +156,26 @@ class SizingDecision:
         }
 
 
+def stop_anchored_to_fill(
+    fill: float, planned_entry: float, planned_stop: float, direction: int = 1
+) -> float:
+    """Dolum fiyatı stopun koruyucu tarafında değilse stopu dolumdan yeniden çapala.
+
+    Karar bar kapanışından alınır, dolum defterden gelir; bayat bir defter
+    dolumu kapanıştan %1–3 uzağa düşürebilir (2026-09-04, MSTRBUSDT: kapanış
+    üstünden hesaplanan stop dolumun ÜSTÜNDE kaldı). Stop dolumun yanlış
+    tarafındaysa 1R ≈ 0 olur, MFE/MAE sonsuza gider ve bot her turda çöker.
+    Planlanan mesafe (|karar fiyatı − stop|) korunur; miktar o mesafeye göre
+    boyutlandığı için dolar riski de korunur. Doğru taraftaysa stop AYNEN döner.
+    """
+    if direction * (fill - planned_stop) > 0:
+        return planned_stop
+    mesafe = abs(planned_entry - planned_stop)
+    if mesafe <= 0:
+        mesafe = abs(fill) * 0.01
+    return fill - direction * mesafe
+
+
 def score_tier(score: float, tiers: tuple[tuple[float, float], ...] = DEFAULT_TIERS) -> float:
     """§6.2 adım 4. Eşiğin altındaysa 0 — pozisyon açılmaz."""
     multiplier = 0.0
