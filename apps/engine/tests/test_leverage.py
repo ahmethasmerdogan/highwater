@@ -123,7 +123,7 @@ def test_sizing_caps_lift_with_leverage():
         symbol="X",
         score=95.0,
         entry=100.0,
-        stop=98.0,  # %2 stop → risk bazlı notional = 0.01×10.000/0.02×100... 
+        stop=98.0,  # %2 stop → risk bazlı notional = 0.01×10.000/0.02×100...
         equity=10_000.0,
         free_cash=10_000.0,
         current_exposure=0.0,
@@ -149,7 +149,10 @@ async def test_adapter_margin_rule():
     adapter = PaperAdapter(book_source=StaticBookSource({"T": book}), balance=1_000.0, config=cfg)
     ok = await adapter.submit(
         OrderRequest(
-            symbol="T", side=OrderSide.BUY, type=OrderType.MARKET, qty=24.0,
+            symbol="T",
+            side=OrderSide.BUY,
+            type=OrderType.MARKET,
+            qty=24.0,
             meta={"leverage": 3.0},
         )
     )
@@ -160,7 +163,10 @@ async def test_adapter_margin_rule():
     adapter2 = PaperAdapter(book_source=StaticBookSource({"T": book}), balance=1_000.0, config=cfg)
     ret = await adapter2.submit(
         OrderRequest(
-            symbol="T", side=OrderSide.BUY, type=OrderType.MARKET, qty=36.0,
+            symbol="T",
+            side=OrderSide.BUY,
+            type=OrderType.MARKET,
+            qty=36.0,
             meta={"leverage": 3.0},
         )
     )
@@ -198,12 +204,32 @@ def test_risk_carpani_kaldiracla_buyur():
     from sarnic.sizing.engine import SizingEngine, SizingInput, SizingParams
     from sarnic.sizing.leverage import LeverageSpec
 
-    assert LeverageSpec.from_sizing({"leverage": {"max_leverage": 3, "scale_risk": True}}).scale_risk
+    assert LeverageSpec.from_sizing(
+        {"leverage": {"max_leverage": 3, "scale_risk": True}}
+    ).scale_risk
     assert not LeverageSpec.from_sizing({"leverage": {"max_leverage": 3}}).scale_risk
-    e = SizingEngine(SizingParams(risk_pct=0.01, max_position_pct=0.9, max_exposure_pct=3.0,
-                                  cluster_exposure_pct=3.0, adv_fraction=1e9, min_fill_ratio=0.0))
-    ortak = dict(symbol="X", score=85.0, entry=100.0, stop=95.0, equity=10_000.0, free_cash=10_000.0,
-                 current_exposure=0.0, cluster_exposure=0.0, realized_vol_20d=0.6, adv_1h=1e12)
+    e = SizingEngine(
+        SizingParams(
+            risk_pct=0.01,
+            max_position_pct=0.9,
+            max_exposure_pct=3.0,
+            cluster_exposure_pct=3.0,
+            adv_fraction=1e9,
+            min_fill_ratio=0.0,
+        )
+    )
+    ortak = dict(
+        symbol="X",
+        score=85.0,
+        entry=100.0,
+        stop=95.0,
+        equity=10_000.0,
+        free_cash=10_000.0,
+        current_exposure=0.0,
+        cluster_exposure=0.0,
+        realized_vol_20d=0.6,
+        adv_1h=1e12,
+    )
     duz = e.size(SizingInput(**ortak))
     kat = e.size(SizingInput(**ortak, leverage=3.0, risk_scale=3.0))
     assert duz.accepted and kat.accepted
