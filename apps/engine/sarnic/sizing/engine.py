@@ -128,6 +128,8 @@ class SizingInput:
     leverage: float = 1.0
     #: Risk bütçesi çarpanı (LeverageSpec.scale_risk ile kaldıraç kadar; yoksa 1).
     risk_scale: float = 1.0
+    #: +1 uzun, −1 kısa. Stop koruyucu tarafta olmalı; tavanlar brüt notional.
+    direction: int = 1
 
 
 @dataclass(slots=True)
@@ -201,13 +203,17 @@ class SizingEngine:
             return _reject(d, "geçersiz giriş fiyatı", steps)
         if inp.stop <= 0:
             return _reject(d, "stop hesaplanamadı (destek seviyesi yok)", steps)
-        if inp.stop >= inp.entry:
-            # Bozulmaz: stop her zaman girişin altındadır.
-            return _reject(d, "stop girişin altında değil", steps)
+        if inp.direction * (inp.entry - inp.stop) <= 0:
+            # Bozulmaz: stop her zaman girişin koruyucu tarafındadır.
+            return _reject(
+                d,
+                "stop girişin altında değil" if inp.direction > 0 else "stop girişin üstünde değil",
+                steps,
+            )
         if inp.open_positions >= p.max_positions:
             return _reject(d, f"maksimum eşzamanlı pozisyon ({p.max_positions})", steps)
 
-        stop_distance_pct = (inp.entry - inp.stop) / inp.entry
+        stop_distance_pct = inp.direction * (inp.entry - inp.stop) / inp.entry
         if stop_distance_pct > p.max_stop_pct:
             return _reject(
                 d,
@@ -226,7 +232,7 @@ class SizingEngine:
             steps.append({"step": "risk_çarpanı", "value": inp.risk_scale})
 
         # --- 2) Stop'tan boyut ---
-        qty = risk_amount / (inp.entry - inp.stop)
+        qty = risk_amount / (inp.direction * (inp.entry - inp.stop))
         notional = qty * inp.entry
         steps.append({"step": "stop_boyutu", "value": notional})
 
@@ -294,7 +300,7 @@ class SizingEngine:
         d.accepted = True
         d.qty = qty
         d.notional = notional
-        d.risk_amount = qty * (inp.entry - inp.stop)
+        d.risk_amount = qty * inp.direction * (inp.entry - inp.stop)
         d.steps = steps
         return d
 
