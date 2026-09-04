@@ -87,8 +87,9 @@ class ExchangeSessionCalendar:
         """
         cal = self._cal
         moment = _utc(moment)
-        # Son 10 takvim günü içinde kapanışı geçmiş en yeni seansı ara.
-        for back in range(0, 10):
+        # Son 30 takvim günü içinde kapanışı geçmiş en yeni seansı ara (10 idi:
+        # bayram + iki hafta sonu 9 günü buluyor, bir köprü günü kırıyordu).
+        for back in range(0, 30):
             day = (moment - timedelta(days=back)).date()
             try:
                 if not cal.is_session(day.isoformat()):

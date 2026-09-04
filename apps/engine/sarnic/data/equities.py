@@ -550,8 +550,20 @@ class EquityDataService:
         if market.code == "BIST":
             end = utcnow()
             start = end - timedelta(days=int(sessions * 1.6))
-            return await IsYatirimClient(http).fetch_daily(base, start, end)
-        return await YahooDailyClient(http).fetch_daily(base, sessions)
+            bars = await IsYatirimClient(http).fetch_daily(base, start, end)
+        else:
+            bars = await YahooDailyClient(http).fetch_daily(base, sessions)
+        # Sağlayıcılar AÇIK seansı da satır olarak döndürür; as_kline() onu
+        # kapanmış bar gibi işaretler. Kural 2'nin ikinci savunma hattı: son
+        # kapanmış seanstan sonraki gün(ler) atılır — gün içi restart kısmi
+        # barı kalıcılaştıramaz, nisap açık seansı sayamaz.
+        cal = calendar_for(market.calendar)
+        son = (
+            cal.last_closed_session(utcnow()) if isinstance(cal, ExchangeSessionCalendar) else None
+        )
+        if son is not None:
+            bars = [b for b in bars if b.day <= son]
+        return bars
 
     # ------------------------------------------------------------------ #
     async def _write_state(self) -> None:

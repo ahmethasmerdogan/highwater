@@ -72,7 +72,8 @@ TICKER_SILENCE_LIMIT = 90
 TICKER_FALLBACK_INTERVAL = 60
 # Akış sağlıklıyken bile bu aralıkta bir tam REST anlık görüntüsü alınır.
 # Ağırlık 80; 15 dakikada bir ≈ dakikada 5, 6000'lik bütçenin binde biri.
-TICKER_FULL_REFRESH_INTERVAL = 900
+TICKER_FULL_REFRESH_INTERVAL = 300  # 900 idi: bayatlık kesimiyle (900 s) eşitti,
+# hiç işlem görmeyen sembol her döngüde 60 sn 'yok' oluyordu (SISTEM-ANALIZI §1.1).
 # Arka plan görevlerinin sağlık kontrolü aralığı.
 TASK_WATCHDOG_INTERVAL = 30
 # §3.2 filtre 7: "10 örnek, 1 saat boyunca". 6 dakikalık aralıkta 10 örnek tam
@@ -552,7 +553,12 @@ class MarketDataService:
     async def _store_last_bar(self, kline: Kline) -> None:
         """Kapanmamış bar Redis'te durur; DB'ye ve karara girmez."""
         r = await self.redis()
-        await r.hset(KEY_LAST_BAR.format(tf=kline.timeframe), kline.symbol, _json(kline.as_row()))
+        key = KEY_LAST_BAR.format(tf=kline.timeframe)
+        await r.hset(key, kline.symbol, _json(kline.as_row()))
+        # TTL yoktu: sessiz bir kline soketi yeşil nabızla donuk fiyat bırakıyordu
+        # ve açık pozisyonlar bu hash'ten fiyatlanıyor. 3 bar yazı gelmezse
+        # hash düşer; okuyanlar 'fiyat yok' görür, bayat fiyatla yönetmez.
+        await r.expire(key, TIMEFRAME_MINUTES[kline.timeframe] * 60 * 3)
 
     async def run_depth_stream(self) -> None:
         if not await self._await_symbols(lambda: self.book_symbols):
