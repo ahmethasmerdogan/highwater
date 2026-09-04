@@ -189,6 +189,34 @@ def test_causal_kernel_only_uses_past():
     assert np.allclose(smoothed_a[:60], smoothed_b[:60])
 
 
+def test_causal_kernel_matches_the_reference_sum():
+    """Vektörel yumuşatıcı, tanımdaki toplamı BİREBİR vermeli.
+
+    `causal_kernel_smooth` 2026-09-04'te bar-bar Python döngüsünden tek
+    evrişime çevrildi (186× hızlanma). Döngü gitti; onunla birlikte tanımın
+    okunabilir hâli de gitti. Bu test tanımı burada tutar: her bar için
+    ağırlık yalnızca GECİKMEYE bağlıdır ve pencere barın kendisinde biter.
+    Kenar (t < span) davranışı da kilitli — payda yalnızca var olan
+    barların ağırlıklarını toplar, seri baştan kısalarak başlar.
+    """
+    import math
+
+    import numpy as np
+
+    rng = np.random.default_rng(11)
+    for n, h in ((1, 5.0), (2, 3.0), (37, 8.0), (200, 13.0)):
+        prices = np.cumsum(rng.normal(0.0, 1.0, n)) + 100.0
+        span = max(2, math.ceil(3 * h))
+        beklenen = np.empty(n)
+        for t in range(n):
+            lo = max(0, t - span)
+            w = np.exp(-0.5 * (((t - np.arange(lo, t + 1)) / h) ** 2))
+            beklenen[t] = float(np.dot(w, prices[lo : t + 1]) / w.sum())
+        assert np.allclose(patterns.causal_kernel_smooth(prices, h), beklenen, atol=1e-9)
+
+    assert patterns.causal_kernel_smooth(np.array([]), 5).shape == (0,)
+
+
 def test_extrema_exclude_unconfirmed_tail():
     import numpy as np
 

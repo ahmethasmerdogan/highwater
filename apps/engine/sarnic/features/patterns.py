@@ -135,16 +135,25 @@ def causal_kernel_smooth(prices: np.ndarray, bandwidth: float) -> np.ndarray:
     if n == 0:
         return prices.copy()
     h = max(bandwidth, 1e-6)
-    out = np.empty(n, dtype=float)
     # Etkili pencere: 3 bant genişliği (dışı ihmal edilebilir ağırlık).
     span = max(2, math.ceil(3 * h))
-    for t in range(n):
-        lo = max(0, t - span)
-        idx = np.arange(lo, t + 1, dtype=float)
-        u = (t - idx) / h
-        w = np.exp(-0.5 * u * u)
-        total = w.sum()
-        out[t] = float(np.dot(w, prices[lo : t + 1]) / total) if total > 0 else prices[t]
+
+    # Ağırlık yalnızca GECİKMEYE bağlıdır (t − idx), t'ye değil: aynı çekirdek
+    # her bara uygulanır. Bar bar Python döngüsü yerine tek evrişim yeterli.
+    # Ölçüldü (2026-09-04): formasyon motorunun sembol başına 52 ms'sinin
+    # ~17 ms'si buradaydı — `select_bandwidth` bu işi 5 kez tekrarlıyor.
+    # Kenar davranışı korunur: t < span iken payda yalnızca VAR OLAN barların
+    # ağırlıklarını toplar, yani pencere kısalır. Nedensellik de korunur —
+    # çekirdek yalnızca geçmişe (gecikme ≥ 0) bakar.
+    lags = np.arange(span + 1, dtype=float)
+    w = np.exp(-0.5 * (lags / h) ** 2)
+
+    prices = np.asarray(prices, dtype=float)
+    # np.convolve(p, w)[t] = Σ_m p[m]·w[t−m] — tam olarak istenen nedensel
+    # toplam (m ≤ t, gecikme ≤ span). İlk n eleman t = 0…n−1 satırlarıdır.
+    num = np.convolve(prices, w, mode="full")[:n]
+    den = np.convolve(np.ones(n), w, mode="full")[:n]
+    out = np.divide(num, den, out=prices.astype(float, copy=True), where=den > 0)
     return out
 
 

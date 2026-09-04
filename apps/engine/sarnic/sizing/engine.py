@@ -156,6 +156,10 @@ class SizingDecision:
         }
 
 
+#: Serbest nakit tavanının komisyon/kayma payı (bkz. `serbest_nakit` kısıtı).
+NAKIT_EMNIYET_PAYI = 0.995
+
+
 def stop_anchored_to_fill(
     fill: float, planned_entry: float, planned_stop: float, direction: int = 1
 ) -> float:
@@ -277,7 +281,13 @@ class SizingEngine:
             # strateji brüt maruziyeti kendi max_exposure_pct'siyle (>1 olabilir)
             # bilinçli açar; burada sessizce açılmaz.
             ("tek_pozisyon_tavanı", inp.equity * p.max_position_pct * lev),
-            ("serbest_nakit", inp.free_cash * lev),
+            # Emniyet payı: adaptör marj kuralına KOMİSYONU da ekler
+            # (`notional/lev + fee ≤ serbest nakit`). Tavan tam `free_cash × lev`
+            # olduğunda emir her seferinde komisyon kadar aşıp "yetersiz
+            # marj/bakiye" ile reddediliyordu — 2026-09-04'te A3 kolu (filonun
+            # en kârlısı) 24 saatte 22 giriş kaybetti. Pay komisyon + kaymayı
+            # örtecek kadar dar tutuldu; 1× yolda da aynı hatayı kapatır.
+            ("serbest_nakit", inp.free_cash * lev * NAKIT_EMNIYET_PAYI),
             ("toplam_maruziyet", inp.equity * p.max_exposure_pct - inp.current_exposure),
             ("likidite_tavanı", inp.adv_1h * p.adv_fraction),
         ]

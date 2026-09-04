@@ -416,12 +416,18 @@ def test_rejects_when_constraints_leave_only_a_crumb():
 
 
 def test_partial_constraint_still_allowed_above_the_floor():
-    """Taban bir eşiktir, yasak değil: hedefin yarısı kabul edilir."""
+    """Taban bir eşiktir, yasak değil: hedefin yarısı kabul edilir.
+
+    Nakit tavanı komisyon payı kadar (NAKIT_EMNIYET_PAYI) daraltılır — adaptörün
+    marj kuralı komisyonu da sayar; tam tavan her emri reddettiriyordu.
+    """
+    from sarnic.sizing.engine import NAKIT_EMNIYET_PAYI
+
     hedef = SizingEngine().size(make_input()).notional
     decision = SizingEngine().size(make_input(free_cash=hedef * 0.5))
 
     assert decision.accepted
-    assert decision.notional == pytest.approx(hedef * 0.5)
+    assert decision.notional == pytest.approx(hedef * 0.5 * NAKIT_EMNIYET_PAYI)
 
 
 def test_crumb_floor_scales_with_the_target_not_a_fixed_amount():

@@ -246,3 +246,30 @@ def test_stop_capasi_kismi_r_sinirli():
     p = PositionView("X", 1.0, 100.0, ENTRY_TIME, 100.0, 100.0)
     assert p.r_multiple(101.0) > 9_999.0
     assert max(-9_999.0, min(9_999.0, p.r_multiple(101.0))) == 9_999.0
+
+
+def test_nakit_tavani_komisyon_payi_birakir():
+    """Adaptör marj kuralı `notional/lev + fee ≤ nakit`; sizing tavanı tam
+    `nakit × lev` verirse emir komisyon kadar aşar ve reddedilir (A3, 22 giriş)."""
+    from sarnic.sizing.engine import NAKIT_EMNIYET_PAYI
+
+    nakit, lev, fee_orani = 400.0, 3.0, 0.001
+    d = SizingEngine().size(
+        SizingInput(
+            symbol="XUSDT",
+            score=90.0,
+            entry=100.0,
+            stop=99.0,
+            equity=100_000.0,
+            free_cash=nakit,
+            current_exposure=0.0,
+            cluster_exposure=0.0,
+            realized_vol_20d=0.6,
+            adv_1h=1e12,
+            leverage=lev,
+        )
+    )
+    assert d.accepted, d.reject_reason
+    # Nakit tavanına dayanan boyut bile adaptörün marj kuralını geçmeli.
+    assert d.notional / lev + d.notional * fee_orani <= nakit + 1e-9
+    assert 0.99 <= NAKIT_EMNIYET_PAYI < 1.0

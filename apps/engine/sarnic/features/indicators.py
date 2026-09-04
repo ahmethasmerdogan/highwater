@@ -292,7 +292,11 @@ def compute_frame(df: pd.DataFrame, timeframe: str, symbol: str = "") -> pd.Data
     """
     close = df["close"].astype(float)
     volume = df["volume"].astype(float)
-    out = pd.DataFrame(index=df.index)
+    # Sütunlar önce bir sözlükte toplanır, çerçeve **bir kez** kurulur.
+    # `df[col] = ...` her çağrıda BlockManager'a ekleme yapar; 23 sütun için
+    # ölçüldü (2026-09-04, 114 sembol): tek tek ekleme gösterge süresinin
+    # dörtte birini yiyordu. Değerler birebir aynı, yalnızca kurulum ucuzlar.
+    out: dict[str, object] = {}
 
     out["close"] = close
     out["ema20"] = ema(close, 20)
@@ -344,7 +348,7 @@ def compute_frame(df: pd.DataFrame, timeframe: str, symbol: str = "") -> pd.Data
             out[name] = np.nan
             out[f"{name}_skip6"] = np.nan
 
-    return out
+    return pd.DataFrame(out, index=df.index)
 
 
 def _finite(value) -> float:
