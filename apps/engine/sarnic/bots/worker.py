@@ -45,7 +45,13 @@ from sarnic.data.marketdata import data_is_stale, read_last_bars, read_tickers
 from sarnic.data.store import last_closed_bar, load_frame
 from sarnic.db.models import Bot, BotEvent, Order, Position, Score, Trade
 from sarnic.db.session import session_scope
-from sarnic.execution.accounting import net_pnl, total_fees, weighted_r
+from sarnic.execution.accounting import (
+    net_pnl,
+    price_points,
+    risk_per_unit,
+    total_fees,
+    weighted_r,
+)
 from sarnic.execution.base import OrderRequest, OrderResult
 from sarnic.execution.exits import (
     ExitDecision,
@@ -54,7 +60,7 @@ from sarnic.execution.exits import (
     evaluate_exit,
     rotation_candidate,
 )
-from sarnic.execution.gapfill import stop_fill_price
+from sarnic.execution.gapfill import adverse_extreme, stop_fill_price, stop_hit
 from sarnic.execution.paper import PaperAdapter, PaperConfig, RedisBookSource
 from sarnic.features.indicators import realized_vol
 from sarnic.features.pipeline import load_bundles
@@ -91,6 +97,24 @@ class BarContext:
     pattern_mod: dict[str, float] = field(default_factory=dict)
     btc_below_ema200: bool = False
     btc_vol_above_p90: bool = False
+    #: Kısa yön (tanım opt-in): kısa puan, direnç üstü stop, desteğe uzaklık.
+    short_scores: dict[str, ScoreResult] = field(default_factory=dict)
+    short_stops: dict[str, float] = field(default_factory=dict)
+    sr_support_room_atr: dict[str, float] = field(default_factory=dict)
+
+    def score_for(self, symbol: str, direction: int) -> ScoreResult | None:
+        return (self.short_scores if direction < 0 else self.scores).get(symbol)
+
+    def stop_for(self, symbol: str, direction: int) -> float | None:
+        return (self.short_stops if direction < 0 else self.stops).get(symbol)
+
+    def room_for(self, symbol: str, direction: int) -> float | None:
+        """İşlem yönündeki yer: uzun dirence, kısa desteğe uzaklık (ATR)."""
+        return (self.sr_support_room_atr if direction < 0 else self.sr_headroom_atr).get(symbol)
+
+    @property
+    def scored(self) -> int:
+        return len(self.scores) or len(self.short_scores)
 
 
 class BotWorker:
@@ -266,7 +290,7 @@ class BotWorker:
 
             ctx = await self._build_context(session, symbols, bar_time, definition)
 
-            if not ctx.scores:
+            if not ctx.scores and not ctx.short_scores:
                 # Havuz dolu ama tek sembol bile puanlanamadı (veri gecikmesi
                 # ya da yetersiz bar). Barı tüketmek denemeyi YARINA atardı —
                 # 15:00'te tam bunu yaşadık: "0 sembol puanlandı" yazıp bar
@@ -324,10 +348,10 @@ class BotWorker:
                 # üç özdeş satır görünüyordu — hangisinin konuştuğu belirsizdi.
                 message=(
                     f"{bot.name}: {definition.timeframe} barı kapandı, "
-                    f"{len(ctx.scores)} sembol puanlandı"
+                    f"{ctx.scored} sembol puanlandı"
                 ),
                 bar_time=bar_time.isoformat(),
-                scored=len(ctx.scores),
+                scored=ctx.scored,
                 duration_ms=round(elapsed_ms, 1),
             )
             return True
@@ -370,15 +394,23 @@ class BotWorker:
             use_candle=definition.scoring.modifiers.get("candle", True),
             use_crowding=definition.scoring.modifiers.get("crowding", True),
         )
-        results = engine.score_cross_section([b.features for b in bundles])
+        yonler = definition.entry.directions()
+        feats = [b.features for b in bundles]
+        results = engine.score_cross_section(feats) if 1 in yonler else []
         scores = {r.symbol: r for r in results}
+        # Kısa puan: aynı özellikler, yönlü aileler ters (backtest ile aynı çağrı).
+        short_scores = (
+            {r.symbol: r for r in engine.score_cross_section(feats, -1)} if -1 in yonler else {}
+        )
 
         prices: dict[str, float] = {}
         stops: dict[str, float] = {}
+        short_stops: dict[str, float] = {}
         atr: dict[str, float] = {}
         rvol_map: dict[str, float] = {}
         adv: dict[str, float] = {}
         sr_headroom: dict[str, float] = {}
+        sr_support_room: dict[str, float] = {}
         pattern_mod: dict[str, float] = {}
 
         for b in bundles:
@@ -401,6 +433,15 @@ class BotWorker:
                 headroom = b.sr.resistance_distance_atr
                 if headroom is not None:
                     sr_headroom[b.symbol] = headroom
+                if -1 in yonler:
+                    kisa_stop = stop_from_sr(
+                        b.sr, definition.exit.stop_atr_multiple, entry=base.close, direction=-1
+                    )
+                    if kisa_stop is not None:
+                        short_stops[b.symbol] = kisa_stop
+                    oda = b.sr.support_distance_atr
+                    if oda is not None:
+                        sr_support_room[b.symbol] = oda
             if b.patterns is not None:
                 pattern_mod[b.symbol] = b.patterns.modifier()
 
@@ -425,6 +466,9 @@ class BotWorker:
             pattern_mod=pattern_mod,
             btc_below_ema200=btc_below,
             btc_vol_above_p90=btc_vol_high,
+            short_scores=short_scores,
+            short_stops=short_stops,
+            sr_support_room_atr=sr_support_room,
         )
 
     async def _btc_regime(self, session, at: datetime) -> tuple[bool, bool]:
@@ -467,7 +511,10 @@ class BotWorker:
         """Her puan `scores` tablosuna gerekçesiyle yazılır (§5.4 zorunlu)."""
         from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-        rows = [r.as_row(definition.timeframe) for r in ctx.scores.values()]
+        rows = [
+            r.as_row(definition.timeframe)
+            for r in [*ctx.scores.values(), *ctx.short_scores.values()]
+        ]
         if not rows:
             return
         from sarnic.data.store import chunk_size_for, chunks
@@ -497,11 +544,12 @@ class BotWorker:
         # üstüne çıkanlar bildirilir. Süreç yeniden başlarsa küme boşalır ve
         # bir kerelik fazladan bildirim olur; sessizce yanlış davranmaktan iyi.
         gate = definition.entry.min_score
-        above = {s.symbol for s in ctx.scores.values() if s.score >= gate}
+        tum = {**ctx.short_scores, **ctx.scores}
+        above = {s.symbol for s in tum.values() if s.score >= gate}
         newly = above - self._above_gate
         self._above_gate = above
         if newly:
-            crossed = [ctx.scores[sym] for sym in newly if sym in ctx.scores]
+            crossed = [tum[sym] for sym in newly if sym in tum]
             await self.bus.emit(
                 EventKind.SCORE_THRESHOLD_CROSSED,
                 bot_id=self.bot_id,
@@ -573,10 +621,11 @@ class BotWorker:
             row = df.iloc[-1]
             if row["open_time"].to_pydatetime().timestamp() != bar_time.timestamp():
                 continue  # bu sembolün barı henüz yazılmadı
-            low, bar_open = float(row["low"]), float(row["open"])
-            if low > position.stop:
+            d = position.direction
+            uc = adverse_extreme(float(row["low"]), float(row["high"]), d)
+            if not stop_hit(position.stop, uc, d):
                 continue
-            fill = stop_fill_price(position.stop, bar_open)
+            fill = stop_fill_price(position.stop, float(row["open"]), d)
             reason = (
                 ExitReason.BREAKEVEN
                 if position.breakeven_locked
@@ -592,7 +641,8 @@ class BotWorker:
                 position,
                 reason,
                 message=(
-                    f"bar stopu deldi: düşük {low:.6f} ≤ stop {position.stop:.6f}, dolum {fill:.6f}"
+                    f"bar stopu deldi: {'düşük' if d > 0 else 'yüksek'} {uc:.6f} "
+                    f"{'≤' if d > 0 else '≥'} stop {position.stop:.6f}, dolum {fill:.6f}"
                 ),
                 gap_fill_price=fill,
             )
@@ -611,7 +661,7 @@ class BotWorker:
             price = ctx.prices.get(position.symbol)
             if price is None:
                 continue
-            score = ctx.scores.get(position.symbol)
+            score = ctx.score_for(position.symbol, position.direction)
             market = MarketView(
                 price=price,
                 atr=ctx.atr.get(position.symbol, 0.0),
@@ -631,9 +681,7 @@ class BotWorker:
         price: float,
     ) -> None:
         # MFE/MAE takibi — her gözetim turunda güncellenir.
-        r = (price - position.entry_price) / max(
-            position.entry_price - position.initial_stop, 1e-12
-        )
+        r = _view(position).r_multiple(price)
         position.mfe = max(position.mfe, r)
         position.mae = min(position.mae, r)
 
@@ -702,8 +750,10 @@ class BotWorker:
         koldan geçer: kalanla açık kal, dilimin sonucunu realized_*'da biriktir.
         """
         gonullu_kismi = qty is not None
+        d = position.direction
         adapter = await self._get_adapter(session, bot)
-        meta: dict = {}
+        # Yön adaptöre gider: kısa kapanışı ALIŞ emridir (ödünç varlık iade).
+        meta: dict = {"direction": d}
         if gap_fill_price is not None:
             # Bar-kapanış çıkışı: dolum barın gerçeğinden (kural 1 —
             # backtest ile aynı stop_fill_price). Kayma/komisyon yine işler.
@@ -711,7 +761,7 @@ class BotWorker:
         result = await adapter.submit(
             OrderRequest(
                 symbol=position.symbol,
-                side=OrderSide.SELL,
+                side=OrderSide.from_direction(-d),
                 type=OrderType.MARKET,
                 qty=qty if qty is not None else position.qty,
                 bot_id=bot.id,
@@ -734,7 +784,8 @@ class BotWorker:
 
         exit_price = result.avg_price
         now = self.clock.now()
-        dilim_pnl = (exit_price - position.entry_price) * result.filled_qty - result.fees
+        dilim_puan = price_points(position.entry_price, exit_price, result.filled_qty, d)
+        dilim_pnl = dilim_puan - result.fees
         kalan = position.qty - result.filled_qty
 
         # Emir defteri tükenmişse çıkış **kısmi** dolar. Pozisyonu yine de
@@ -748,6 +799,7 @@ class BotWorker:
             # bu yana taşıdığı borç sessizce silinirdi (kaldıraçlı kollar için
             # gerçek bir muhasebe deliği; 1× pozisyonda sıfırdır).
             dilim_lev = float(position.leverage or 1.0)
+            # 1× uzun dilimde borç yoktur; tanım okunmaz (kısa 1× de borçludur).
             dilim_borc = (
                 borrow_cost(
                     notional=position.entry_price * result.filled_qty,
@@ -756,14 +808,15 @@ class BotWorker:
                     hourly_rate=LeverageSpec.from_sizing(
                         self._definition_of(bot).sizing
                     ).hourly_rate,
+                    direction=d,
                 )
-                if dilim_lev > 1.0
+                if dilim_lev > 1.0 or d < 0
                 else 0.0
             )
             position.qty = kalan
             position.realized_pnl += dilim_pnl - dilim_borc
             position.realized_fees += result.fees + dilim_borc
-            position.realized_points += (exit_price - position.entry_price) * result.filled_qty
+            position.realized_points += dilim_puan
             await session.execute(
                 Position.__table__.update()
                 .where(Position.id == position.id)
@@ -774,7 +827,7 @@ class BotWorker:
                     realized_points=Decimal(str(round(position.realized_points, 8))),
                 )
             )
-            snapshot.cash += exit_price * result.filled_qty - result.fees - dilim_borc
+            snapshot.cash += d * exit_price * result.filled_qty - result.fees - dilim_borc
             bot.cash = Decimal(str(round(snapshot.cash, 8)))
             if gonullu_kismi:
                 position.partial_done = True
@@ -808,7 +861,7 @@ class BotWorker:
             )
             return
 
-        gross = (exit_price - position.entry_price) * result.filled_qty
+        gross = price_points(position.entry_price, exit_price, result.filled_qty, d)
         hold_hours_now = (now - position.entry_time).total_seconds() / 3600
         # Borç maliyeti: kaldıraçlı girişte borç alınan kısım için, tutulan
         # saat kadar. Bedava kaldıraç yalanı yok — maliyet komisyon kalemine
@@ -818,6 +871,7 @@ class BotWorker:
             leverage=float(position.leverage or 1.0),
             hold_hours=hold_hours_now,
             hourly_rate=LeverageSpec.from_sizing(self._definition_of(bot).sizing).hourly_rate,
+            direction=d,
         )
         fees = (
             total_fees(
@@ -836,14 +890,15 @@ class BotWorker:
             )
             - borc
         )
-        risk_per_unit = max(position.entry_price - position.initial_stop, 1e-12)
+        risk_birim = risk_per_unit(position.entry_price, position.initial_stop, d)
         pnl_r = weighted_r(
             position.entry_price,
             exit_price,
             result.filled_qty,
-            risk_per_unit,
+            risk_birim,
             realized_points=position.realized_points,
             entry_qty=position.entry_qty,
+            direction=d,
         )
 
         await session.execute(
@@ -856,6 +911,7 @@ class BotWorker:
                 position_id=position.id,
                 bot_id=bot.id,
                 symbol=position.symbol,
+                side=OrderSide.from_direction(d),
                 exit_price=Decimal(str(round(exit_price, 10))),
                 exit_time=now,
                 exit_reason=str(reason),
@@ -871,7 +927,7 @@ class BotWorker:
             )
         )
 
-        snapshot.cash += exit_price * result.filled_qty - result.fees - borc
+        snapshot.cash += d * exit_price * result.filled_qty - result.fees - borc
         snapshot.positions = [p for p in snapshot.positions if p.id != position.id]
         bot.cash = Decimal(str(round(snapshot.cash, 8)))
 
@@ -907,18 +963,27 @@ class BotWorker:
         snapshot: PortfolioSnapshot,
         ctx: BarContext,
     ) -> None:
-        candidates = [
-            s
-            for s in sorted(ctx.scores.values(), key=lambda x: -x.score)
-            if s.score >= definition.entry.min_score and s.symbol not in snapshot.symbols
-        ]
+        # Adaylar (puan, yön) çiftleri — backtest ile aynı kural: iki yön açıksa
+        # puana göre tek sırada; tutulan sembol hiçbir yönde aday olmaz (hedge yok).
+        kapi = definition.entry.min_score
+        candidates: list[tuple[ScoreResult, int]] = []
+        for d in definition.entry.directions():
+            kaynak = ctx.scores if d > 0 else ctx.short_scores
+            candidates += [
+                (s, d)
+                for s in kaynak.values()
+                if s.score >= kapi and s.symbol not in snapshot.symbols
+            ]
+        candidates.sort(key=lambda x: -x[0].score)
         if not candidates or not entry_hour_allowed(definition.entry, ctx.bar_time):
             return
 
         clusters = await latest_clusters(session, at=ctx.bar_time)
         sizing = SizingEngine(definition.sizing_params())
 
-        for candidate in candidates:
+        for candidate, d in candidates:
+            if candidate.symbol in snapshot.symbols:
+                continue
             if len(snapshot.positions) >= definition.entry.max_positions:
                 victim = rotation_candidate(
                     snapshot.score_pairs(),
@@ -940,7 +1005,7 @@ class BotWorker:
                         f"{candidate.symbol} {candidate.score:.1f} puanla devraldı",
                     )
 
-            stop = ctx.stops.get(candidate.symbol)
+            stop = ctx.stop_for(candidate.symbol, d)
             entry = ctx.prices.get(candidate.symbol)
             if stop is None or entry is None:
                 # Sessiz atlamak bir kusuru tam olarak gizlemişti: karar
@@ -965,9 +1030,10 @@ class BotWorker:
                 lev_spec,
                 score=candidate.score,
                 pattern_modifier=ctx.pattern_mod.get(candidate.symbol),
-                headroom_atr=ctx.sr_headroom_atr.get(candidate.symbol),
+                headroom_atr=ctx.room_for(candidate.symbol, d),
                 entry=entry,
                 stop=stop,
+                direction=d,
             )
             if lev_spec.enabled and lev.leverage <= 1.0:
                 # Kaldıraç istendi ama teyit yok: giriş SPOT devam eder,
@@ -988,6 +1054,7 @@ class BotWorker:
                     stop=stop,
                     leverage=lev.leverage,
                     risk_scale=lev.leverage if lev_spec.scale_risk else 1.0,
+                    direction=d,
                     equity=snapshot.equity,
                     free_cash=snapshot.cash,
                     current_exposure=snapshot.exposure,
@@ -1020,6 +1087,7 @@ class BotWorker:
                 decision,
                 definition.timeframe,
                 leverage=lev.leverage,
+                direction=d,
             )
 
     async def _open_position(
@@ -1032,12 +1100,14 @@ class BotWorker:
         decision,
         timeframe: str,
         leverage: float = 1.0,
+        direction: int = 1,
     ) -> None:
         adapter = await self._get_adapter(session, bot)
+        yon = OrderSide.from_direction(direction)
         result = await adapter.submit(
             OrderRequest(
                 symbol=candidate.symbol,
-                side=OrderSide.BUY,
+                side=yon,
                 type=OrderType.MARKET,
                 qty=decision.qty,
                 bot_id=bot.id,
@@ -1047,6 +1117,8 @@ class BotWorker:
                     # notional/lev kadar yeter; kalan borçtur ve nakit
                     # eksiye düşerek görünür (borç saklanmaz).
                     "leverage": leverage,
+                    # Kısa açılış SATIŞ emridir; adaptör defterde negatif tutar.
+                    "direction": direction,
                 },
             )
         )
@@ -1084,7 +1156,7 @@ class BotWorker:
         position = Position(
             bot_id=bot.id,
             symbol=candidate.symbol,
-            side=OrderSide.BUY,
+            side=yon,
             qty=Decimal(str(round(result.filled_qty, 10))),
             entry_qty=Decimal(str(round(result.filled_qty, 10))),
             entry_price=Decimal(str(round(entry_price, 10))),
@@ -1104,7 +1176,7 @@ class BotWorker:
         await adapter.submit(
             OrderRequest(
                 symbol=candidate.symbol,
-                side=OrderSide.SELL,
+                side=yon.opposite,
                 type=OrderType.STOP_LOSS_LIMIT,
                 qty=result.filled_qty,
                 stop_price=decision.stop,
@@ -1113,7 +1185,7 @@ class BotWorker:
             )
         )
 
-        snapshot.cash -= entry_price * result.filled_qty + result.fees
+        snapshot.cash -= direction * entry_price * result.filled_qty + result.fees
         snapshot.positions.append(
             OpenPosition(
                 id=position.id,
@@ -1127,6 +1199,7 @@ class BotWorker:
                 leverage=leverage,
                 breakeven_locked=False,
                 entry_fees=result.fees,
+                direction=direction,
             )
         )
         bot.cash = Decimal(str(round(snapshot.cash, 8)))
@@ -1146,6 +1219,7 @@ class BotWorker:
             message=(
                 f"{candidate.symbol} qty {result.filled_qty:.4f} @ {entry_price:.6f} · "
                 f"stop {decision.stop:.6f} · risk %{risk_pct * 100:.1f}"
+                + (" · KISA" if direction < 0 else "")
                 + (f" · {leverage:g}× kaldıraç" if leverage > 1.0 else "")
                 + (f" · R {rr:.2f}" if isinstance(rr, int | float) else "")
             ),
@@ -1254,11 +1328,14 @@ class BotWorker:
             )
             # Defteri DB'den kurtar: adaptör süreçle ölür, pozisyon ölmez.
             rows = await session.execute(
-                select(Position.symbol, Position.qty).where(
+                select(Position.symbol, Position.qty, Position.side).where(
                     Position.bot_id == bot.id, Position.status == PositionStatus.OPEN
                 )
             )
-            self._adapter.restore_positions({s: float(q) for s, q in rows})
+            # Kısa pozisyon defterde negatif (ödünç varlık).
+            self._adapter.restore_positions(
+                {s: float(q) * OrderSide(side).direction for s, q, side in rows}
+            )
         self._adapter.set_balance(float(bot.cash))
         return self._adapter
 
@@ -1279,6 +1356,7 @@ def _view(position: OpenPosition) -> PositionView:
         initial_stop=position.initial_stop,
         breakeven_locked=position.breakeven_locked,
         partial_done=position.partial_done,
+        direction=position.direction,
     )
 
 
