@@ -1392,16 +1392,26 @@ class BotWorker:
                 config=PaperConfig(),
                 clock=self.clock,
             )
-            # Defteri DB'den kurtar: adaptör süreçle ölür, pozisyon ölmez.
-            rows = await session.execute(
-                select(Position.symbol, Position.qty, Position.side).where(
-                    Position.bot_id == bot.id, Position.status == PositionStatus.OPEN
-                )
+        # Defter ve bakiye HER emirden önce DB'den okunur — adaptör süreçte
+        # yaşar, gerçek durum DB'dedir (§10: "bellekte pozisyon tutulmaz").
+        #
+        # Bakiye zaten her turda tazeleniyordu; defterin yalnız adaptör
+        # doğarken okunması asimetrikti ve sessiz bir kilit üretiyordu: emir
+        # adaptörde GEÇER (defter azalır), aynı turun ilerisindeki bir hata
+        # oturumu geri alırsa pozisyon DB'de AÇIK kalır. Adaptör bir daha
+        # bakmadığı için sonraki her çıkış "yetersiz pozisyon" ile reddedilir
+        # — pozisyon süreç ölene kadar kapatılamaz, yani stop dolamaz. Çökme
+        # döngüleri (2026-09-04 NUMERIC taşması: 75 dk, her turda rollback)
+        # tam bu koşulu üretir.
+        rows = await session.execute(
+            select(Position.symbol, Position.qty, Position.side).where(
+                Position.bot_id == bot.id, Position.status == PositionStatus.OPEN
             )
-            # Kısa pozisyon defterde negatif (ödünç varlık).
-            self._adapter.restore_positions(
-                {s: float(q) * OrderSide(side).direction for s, q, side in rows}
-            )
+        )
+        # Kısa pozisyon defterde negatif (ödünç varlık).
+        self._adapter.restore_positions(
+            {s: float(q) * OrderSide(side).direction for s, q, side in rows}
+        )
         self._adapter.set_balance(float(bot.cash))
         return self._adapter
 

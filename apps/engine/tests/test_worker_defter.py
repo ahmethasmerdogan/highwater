@@ -24,7 +24,7 @@ from sqlalchemy import select
 from sarnic.bots.portfolio import OpenPosition, PortfolioSnapshot
 from sarnic.bots.worker import BotWorker
 from sarnic.core.enums import ExitReason, PositionStatus
-from sarnic.db.models import Position
+from sarnic.db.models import Bot, Position
 from sarnic.execution.paper import PaperAdapter, StaticBookSource
 from tests.conftest import utc
 from tests.test_api import make_bot
@@ -83,24 +83,29 @@ def _acik(pozisyon_id: int) -> OpenPosition:
 async def test_geri_alinan_turdan_sonra_pozisyon_yine_kapatilabilir(api_session, test_database):
     """Emir adaptörde geçti, oturum geri alındı: DB açık, defter boş → çıkış tıkanır."""
     bot, pozisyon, worker = await _kur(api_session)
+    pozisyon_id, bot_id = pozisyon.id, bot.id
 
     # 1) Tur başarıyla kapattı — ama sonrasında bir hata oturumu geri aldı.
-    snapshot = PortfolioSnapshot(bot_id=bot.id, cash=float(bot.cash), positions=[_acik(pozisyon.id)])
+    snapshot = PortfolioSnapshot(
+        bot_id=bot_id, cash=float(bot.cash), positions=[_acik(pozisyon_id)]
+    )
     await worker._close_position(
         api_session, bot, snapshot, snapshot.positions[0], ExitReason.STOP, "ilk deneme"
     )
     assert worker._adapter.position_qty("TESTUSDT") == pytest.approx(0.0)
     await api_session.rollback()
+    bot = await api_session.get(Bot, bot_id)
+    await api_session.refresh(bot, attribute_names=["strategy_version"])
 
     # DB'de pozisyon hâlâ AÇIK; worker 20 sn sonra aynı barı yeniden koşar.
     taze = (
-        await api_session.execute(select(Position).where(Position.id == pozisyon.id))
+        await api_session.execute(select(Position).where(Position.id == pozisyon_id))
     ).scalar_one()
     assert taze.status == PositionStatus.OPEN
 
     # 2) İkinci deneme: adaptör defterini DB'den tazelemeli, çıkış dolmalı.
     snapshot2 = PortfolioSnapshot(
-        bot_id=bot.id, cash=float(bot.cash), positions=[_acik(pozisyon.id)]
+        bot_id=bot_id, cash=float(bot.cash), positions=[_acik(pozisyon_id)]
     )
     await worker._close_position(
         api_session, bot, snapshot2, snapshot2.positions[0], ExitReason.STOP, "ikinci deneme"
