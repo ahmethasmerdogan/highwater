@@ -250,11 +250,16 @@ def test_stop_capasi_kismi_r_sinirli():
 
 def test_nakit_tavani_komisyon_payi_birakir():
     """Adaptör marj kuralı `notional/lev + fee ≤ nakit`; sizing tavanı tam
-    `nakit × lev` verirse emir komisyon kadar aşar ve reddedilir (A3, 22 giriş)."""
-    from sarnic.sizing.engine import NAKIT_EMNIYET_PAYI
+    `nakit × lev` verirse emir komisyon kadar aşar ve reddedilir (A3 kolu
+    2026-09-04'te 24 saatte 22 giriş kaybetti). Yalnız nakit tavanı bağlayıcı
+    olsun diye diğer tavanlar geniş verildi."""
+    from sarnic.sizing.engine import NAKIT_EMNIYET_PAYI, SizingParams
 
     nakit, lev, fee_orani = 400.0, 3.0, 0.001
-    d = SizingEngine().size(
+    params = SizingParams(
+        max_exposure_pct=50.0, max_position_pct=50.0, cluster_exposure_pct=50.0, min_fill_ratio=0.0
+    )
+    d = SizingEngine(params).size(
         SizingInput(
             symbol="XUSDT",
             score=90.0,
@@ -270,6 +275,7 @@ def test_nakit_tavani_komisyon_payi_birakir():
         )
     )
     assert d.accepted, d.reject_reason
+    assert any(x["step"] == "serbest_nakit" and x.get("binding") for x in d.steps), d.steps
     # Nakit tavanına dayanan boyut bile adaptörün marj kuralını geçmeli.
     assert d.notional / lev + d.notional * fee_orani <= nakit + 1e-9
     assert 0.99 <= NAKIT_EMNIYET_PAYI < 1.0
