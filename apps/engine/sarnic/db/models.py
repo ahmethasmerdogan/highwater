@@ -428,6 +428,8 @@ class Trade(Base):
     )
     bot_id: Mapped[int] = mapped_column(ForeignKey("bots.id", ondelete="CASCADE"), index=True)
     symbol: Mapped[str] = mapped_column(String(32), index=True)
+    #: Pozisyon yönü: BUY uzun, SELL kısa (positions.side ile aynı sözlük).
+    side: Mapped[OrderSide] = mapped_column(String(8), default=OrderSide.BUY, server_default="BUY")
     exit_price: Mapped[Decimal] = mapped_column(PRICE)
     exit_time: Mapped[datetime] = mapped_column(TimestampTZ, index=True)
     exit_reason: Mapped[str] = mapped_column(String(24), index=True)
