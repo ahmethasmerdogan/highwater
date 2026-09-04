@@ -128,3 +128,39 @@ piyasada çalışıyor, düşende aktif olarak zarar ediyor — ve ağırlıklar
 2. Trend/momentum ağırlığı düşürülmeli ya da **rejime bağlanmalı**: bugünkü
    `regime_multiplier` yalnız pozisyon boyutunu kısıyor, sinyalin işaretini değiştirmiyor.
 3. Kapı yükseltmek (82–85) uçtaki bilgiyi kullanır.
+
+## 7. Seçim kuralının kendisi: puan mı, sakinlik mi? (34.788 satır, 391 bar)
+
+Önceki bölümler özelliklerin **korelasyonunu** ölçtü. Asıl soru şu: sistemin fiilen
+yaptığı şey — her barda en yüksek puanlı 4 sembolü almak — evrenden iyi mi? Ölçü:
+seçilenlerin 24 saatlik piyasa-nötr getirisi (kesit medyanı çıkarılmış). Kripto
+dağılımı çok çarpık olduğu için **medyan** esas alındı; ortalama birkaç uç değerle oynuyor.
+
+| Seçim kuralı | top-4 medyan | top-8 medyan | top-20 medyan |
+|---|---|---|---|
+| **puan (bugünkü sistem)** | +17,2 bps | +0,7 bps | −0,1 bps |
+| sakinlik (`atr_pct`) | +35,8 bps | +61,4 bps | +44,9 bps |
+| sıkışma (`bb_width`) | +25,5 bps | +27,9 bps | +24,9 bps |
+| sakinlik + sıkışma | +36,9 bps | +54,0 bps | +36,3 bps |
+| **0,7×(sakinlik+sıkışma) + 0,3×`trend_1d`** | **+56,2 bps** | **+58,7 bps** | **+45,6 bps** |
+| ters puan (kontrol) | −72,6 bps | −27,0 bps | −7,0 bps |
+| evren | 0,0 bps | — | — |
+
+Üç şey söylüyor:
+
+1. **Puanda bilgi var ama sığ.** Tersi −72,6 bps veriyor, yani yön doğru; ama top-4'te
+   yalnız +17 bps ve top-8'de sıfırlanıyor. Derinliği yok.
+2. **Sakinlik/sıkışma sıralaması puandan iki kat iyi ve derin** — top-20'de bile +45 bps.
+   Bu, çok daha fazla adaya yer açar (slot sayısı ve rotasyon rahatlar).
+3. **En iyi bileşim volatilite ağırlıklı, üstüne bir tutam `trend_1d`.** Bugünkü ağırlıklar
+   (trend 30 · momentum 25 · flow 20 · vol 15 · sr 10) bunun neredeyse tersi.
+
+Ayrıca kapıyı koruyup sıralamayı değiştirmek de işe yarıyor: **puan ≥ 78 olanlar içinden
+en sakin 4** → medyan +48,3 bps (193 seçim).
+
+### §1'deki iddiaların düzeltmesi
+
+- "Kapı 85+ kâr getiriyor" iddiası **5 canlı işleme** dayanıyordu. Geniş ölçümde 85–90
+  bandı 42 örnekte −192 bps; bantlar arasında monoton bir düzen yok. Kapıyı yükseltmek
+  tek başına çözüm değil — H şeridi buna karar verecek.
+- "Kenar yalnız vol ailesinde" doğrulandı ve güçlendi; asıl mesele **ağırlık**, yön değil.
