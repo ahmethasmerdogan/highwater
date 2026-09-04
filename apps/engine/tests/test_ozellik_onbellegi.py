@@ -100,3 +100,42 @@ def test_bozuk_kayit_iska_sayilir():
 def test_karar_dilimi_yoksa_saklanmaz():
     taze = _bundle(9, "YUSDT")
     assert paketle(taze, "15m") is None
+
+
+# --------------------------------------------------------------------------- #
+#  Önbellek izdihamı: 20 kol aynı anda uyanınca yalnız biri hesaplamalı
+# --------------------------------------------------------------------------- #
+async def test_kilit_tek_yazar_birakir():
+    from datetime import UTC, datetime
+
+    from sarnic.features.onbellek import kilit_al
+
+    class SahteRedis:
+        def __init__(self) -> None:
+            self.anahtarlar: dict[str, str] = {}
+
+        async def set(self, key, value, nx=False, ex=None):
+            if nx and key in self.anahtarlar:
+                return None
+            self.anahtarlar[key] = value
+            return True
+
+    r = SahteRedis()
+    bar = datetime(2026, 9, 4, 21, tzinfo=UTC)
+    sonuclar = [await kilit_al(r, "1h", bar) for _ in range(20)]
+    assert sum(sonuclar) == 1, "yalnız bir kol hesaplamalı"
+    # Farklı bar ayrı kilit.
+    assert await kilit_al(r, "1h", datetime(2026, 9, 4, 22, tzinfo=UTC))
+
+
+async def test_redis_yoksa_herkes_kendi_hesabini_yapar():
+    """Fail-open: kilit alınamıyorsa karar gecikmez."""
+    from datetime import UTC, datetime
+
+    from sarnic.features.onbellek import kilit_al
+
+    class BozukRedis:
+        async def set(self, *a, **kw):
+            raise ConnectionError("redis yok")
+
+    assert await kilit_al(BozukRedis(), "1h", datetime(2026, 9, 4, 21, tzinfo=UTC)) is True

@@ -64,6 +64,8 @@ from sarnic.execution.exits import (
 from sarnic.execution.gapfill import adverse_extreme, stop_fill_price, stop_hit
 from sarnic.execution.paper import PaperAdapter, PaperConfig, RedisBookSource
 from sarnic.features.indicators import realized_vol
+from sarnic.features.onbellek import bekle as onbellek_bekle
+from sarnic.features.onbellek import kilit_al as onbellek_kilit
 from sarnic.features.onbellek import oku as onbellek_oku
 from sarnic.features.onbellek import yaz as onbellek_yaz
 from sarnic.features.pipeline import load_bundles
@@ -403,8 +405,22 @@ class BotWorker:
         eksik = [s for s in symbols if s not in onbellekli]
         taze: list = []
         if eksik:
-            taze = await load_bundles(session, eksik, at=bar_time, decision_tf=definition.timeframe)
-            await onbellek_yaz(redis, definition.timeframe, bar_time, taze)
+            # Tek yazar: kilidi alan hesaplar, alamayan sonucu bekler. Kilit
+            # olmadan 20 kol aynı saniyede uyanıp aynı işi yapıyordu
+            # (ölçüldü 21:00Z: hepsi 160–177 sn'de aynı anda bitiriyor).
+            if await onbellek_kilit(redis, definition.timeframe, bar_time):
+                taze = await load_bundles(
+                    session, eksik, at=bar_time, decision_tf=definition.timeframe
+                )
+                await onbellek_yaz(redis, definition.timeframe, bar_time, taze)
+            else:
+                onbellekli = await onbellek_bekle(redis, definition.timeframe, bar_time, symbols)
+                eksik = [s for s in symbols if s not in onbellekli]
+                if eksik:  # kilit sahibi yetişmedi: kalanı kendimiz hesaplarız
+                    taze = await load_bundles(
+                        session, eksik, at=bar_time, decision_tf=definition.timeframe
+                    )
+                    await onbellek_yaz(redis, definition.timeframe, bar_time, taze)
         bundles = [*onbellekli.values(), *taze]
         if definition.universe.market != "CRYPTO":
             # Sağlayıcı gün sonunu gecikmeli basar (İş Yatırım T+dakikalar…

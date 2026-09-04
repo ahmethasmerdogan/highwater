@@ -197,6 +197,46 @@ async def oku(redis, timeframe: str, bar_time: datetime, symbols: list[str]) -> 
     return out
 
 
+async def kilit_al(redis, timeframe: str, bar_time: datetime, saniye: int = 240) -> bool:
+    """Bu barın hesabını üstlenmek için tek yazar kilidi.
+
+    Önbellek tek başına yetmiyordu: 20 kol **aynı saniyede** uyanıp önbelleği
+    boş buluyor, hepsi hesaplıyor ve hepsi yazıyordu (önbellek izdihamı).
+    Ölçüldü 2026-09-04 21:00Z: 20 bot 160–177 sn'de aynı anda bitiriyor.
+    Kilidi alan hesaplar, alamayanlar `bekle` ile sonucu paylaşır.
+    """
+    try:
+        return bool(
+            await redis.set(_anahtar(timeframe, bar_time) + ":kilit", "1", nx=True, ex=saniye)
+        )
+    except Exception:
+        return True  # Redis yoksa herkes kendi hesabını yapar (fail-open)
+
+
+async def bekle(
+    redis, timeframe: str, bar_time: datetime, symbols: list[str], azami_saniye: float = 150.0
+) -> dict[str, object]:
+    """Kilidi tutan kolun yazmasını bekler; dolan önbelleği döner.
+
+    Bekleme `asyncio.sleep` ile: olay döngüsü serbest kalır, nabız atmaya
+    devam eder. Süre dolarsa elde ne varsa onunla döner — çağıran eksikleri
+    kendisi hesaplar, yani kilit sahibi ölse bile karar gecikmez.
+    """
+    import asyncio
+
+    beklenen = len(symbols)
+    gecen = 0.0
+    while gecen < azami_saniye:
+        await asyncio.sleep(2.0)
+        gecen += 2.0
+        var = await oku(redis, timeframe, bar_time, symbols)
+        # Havuzun tamamı gelmese de büyük kısmı geldiyse yeter: kalanı çağıran
+        # hesaplar. %90 eşiği, tek tük veri boşluğu için beklemeyi keser.
+        if len(var) >= max(1, int(beklenen * 0.9)):
+            return var
+    return await oku(redis, timeframe, bar_time, symbols)
+
+
 async def yaz(redis, timeframe: str, bar_time: datetime, bundles: list[SymbolBundle]) -> int:
     """Hesaplanan bundle'ları önbelleğe koyar. Dönüş: yazılan sembol sayısı."""
     paket = {}
