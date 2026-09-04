@@ -16,6 +16,16 @@ uğramadı. Dolum, barın açılışı ile stopun kötü olanıdır:
 from __future__ import annotations
 
 
-def stop_fill_price(stop: float, bar_open: float) -> float:
-    """Stop tetiklenen barda dürüst dolum: ``min(stop, open)``."""
-    return min(stop, bar_open)
+def stop_fill_price(stop: float, bar_open: float, direction: int = 1) -> float:
+    """Stop tetiklenen barda dürüst dolum: uzun ``min(stop, open)``, kısa ``max``."""
+    return min(stop, bar_open) if direction > 0 else max(stop, bar_open)
+
+
+def adverse_extreme(low: float, high: float, direction: int = 1) -> float:
+    """Barın pozisyon aleyhine ucu: uzun için `low`, kısa için `high`."""
+    return low if direction > 0 else high
+
+
+def stop_hit(stop: float, extreme: float, direction: int = 1) -> bool:
+    """Uç stopun kötü tarafına geçti mi? Uzun `low ≤ stop`, kısa `high ≥ stop`."""
+    return direction * (extreme - stop) <= 0
