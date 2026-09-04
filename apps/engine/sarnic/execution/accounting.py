@@ -48,6 +48,20 @@ def total_fees(*, entry_fees: float, exit_fees: float, realized_fees: float = 0.
     return entry_fees + realized_fees + exit_fees
 
 
+def price_points(entry: float, exit_price: float, qty: float, direction: int = 1) -> float:
+    """Fiyat hareketinin ham sonucu: `d × (çıkış − giriş) × miktar`.
+
+    `direction` +1 uzun, −1 kısa (KISA-YON-PLANI §0). Uzun için bugünkü
+    `(çıkış − giriş) × miktar` ile birebir; kısa için düşüş kazandırır.
+    """
+    return direction * (exit_price - entry) * qty
+
+
+def risk_per_unit(entry: float, initial_stop: float, direction: int = 1) -> float:
+    """1R'nin birim fiyatı: stopun girişten koruyucu yöndeki uzaklığı."""
+    return max(direction * (entry - initial_stop), 1e-12)
+
+
 def weighted_r(
     entry: float,
     exit_price: float,
@@ -55,6 +69,7 @@ def weighted_r(
     risk_per_unit: float,
     realized_points: float = 0.0,
     entry_qty: float = 0.0,
+    direction: int = 1,
 ) -> float:
     """R çarpanı, giriş miktarına göre ağırlıklı fiyat-puanı.
 
@@ -64,4 +79,6 @@ def weighted_r(
     toplam = entry_qty if entry_qty > 0 else qty
     if toplam <= 0 or risk_per_unit <= 0:
         return 0.0
-    return (realized_points + (exit_price - entry) * qty) / (risk_per_unit * toplam)
+    return (realized_points + price_points(entry, exit_price, qty, direction)) / (
+        risk_per_unit * toplam
+    )
