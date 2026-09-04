@@ -72,7 +72,12 @@ from sarnic.risk.engine import RiskEngine, RiskState
 from sarnic.scoring.engine import ScoreResult, ScoringEngine
 from sarnic.sizing.clusters import cluster_exposure, latest_clusters
 from sarnic.sizing.engine import SizingEngine, SizingInput, stop_anchored_to_fill
-from sarnic.sizing.leverage import LeverageSpec, borrow_cost, decide_leverage
+from sarnic.sizing.leverage import (
+    LeverageSpec,
+    borrow_cost,
+    decide_leverage,
+    liquidation_price,
+)
 from sarnic.strategy.definition import StrategyDefinition, entry_hour_allowed
 from sarnic.universe.engine import UniverseEngine
 
@@ -1410,6 +1415,28 @@ class BotWorker:
                 price = prices.get(position.symbol)
                 if price is None:
                     continue
+
+                # Likidasyon: backtest bunu bar içinde uyguluyordu, canlı yolda
+                # hiç yoktu — kaldıraçlı bir kolda boşluk olsa iki motor farklı
+                # çıkış üretirdi (bozulmaz kural 1). Stop-marj sığması bunu
+                # normalde imkânsız kılar; yine de borç sessizce büyümesin.
+                lev = float(position.leverage or 1.0)
+                if lev > 1.0:
+                    liq = liquidation_price(position.entry_price, lev, direction=position.direction)
+                    if stop_hit(liq, price, position.direction):
+                        await self._close_position(
+                            session,
+                            bot,
+                            snapshot,
+                            position,
+                            ExitReason.LIQUIDATION,
+                            message=(
+                                f"likidasyon seviyesi geçildi: {price:.8f} "
+                                f"{'≤' if position.direction > 0 else '≥'} {liq:.8f} ({lev:g}×)"
+                            ),
+                        )
+                        continue
+
                 decision = evaluate_exit(
                     _view(position),
                     MarketView(

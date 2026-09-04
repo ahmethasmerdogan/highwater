@@ -320,3 +320,88 @@ async def test_havuzdan_dusen_pozisyon_ticker_fiyatiyla_yonetilir(api_session, t
     definition = worker._definition_of(bot)
     await worker._manage_exits(api_session, bot, definition, snapshot, ctx, bar_closed=True)
     assert gorulen == [80.0], "havuzdan düşen pozisyon ticker fiyatıyla yönetilmeli"
+
+
+async def test_canli_yolda_likidasyon_kapatir(api_session, test_database):
+    """Backtest bar içinde likidasyon uyguluyordu, canlı yolda hiç yoktu:
+    kaldıraçlı bir kolda iki motor farklı çıkış üretirdi (bozulmaz kural 1)."""
+    from decimal import Decimal
+
+    from sarnic.bots.worker import BotWorker
+    from sarnic.core.enums import ExitReason
+    from sarnic.db.models import Position
+    from sarnic.sizing.leverage import liquidation_price
+    from tests.conftest import utc
+    from tests.test_api import make_bot
+    from tests.test_paper import _SessizVeriyolu
+
+    bot, _ = await make_bot(api_session, "likidasyon")
+    await api_session.refresh(bot, attribute_names=["strategy_version"])
+    poz = Position(
+        bot_id=bot.id,
+        symbol="TESTUSDT",
+        side="BUY",
+        qty=Decimal("1"),
+        entry_qty=Decimal("1"),
+        entry_price=Decimal("100"),
+        entry_time=utc(2026, 8, 18, 0),
+        stop=Decimal("60"),
+        initial_stop=Decimal("60"),
+        score_at_entry=Decimal("85"),
+        leverage=Decimal("3"),
+        status="OPEN",
+    )
+    api_session.add(poz)
+    await api_session.commit()
+
+    worker = BotWorker(bot.id, bus=_SessizVeriyolu())
+    kapatilan: list[tuple] = []
+
+    async def sahte_kapat(session, bot_, snap, position, reason, message="", **kw):
+        kapatilan.append((position.symbol, reason, message))
+
+    worker._close_position = sahte_kapat  # type: ignore[method-assign]
+    acik = OpenPosition(
+        id=poz.id,
+        symbol="TESTUSDT",
+        qty=1.0,
+        entry_price=100.0,
+        entry_time=utc(2026, 8, 18, 0),
+        stop=60.0,
+        initial_stop=60.0,
+        score_at_entry=85.0,
+        breakeven_locked=False,
+        leverage=3.0,
+    )
+    # 3× uzun likidasyonu 100 × (1 − 0,9/3) = 70; fiyat 68 → stopun (60) ÜSTÜNDE
+    # ama likidasyonun altında: doğru çıkış LIQUIDATION olmalı.
+    assert liquidation_price(100.0, 3.0) == pytest.approx(70.0)
+    snapshot = PortfolioSnapshot(
+        bot_id=bot.id, cash=0.0, positions=[acik], prices={"TESTUSDT": 68.0}
+    )
+
+    async def sahte_snapshot(*a, **kw):
+        return snapshot
+
+    import sarnic.bots.worker as w
+
+    eski_snapshot, eski_bars, eski_atr = w.load_snapshot, w.read_last_bars, worker._atr_for
+    w.load_snapshot = sahte_snapshot
+
+    async def sahte_bars(*a, **kw):
+        return {"TESTUSDT": {"close": 68.0}}
+
+    async def sahte_atr(*a, **kw):
+        return {"TESTUSDT": 1.0}
+
+    w.read_last_bars = sahte_bars
+    worker._atr_for = sahte_atr  # type: ignore[method-assign]
+    try:
+        await worker._manage_open_positions_kilitli()
+    finally:
+        w.load_snapshot, w.read_last_bars = eski_snapshot, eski_bars
+        worker._atr_for = eski_atr  # type: ignore[method-assign]
+
+    assert kapatilan, "likidasyon seviyesinin altında pozisyon kapatılmalı"
+    assert kapatilan[0][1] is ExitReason.LIQUIDATION
+    assert "likidasyon" in kapatilan[0][2]
