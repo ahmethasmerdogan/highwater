@@ -156,3 +156,87 @@ async def test_uzun_yol_meta_olmadan_birebir():
     assert r.status == OrderStatus.FILLED and a.position_qty("TESTUSDT") == pytest.approx(15.0)
     s = await a.submit(OrderRequest("TESTUSDT", OrderSide.SELL, OrderType.MARKET, 15.0))
     assert s.accepted and a.position_qty("TESTUSDT") == pytest.approx(0.0)
+
+
+# --------------------------------------------------------------------------- #
+#  Worker: kısa pozisyon kapanışı ALIŞ emriyle, Trade.side = SELL
+# --------------------------------------------------------------------------- #
+async def test_worker_kisa_pozisyonu_alisla_kapatir(api_session, test_database):
+    """100'den açılmış kısa, ask'lerden geri alınır (100,38): zarar, Trade SELL,
+    adaptör defteri 0'a döner, nakit geri alış bedeli kadar düşer."""
+    from decimal import Decimal
+
+    from sqlalchemy import select
+
+    from sarnic.bots.worker import BotWorker
+    from sarnic.core.enums import ExitReason, PositionStatus
+    from sarnic.db.models import Position, Trade
+    from sarnic.execution.paper import PaperAdapter, StaticBookSource
+    from sarnic.sizing.leverage import borrow_cost
+    from tests.conftest import utc
+    from tests.test_api import make_bot
+    from tests.test_paper import BOOK, NO_LATENCY, _SessizVeriyolu
+
+    bot, _ = await make_bot(api_session, "kısa-kapanış")
+    # Worker canlıda botu sürümüyle birlikte yükler; testte ilişki açıkça tazelenir.
+    await api_session.refresh(bot, attribute_names=["strategy_version"])
+    miktar = 15.0
+    pozisyon = Position(
+        bot_id=bot.id,
+        symbol="TESTUSDT",
+        side="SELL",
+        qty=Decimal(str(miktar)),
+        entry_qty=Decimal(str(miktar)),
+        entry_price=Decimal("100"),
+        entry_time=utc(2026, 8, 18, 0),
+        stop=Decimal("104"),
+        initial_stop=Decimal("104"),
+        score_at_entry=Decimal("85"),
+        entry_fees=Decimal("1"),
+        status="OPEN",
+    )
+    api_session.add(pozisyon)
+    await api_session.commit()
+
+    worker = BotWorker(bot.id, bus=_SessizVeriyolu())
+    worker._adapter = PaperAdapter(
+        book_source=StaticBookSource({"TESTUSDT": BOOK}), balance=2500.0, config=NO_LATENCY
+    )
+    worker._adapter.restore_positions({"TESTUSDT": -miktar})
+    acik = OpenPosition(
+        id=pozisyon.id,
+        symbol="TESTUSDT",
+        qty=miktar,
+        entry_price=100.0,
+        entry_time=utc(2026, 8, 18, 0),
+        stop=104.0,
+        initial_stop=104.0,
+        score_at_entry=85.0,
+        breakeven_locked=False,
+        entry_fees=1.0,
+        entry_qty=miktar,
+        direction=-1,
+    )
+    snapshot = PortfolioSnapshot(bot_id=bot.id, cash=2500.0, positions=[acik])
+    await worker._close_position(api_session, bot, snapshot, acik, ExitReason.STOP, "test")
+    await api_session.commit()
+    await api_session.refresh(pozisyon)
+    assert pozisyon.status == PositionStatus.CLOSED
+    islem = (
+        await api_session.execute(select(Trade).where(Trade.position_id == pozisyon.id))
+    ).scalar_one()
+    assert str(islem.side) == "SELL"
+    fiyat = (1505.0 / 15.0) * (1 + 5 / 10_000)  # ask'lerden alış + 5 bps
+    assert float(islem.exit_price) == pytest.approx(fiyat, rel=1e-6)
+    # Kısa zararı: (100 − 100,38) × 15 − komisyonlar (< 0).
+    assert float(islem.pnl) < 0
+    assert float(islem.pnl_r) == pytest.approx((100.0 - fiyat) / 4.0, abs=1e-4)
+    assert worker._adapter.position_qty("TESTUSDT") == pytest.approx(0.0)
+    # Kısa 1× bile borçludur: ödünç varlığın TAM notional'ı saatlik oranla.
+    saat = (worker.clock.now() - utc(2026, 8, 18, 0)).total_seconds() / 3600
+    borc = borrow_cost(100.0 * miktar, 1.0, saat, 0.0000208, direction=-1)
+    assert borc > 0
+    assert snapshot.cash == pytest.approx(
+        2500.0 - fiyat * miktar - fiyat * miktar * 0.001 - borc, abs=0.01
+    )
+    assert snapshot.positions == []
