@@ -64,6 +64,8 @@ from sarnic.execution.exits import (
 from sarnic.execution.gapfill import adverse_extreme, stop_fill_price, stop_hit
 from sarnic.execution.paper import PaperAdapter, PaperConfig, RedisBookSource
 from sarnic.features.indicators import realized_vol
+from sarnic.features.onbellek import oku as onbellek_oku
+from sarnic.features.onbellek import yaz as onbellek_yaz
 from sarnic.features.pipeline import load_bundles
 from sarnic.features.sr import stop_from_sr
 from sarnic.risk.engine import RiskEngine, RiskState
@@ -381,9 +383,17 @@ class BotWorker:
         # Karar çerçevesi botun kendi dilimidir. Geçilmediğinde hat her zaman
         # 1h okuyordu: 15m bir bot 15 dakikada bir uyanıp **aynı** 1h barını
         # yeniden puanlıyor, yeni bilgi olmadan daha sık işlem açıyordu.
-        bundles = await load_bundles(
-            session, symbols, at=bar_time, decision_tf=definition.timeframe
-        )
+        # Özellik hesabı strateji ayarından bağımsızdır; aynı barda uyanan 20
+        # kol aynı 114 sembol için aynı işi yapıyordu (ölçüldü: bar başına ~438
+        # çekirdek-saniye, 19/20'si tekrar). İlk uyanan hesaplar ve paylaşır.
+        redis = await self.redis()
+        onbellekli = await onbellek_oku(redis, definition.timeframe, bar_time, symbols)
+        eksik = [s for s in symbols if s not in onbellekli]
+        taze: list = []
+        if eksik:
+            taze = await load_bundles(session, eksik, at=bar_time, decision_tf=definition.timeframe)
+            await onbellek_yaz(redis, definition.timeframe, bar_time, taze)
+        bundles = [*onbellekli.values(), *taze]
         if definition.universe.market != "CRYPTO":
             # Sağlayıcı gün sonunu gecikmeli basar (İş Yatırım T+dakikalar…
             # saatler). Karar barının KENDİ satırı gelmemiş sembolü puanlamak,
@@ -470,7 +480,7 @@ class BotWorker:
                 pattern_mod[b.symbol] = b.patterns.modifier()
 
         # Likidite tavanı için 1 saatlik ortalama quote hacmi.
-        tickers = await read_tickers(await self.redis())
+        tickers = await read_tickers(redis)
         for symbol in symbols:
             t = tickers.get(symbol)
             adv[symbol] = float(t["quote_volume"]) / 24 if t else 0.0
