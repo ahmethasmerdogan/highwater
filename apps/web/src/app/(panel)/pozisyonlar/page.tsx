@@ -259,6 +259,7 @@ function OpenPositions({
             <span className="sn-num text-[13px] text-ink">
               {row.symbol}
             </span>
+            {row.side === "SELL" && <Tag tone="down">kısa</Tag>}
             {row.leverage > 1 && (
               <Tag tone="brand">
                 kaldıraç <span className="sn-num">{`${num(row.leverage, 0)}×`}</span>
@@ -480,18 +481,37 @@ function OpenPositions({
               title="Fiyatın stop ile giriş arasındaki yeri"
               hint="Nokta stopa yaklaştıkça pozisyon riske yaklaşır. Stop girişin üstündeyse pozisyon başabaşa kilitlenmiştir."
             >
-              <RangeDot
-                value={selected.last_price}
-                low={selected.stop}
-                high={Math.max(selected.entry_price, selected.last_price ?? selected.entry_price)}
-                lowLabel={`stop ${price(selected.stop)}`}
-                highLabel={`giriş ${price(selected.entry_price)}`}
-              />
+              {selected.side === "SELL" ? (
+                <RangeDot
+                  value={selected.last_price}
+                  low={Math.min(selected.entry_price, selected.last_price ?? selected.entry_price)}
+                  high={selected.stop}
+                  lowLabel={`giriş ${price(selected.entry_price)}`}
+                  highLabel={`stop ${price(selected.stop)}`}
+                />
+              ) : (
+                <RangeDot
+                  value={selected.last_price}
+                  low={selected.stop}
+                  high={Math.max(selected.entry_price, selected.last_price ?? selected.entry_price)}
+                  lowLabel={`stop ${price(selected.stop)}`}
+                  highLabel={`giriş ${price(selected.entry_price)}`}
+                />
+              )}
             </DrawerSection>
 
             <DrawerSection title="Sayılar">
               <KeyValue
                 rows={[
+                  {
+                    label: "Yön",
+                    value:
+                      selected.side === "SELL" ? (
+                        <Tag tone="down">kısa (önce sat)</Tag>
+                      ) : (
+                        <Tag tone="neutral">uzun</Tag>
+                      ),
+                  },
                   { label: "Miktar", value: <NumText text={num(selected.qty, 6)} size="sm" /> },
                   { label: "Giriş fiyatı", value: <NumText text={price(selected.entry_price)} size="sm" /> },
                   { label: "Güncel fiyat", value: <NumText text={price(selected.last_price)} size="sm" /> },
@@ -590,17 +610,22 @@ function GirisGerekcesi({ rationaleId, symbol }: { rationaleId: number | null; s
  * `(giriş − stop)` diyordu — o ilk risktir (R birimi), bu ise şu anki risk.
  * İkisi farklı büyüklük; ipucu hesabın söylediğini söylemeli.
  */
+/** +1 uzun, −1 kısa (önce sat): her fiyat farkı bu çarpanla okunur. */
+function yon(position: Position): number {
+  return position.side === "SELL" ? -1 : 1;
+}
+
 function openRisk(position: Position): number | null {
   if (!Number.isFinite(position.qty) || !Number.isFinite(position.stop)) return null;
   const reference = position.last_price ?? position.entry_price;
-  return (reference - position.stop) * position.qty;
+  return yon(position) * (reference - position.stop) * position.qty;
 }
 
 /** Güncel fiyatın stopa oransal uzaklığı: (güncel − stop) / güncel. */
 function stopMesafesi(position: Position): number | null {
   const last = position.last_price;
   if (last === null || !Number.isFinite(last) || last <= 0 || !Number.isFinite(position.stop)) return null;
-  return (last - position.stop) / last;
+  return (yon(position) * (last - position.stop)) / last;
 }
 
 /* ------------------------------------------------------------------ */
@@ -620,8 +645,11 @@ function ClosedTrades({ rows, query }: { rows: Trade[]; query: SorguDurumu }) {
         value: (row) => row.symbol,
         search: (row) => `${row.symbol} ${row.exit_reason}`,
         cell: (row) => (
-          <span className="sn-num text-[13px] text-ink">
-            {row.symbol}
+          <span className="inline-flex items-center gap-1.5">
+            <span className="sn-num text-[13px] text-ink">
+              {row.symbol}
+            </span>
+            {row.side === "SELL" && <Tag tone="down">kısa</Tag>}
           </span>
         ),
       },

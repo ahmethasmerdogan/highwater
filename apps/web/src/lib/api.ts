@@ -308,6 +308,8 @@ export interface Bot {
   timeframe: string;
   /** Havuzun pazarı: CRYPTO | BIST | US. */
   market: string;
+  /** Tanımın yönü: LONG | SHORT | BOTH. */
+  direction: string;
   capital: number;
   cash: number;
   equity: number | null;
@@ -332,6 +334,8 @@ export interface Position {
   breakeven_locked: boolean;
   /** 1 = spot; >1 kaldıraçlı giriş (paper marj simülasyonu). */
   leverage: number;
+  /** BUY uzun, SELL kısa (önce sat). Kâr/zarar işareti yöne göre gelir. */
+  side: string;
   status: string;
   last_price: number | null;
   unrealized_pnl: number | null;
@@ -350,6 +354,7 @@ export interface Trade {
   pnl_r: number;
   fees: number;
   leverage: number;
+  side: string;
   slippage_bps: number;
   mfe: number;
   mae: number;
