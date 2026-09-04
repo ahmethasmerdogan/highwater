@@ -1003,6 +1003,7 @@ class BotWorker:
 
         clusters = await latest_clusters(session, at=ctx.bar_time)
         sizing = SizingEngine(definition.sizing_params())
+        butce_red_sayisi = 0
 
         for candidate, d in candidates:
             if candidate.symbol in snapshot.symbols:
@@ -1092,6 +1093,28 @@ class BotWorker:
                 )
             )
             if not decision.accepted:
+                # Bütçe tükendiyse (maruziyet tavanı dolu ya da nakit bitti)
+                # kalan adaylar da aynı cevabı alır: sizing'i 100 kez daha
+                # çağırmak barın CPU'sunu yer, her ret ayrı satır olarak
+                # bot_events'i şişirir. Ölçüldü (2026-09-04): M1 kolu 24 saatte
+                # 420 böyle satır yazdı. Üçüncüden sonra döngü tek özetle biter;
+                # ADAYA ÖZGÜ retler (stop çok uzak, likidite, küme) sayılmaz.
+                butce_reddi = "boyut sıfır" in decision.reject_reason or (
+                    "hedefin %" in decision.reject_reason and "slot boş" in decision.reject_reason
+                )
+                if butce_reddi:
+                    butce_red_sayisi += 1
+                    if butce_red_sayisi >= 3:
+                        await self._emit(
+                            session,
+                            EventKind.LOG,
+                            level="INFO",
+                            message=(
+                                f"bütçe tükendi: {butce_red_sayisi} aday kısıtlara takıldı "
+                                f"({decision.reject_reason}); bu barda giriş aranmıyor."
+                            ),
+                        )
+                        return
                 await self._emit(
                     session,
                     EventKind.LOG,
