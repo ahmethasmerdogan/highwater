@@ -62,6 +62,7 @@ function JournalContent() {
 
   const visible = TABS.filter((entry) => !entry.admin || isAdmin);
   const requested = params.get("tab");
+  const istenen = TABS.find((entry) => entry.id === requested);
   /* Yetkisiz ya da bilinmeyen sekme, görünür ilk sekmeye düşer. */
   const tab: Tab =
     visible.find((entry) => entry.id === requested)?.id ??
@@ -93,7 +94,9 @@ function JournalContent() {
       {tab === "kalite" && <KaliteTab />}
       {tab === "denetim" && isAdmin && <DenetimTab />}
 
-      {!isAdmin && (
+      {/* Not yalnızca yönetici sekmesi istenip düşürüldüğünde; bildirim ve
+          kalite sekmelerinde gürültü. */}
+      {!isAdmin && istenen?.admin && (
         <p style={{ fontSize: "var(--sn-t-caption)", color: "var(--sn-ink-3)" }}>
           Olay akışı ve denetim kaydı yalnızca yöneticilere açıktır.
         </p>

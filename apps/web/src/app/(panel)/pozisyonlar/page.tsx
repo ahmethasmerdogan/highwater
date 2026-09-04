@@ -48,6 +48,7 @@ import { ScoreCard } from "@/design/score-card";
 import { TradeShareCard } from "@/design/win-card";
 import { DataGrid } from "@/grid/data-grid";
 import type { GridColumn } from "@/grid/types";
+import { marketOf } from "../piyasa/ortak";
 
 /* Sekme adres çubuğunda yaşar: `?tab=acik|islemler|emirler`. Başka
    sayfalar `/pozisyonlar?tab=islemler` diye bağlanır. */
@@ -566,7 +567,10 @@ function GirisGerekcesi({ rationaleId, symbol }: { rationaleId: number | null; s
         <>
           <ScoreCard rationale={q.data.rationale} compact />
           <div className="mt-2">
-            <Link href={`/piyasa?sembol=${symbol}`} className="text-[12.5px] text-brand hover:underline">
+            <Link
+              href={`/piyasa?sembol=${encodeURIComponent(symbol)}${marketOf(symbol) === "CRYPTO" ? "" : `&market=${marketOf(symbol)}`}`}
+              className="text-[12.5px] text-brand hover:underline"
+            >
               Piyasa sayfasında aç →
             </Link>
           </div>

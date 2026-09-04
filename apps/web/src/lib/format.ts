@@ -112,8 +112,10 @@ export function rMultiple(value: number | null | undefined, digits = 2): string 
 
 export type Direction = "up" | "down" | "flat";
 
+/** İki haneye yuvarlanınca sıfır olan değer (|v| < 0,005) yönsüzdür:
+ *  `-0,00` ne ok alır ne renk. */
 export function direction(value: number | null | undefined): Direction {
-  if (value === null || value === undefined || !Number.isFinite(value) || value === 0) {
+  if (value === null || value === undefined || !Number.isFinite(value) || Math.abs(value) < 0.005) {
     return "flat";
   }
   return value > 0 ? "up" : "down";
@@ -123,17 +125,28 @@ export function direction(value: number | null | undefined): Direction {
 /*  Tarih ve süre                                                      */
 /* ------------------------------------------------------------------ */
 
+/* Saat dilimi eki: tarayıcı dilimi UTC ise " UTC", değilse " TSİ"
+   (sahibin dilimi Europe/Istanbul). Tembel: SSR'de değil, ilk çağrıda
+   çözülür ve bir kez hesaplanır. */
+let zoneSuffix: string | undefined;
+function zone(): string {
+  zoneSuffix ??= Intl.DateTimeFormat().resolvedOptions().timeZone === "UTC" ? " UTC" : " TSİ";
+  return zoneSuffix;
+}
+
 export function dateTime(iso: string | null | undefined): string {
   if (!iso) return EMPTY;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return EMPTY;
-  return d.toLocaleString(LOCALE, {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return (
+    d.toLocaleString(LOCALE, {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }) + zone()
+  );
 }
 
 export function dateOnly(iso: string | null | undefined): string {
@@ -147,11 +160,13 @@ export function time(iso: string | null | undefined): string {
   if (!iso) return EMPTY;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return EMPTY;
-  return d.toLocaleTimeString(LOCALE, {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+  return (
+    d.toLocaleTimeString(LOCALE, {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }) + zone()
+  );
 }
 
 /** "3 dk önce" — canlılık göstergelerinde. */

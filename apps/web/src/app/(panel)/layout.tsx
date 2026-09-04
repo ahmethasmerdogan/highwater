@@ -24,7 +24,7 @@ import { BottomDock, TopNav } from "@/shell/topnav";
 import { Ribbon } from "@/shell/ribbon";
 import { CommandPalette } from "@/shell/command-palette";
 import { AttentionSheet } from "@/shell/attention";
-import { LEGACY, NAV } from "@/shell/nav";
+import { LEGACY, NAV, findNavItem } from "@/shell/nav";
 
 function inField(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
@@ -43,6 +43,13 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
   useEffect(() => {
     if (!loading && !user) router.replace("/giris");
   }, [loading, user, router]);
+
+  /* Menünün gizlediği rota adres çubuğundan da açılamaz. */
+  const navItem = findNavItem(pathname);
+  const yasak = !!user && !!navItem?.roles && !can(...navItem.roles);
+  useEffect(() => {
+    if (yasak) router.replace("/");
+  }, [yasak, router]);
 
   useEffect(() => {
     const hedef = LEGACY[pathname];
@@ -82,7 +89,7 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
       <div className="flex min-h-screen items-center justify-center bg-canvas text-[13px] text-ink-3">Yükleniyor…</div>
     );
   }
-  if (!user) return null;
+  if (!user || yasak) return null;
 
   return (
     <TooltipHost>

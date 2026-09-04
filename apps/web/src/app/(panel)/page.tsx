@@ -17,7 +17,7 @@ import { api, type Benchmark, type Bot, type LivePnl, type Trade } from "@/lib/a
 import { money, num, pctSigned, relative, rMultiple } from "@/lib/format";
 import { Page } from "@/shell/page";
 import { useAttention } from "@/shell/attention";
-import { Delta, Metric, NumText, Panel, Tag } from "@/design";
+import { Delta, ErrorBox, Metric, NumText, Panel, Tag } from "@/design";
 import { BotStatePill, ExitReasonPill } from "@/design/pills";
 import { CurveChart, Sparkline, type CurveSeries } from "@/design/chart";
 import { DataGrid } from "@/grid/data-grid";
@@ -89,8 +89,8 @@ export default function BridgePage() {
   });
   const trades = useQuery({ queryKey: ["trades", "kopru"], queryFn: () => api.get<Trade[]>("/trades", { limit: 40 }), refetchInterval: 60_000 });
 
-  const now = Date.now();
   const fleet = useMemo<FleetRow[]>(() => {
+    const now = Date.now();
     const liveById = new Map((live.data?.bots ?? []).map((b) => [b.bot_id, b]));
     const curveById = new Map((race.data?.bots ?? []).map((b) => [b.bot_id, b.curve.map((p) => p.value)]));
     return (bots.data ?? [])
@@ -104,7 +104,7 @@ export default function BridgePage() {
       }))
       .sort((a, b) => (b.getiri ?? -Infinity) - (a.getiri ?? -Infinity))
       .map((row, i) => ({ ...row, color: PALETTE[i % PALETTE.length] }));
-  }, [bots.data, live.data, race.data, now]);
+  }, [bots.data, live.data, race.data]);
 
   const raceSeries = useMemo<CurveSeries[]>(() => {
     const running = new Set(fleet.map((f) => f.bot.id));
@@ -134,7 +134,8 @@ export default function BridgePage() {
     return { bugunku, kar, toplam, enIyi };
   }, [trades.data]);
 
-  const gun = start ? Math.floor((now - new Date(start).getTime()) / 86_400_000) + 1 : null;
+  const gun = start ? Math.floor((Date.now() - new Date(start).getTime()) / 86_400_000) + 1 : null;
+  const hata = bots.isError ? bots : live.isError ? live : null;
   const l = live.data;
   const exposurePct = l && l.equity > 0 ? l.exposure / l.equity : null;
   const items = attention.data?.items ?? [];
@@ -147,6 +148,16 @@ export default function BridgePage() {
       summary={gun !== null ? `${num(meta.data?.days ?? 30, 0)} günlük komutsuz koşu. Sistem kendi başına; bu sayfa yalnızca okur.` : "Sistemin şu anki durumu."}
       stamp={attention.data ? `${relative(attention.data.at)} tazelendi` : undefined}
     >
+      {hata && (
+        <ErrorBox
+          message={hata.error instanceof Error ? hata.error.message : String(hata.error ?? "")}
+          action={
+            <button type="button" onClick={() => void hata.refetch()} className="text-[12.5px] text-brand hover:underline">
+              Yeniden dene
+            </button>
+          }
+        />
+      )}
       <Reveal>
         <div className="grid gap-5 lg:grid-cols-[3fr_2fr]">
           {/* ---- Bugün: hikâye ---------------------------------------- */}
@@ -154,10 +165,10 @@ export default function BridgePage() {
             <div className="flex flex-col gap-2 text-[15px] leading-[1.6] text-ink">
               <p>
                 {bugun.bugunku.length === 0 ? (
-                  <>Bugün henüz kapanan işlem yok.</>
+                  <>Bugün (UTC günü) henüz kapanan işlem yok.</>
                 ) : (
                   <>
-                    Bugün <NumText text={num(bugun.bugunku.length, 0)} size="md" /> işlem kapandı,{" "}
+                    Bugün (UTC günü) <NumText text={num(bugun.bugunku.length, 0)} size="md" /> işlem kapandı,{" "}
                     <NumText text={num(bugun.kar, 0)} size="md" /> tanesi kârla; toplam{" "}
                     <Delta value={bugun.toplam} format={(v) => money(v)} size="md" />.
                     {bugun.enIyi && bugun.enIyi.pnl > 0 && (

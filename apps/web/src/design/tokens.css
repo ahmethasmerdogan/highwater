@@ -27,8 +27,10 @@
   /* mürekkep */
   --sn-ink: var(--ink);
   --sn-ink-2: var(--ink2);
-  --sn-ink-3: var(--ink3);
-  --sn-ink-4: color-mix(in oklab, var(--ink3) 72%, transparent);
+  /* uicean ink3 açık temada 2,37:1 — tablo başlığı ve altyazı için
+     yetersiz. Açıkta sabit #767268 (4,6:1); koyu takma ad olarak kalır. */
+  --sn-ink-3: #767268;
+  --sn-ink-4: color-mix(in oklab, #767268 75%, transparent);
 
   /* marka — uicean vurgu ön ayarı (html[data-accent]) */
   --sn-brand: var(--brand);
@@ -64,6 +66,7 @@
 }
 
 .dark {
+  --sn-ink-3: var(--ink3);
   --sn-ink-4: color-mix(in oklab, var(--ink3) 80%, transparent);
   --sn-up: #34d399;
   --sn-up-bg: color-mix(in oklab, #34d399 14%, transparent);
@@ -149,7 +152,7 @@
  * ===================================================================== */
 @layer base {
   .sn-focus:focus-visible,
-  .sn-root :focus-visible {
+  body :focus-visible {
     outline: 2px solid var(--sn-focus-ring);
     outline-offset: 1px;
     border-radius: var(--sn-r-xs);
@@ -262,9 +265,9 @@
      üretir. Süre `none` DEĞİL 1 ms: `animationend` bekleyen kod (Radix
      çıkış animasyonları) `none` altında hiç tetiklenmez ve kip kapanmaz
      olurdu. `motion.ts` aynı tercihi JS tarafında okuyor. */
-  .sn-root *,
-  .sn-root *::before,
-  .sn-root *::after {
+  body *,
+  body *::before,
+  body *::after {
     animation-duration: 1ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 1ms !important;

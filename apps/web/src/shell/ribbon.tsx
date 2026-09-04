@@ -34,6 +34,8 @@ export function Ribbon({ onOpenAttention }: { onOpenAttention: () => void }) {
 
   return (
     <div
+      role="status"
+      aria-live="polite"
       className={cx(
         "flex h-10 items-center gap-4 border-b border-line px-4 text-[12.5px] sm:px-6",
         offline ? "bg-[var(--sn-warn-bg)] text-[var(--sn-warn)]" : "bg-canvas text-ink-2",

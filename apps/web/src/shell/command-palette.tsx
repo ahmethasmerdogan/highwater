@@ -17,6 +17,7 @@ import { api, type Bot, type UniverseSymbol } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { IBot, IPool } from "@/design/icons";
 import { BotStatePill } from "@/design/pills";
+import { marketOf } from "@/app/(panel)/piyasa/ortak";
 import { NAV } from "./nav";
 
 export function CommandPalette({
@@ -129,7 +130,7 @@ export function CommandPalette({
                 <Command.Item
                   key={`sym-${s.symbol}`}
                   value={`sembol ${s.symbol}`}
-                  onSelect={() => go(`/piyasa?sembol=${encodeURIComponent(s.symbol)}`)}
+                  onSelect={() => go(`/piyasa?sembol=${encodeURIComponent(s.symbol)}${marketOf(s.symbol) === "CRYPTO" ? "" : `&market=${marketOf(s.symbol)}`}`)}
                   className={itemClass}
                 >
                   <IPool size={15} style={{ color: "var(--sn-ink-3)" }} />
