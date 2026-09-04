@@ -175,6 +175,8 @@ class BotOut(BaseModel):
     halt_reason: str | None = None
     #: Kesici giriş yasağının bitişi — panel 'giriş yasağında' der, saymaz.
     entries_blocked_until: datetime | None = None
+    #: Tanımın yönü: LONG | SHORT | BOTH (entry.direction).
+    direction: str = "LONG"
     created_at: datetime
 
 
@@ -225,6 +227,8 @@ class PositionOut(BaseModel):
     score_at_entry: float
     breakeven_locked: bool
     leverage: float = 1.0
+    #: BUY uzun, SELL kısa. Kâr/zarar işareti yöne göre hesaplanmıştır.
+    side: str = "BUY"
     status: str
     last_price: float | None = None
     unrealized_pnl: float | None = None
@@ -243,6 +247,7 @@ class TradeOut(BaseModel):
     pnl_r: float
     fees: float
     leverage: float = 1.0
+    side: str = "BUY"
     slippage_bps: float
     mfe: float
     mae: float

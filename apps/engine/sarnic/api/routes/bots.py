@@ -16,7 +16,7 @@ from sqlalchemy import func, select
 
 from sarnic.api.deps import BusDep, CurrentUser, RedisDep, RequireTrader, SessionDep, write_audit
 from sarnic.api.schemas import BotCreate, BotEventOut, BotOut, BotUpdate
-from sarnic.core.enums import BotState, EventKind, PositionStatus, Role
+from sarnic.core.enums import BotState, EventKind, OrderSide, PositionStatus, Role
 from sarnic.data.marketdata import read_tickers
 from sarnic.db.models import Bot, BotEvent, Position, StrategyVersion
 
@@ -52,7 +52,14 @@ async def _to_out(
             .scalars()
             .all()
         )
-    exposure = sum(float(p.qty) * prices.get(p.symbol, float(p.entry_price)) for p in positions)
+    # Özsermaye işaretli değerle: kısa pozisyon negatif (ödünç varlık borcu).
+    deger = sum(
+        (OrderSide(p.side).direction if p.side else 1)
+        * float(p.qty)
+        * prices.get(p.symbol, float(p.entry_price))
+        for p in positions
+    )
+    tanim = bot.strategy_version.definition or {}
     return BotOut(
         id=bot.id,
         name=bot.name,
@@ -61,12 +68,11 @@ async def _to_out(
         mode=str(bot.mode),
         state=bot.state,
         timeframe=bot.timeframe,
-        market=str(
-            ((bot.strategy_version.definition or {}).get("universe") or {}).get("market", "CRYPTO")
-        ),
+        market=str((tanim.get("universe") or {}).get("market", "CRYPTO")),
+        direction=str((tanim.get("entry") or {}).get("direction", "LONG")),
         capital=float(bot.capital),
         cash=float(bot.cash),
-        equity=float(bot.cash) + exposure,
+        equity=float(bot.cash) + deger,
         open_positions=len(positions),
         last_heartbeat_at=bot.last_heartbeat_at,
         halt_reason=bot.halt_reason,

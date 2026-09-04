@@ -14,12 +14,18 @@ from sarnic.bots.benchmark import build_benchmark, normalize
 from sarnic.bots.portfolio import combine_curves, equity_curve, trade_stats
 from sarnic.config import settings
 from sarnic.core.clock import utcnow
-from sarnic.core.enums import PositionStatus
+from sarnic.core.enums import OrderSide, PositionStatus
 from sarnic.data.marketdata import read_tickers
 from sarnic.db.models import Bot, Order, Position, SpreadSample, Trade
 from sarnic.universe.engine import UniverseEngine
 
 METRICS_CACHE_KEY = "sarnic:cache:portfolio-metrics"
+
+
+def _yon(p) -> int:
+    """positions.side → +1 uzun / −1 kısa (eski satırlar BUY)."""
+    return OrderSide(p.side).direction if getattr(p, "side", None) else 1
+
 
 router = APIRouter(tags=["portfolio"])
 
@@ -49,7 +55,8 @@ async def positions(
         last = tickers.get(p.symbol)
         price = float(last["last_price"]) if last else None
         entry = float(p.entry_price)
-        unrealized = (price - entry) * float(p.qty) if price is not None else None
+        yon = OrderSide(p.side).direction if p.side else 1
+        unrealized = yon * (price - entry) * float(p.qty) if price is not None else None
         out.append(
             PositionOut(
                 id=p.id,
@@ -63,10 +70,11 @@ async def positions(
                 score_at_entry=float(p.score_at_entry),
                 breakeven_locked=p.breakeven_locked,
                 leverage=float(p.leverage or 1.0),
+                side=str(p.side or "BUY"),
                 status=str(p.status),
                 last_price=price,
                 unrealized_pnl=unrealized,
-                unrealized_pct=(price / entry - 1) if price and entry else None,
+                unrealized_pct=yon * (price / entry - 1) if price and entry else None,
                 rationale_id=p.rationale_id,
             )
         )
@@ -95,6 +103,7 @@ async def trades(
             pnl_r=float(t.pnl_r),
             fees=float(t.fees),
             leverage=float(t.leverage or 1.0),
+            side=str(t.side or "BUY"),
             slippage_bps=float(t.slippage_bps),
             mfe=float(t.mfe),
             mae=float(t.mae),
@@ -390,12 +399,18 @@ async def live(session: SessionDep, redis: RedisDep, user: CurrentUser) -> dict:
     for bot in bots:
         rows = [p for p in open_rows if p.bot_id == bot.id]
         bot_exposure = sum(float(p.qty) * prices.get(p.symbol, float(p.entry_price)) for p in rows)
+        # Değer ve kâr işaretli (kısa pozisyon negatif değer); maruziyet brüt.
+        bot_value = sum(
+            _yon(p) * float(p.qty) * prices.get(p.symbol, float(p.entry_price)) for p in rows
+        )
         bot_unrealized = sum(
-            (prices.get(p.symbol, float(p.entry_price)) - float(p.entry_price)) * float(p.qty)
+            _yon(p)
+            * (prices.get(p.symbol, float(p.entry_price)) - float(p.entry_price))
+            * float(p.qty)
             for p in rows
         )
         bot_cash = float(bot.cash)
-        bot_equity = bot_cash + bot_exposure
+        bot_equity = bot_cash + bot_value
         capital = float(bot.capital) or 1.0
         per_bot.append(
             {
@@ -464,8 +479,11 @@ async def metrics(session: SessionDep, redis: RedisDep, user: CurrentUser) -> di
             .all()
         )
         exposure = sum(float(p.qty) * prices.get(p.symbol, float(p.entry_price)) for p in open_rows)
+        deger = sum(
+            _yon(p) * float(p.qty) * prices.get(p.symbol, float(p.entry_price)) for p in open_rows
+        )
         cash = float(bot.cash)
-        eq = cash + exposure
+        eq = cash + deger
         # `eq` canlı fiyatlarla şimdi hesaplanır, `equity_peak` ise yalnızca
         # çalışan bir bot bar kapanışında yazdığında güncellenir. Durdurulmuş
         # bir botta `eq` tepeyi geçebiliyor ve uç POZİTİF drawdown döndürüyordu.
