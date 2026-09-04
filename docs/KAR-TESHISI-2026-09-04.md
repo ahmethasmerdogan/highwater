@@ -5,6 +5,22 @@
 > 117 giriş dolumu, 6.829 canlı puan satırı, 125 sembollük evren. Her sayı DB'den;
 > betik `scratchpad/kar_analizi.py`.
 
+> **SONRADAN EKLENEN UYARI (20:30Z).** Bu belgedeki canlı ölçümler, sistemin
+> kendi kendini felç ettiği bir dönemden alındı: supervisor'ın nabız eşiği
+> (35 sn) bar karar süresinden (p50 157 sn) kısaydı ve worker'lar **tam karar
+> verirken** öldürülüyordu — 24 saatte 1697 yeniden başlatma. Bar kararları
+> yarıda kesildiği için girişler, çıkışlar ve rotasyon eksik uygulanmış
+> olabilir. Ayrıca boyutlandırmanın nakit tavanı komisyonu saymadığı için en
+> kârlı kol 24 saatte 22 giriş kaybetmiş. Üçü de düzeltildi (defter:
+> MEYDAN-OKUMA "Sistem felci ve kurtarma").
+>
+> Bunun anlamı: **§2'deki işlem defteri (−0,083R beklenti) bozuk bir sistemin
+> çıktısıdır.** Buna karşılık §6–§7'deki IC ve seçim-kuralı ölçümleri
+> `scores` tablosundan gelir ve bar kararının tamamlanmasına bağlı değildir
+> (puanlar kesilmeden önce yazılıyor); onlar geçerliliğini korur. Yani
+> "hangi sinyal öngörülü" sorusunun cevabı ayakta, "sistem ne kadar kaybetti"
+> sorusunun cevabı yeniden ölçülmeli.
+
 ## 1. Kısa cevap
 
 Atlanan şey tek bir şey değil, dört şeyin üst üste binmesi:
