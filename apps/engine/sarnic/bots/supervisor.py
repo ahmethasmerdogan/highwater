@@ -37,7 +37,18 @@ from sarnic.universe.engine import UniverseEngine, UniverseInputUnavailable
 
 log = get_logger(__name__)
 
-HEARTBEAT_TIMEOUT = timedelta(seconds=35)  # 3 kaçırılan heartbeat + tampon
+# Nabız worker'ın event loop'unda atılır; bar kararı (114 sembolün indikatör +
+# S/R + formasyon hesabı) CPU-bound ve loop'u bloke eder. Ölçüldü (2026-09-04,
+# 162 bar): karar süresi p50 **157 sn**, p90 **270 sn**, max 304 sn. 35 sn'lik
+# eşik bu yüzden her bar kararında tetikleniyordu: supervisor worker'ı tam
+# karar verirken öldürüyor, worker yeniden doğup aynı barı baştan hesaplıyor,
+# yük artıyor ve daha çok worker gecikiyordu — saatte 600 yeniden başlatmaya
+# varan kısır döngü. Eşik karar süresinin p90'ının üstünde olmak zorunda;
+# gerçek bir donma (12+ kaçırılan nabız) hâlâ yakalanır.
+HEARTBEAT_TIMEOUT = timedelta(seconds=360)
+#: Aynı botu art arda öldürmemek için soğuma: yeniden başlatılan bir worker'ın
+#: ayağa kalkıp ilk nabzını atması ve bekleyen barı hesaplaması zaman alır.
+RESTART_COOLDOWN = timedelta(seconds=180)
 POLL_INTERVAL = 10
 MAX_RESTARTS = 5
 # Havuz boş kaldığında yeniden deneme aralığı (spread örnekleri birikirken).
@@ -220,7 +231,11 @@ class BotSupervisor:
                     await self._spawn(session, bot, count_restart=hizli_cokme)
                     continue
 
-                # Heartbeat gözetimi
+                # Heartbeat gözetimi. Soğuma: az önce doğmuş bir worker
+                # nabızsız görünür (import + ilk bar hesabı); onu tekrar
+                # öldürmek fırtınayı besler.
+                if utcnow() - managed.started_at < RESTART_COOLDOWN:
+                    continue
                 last = bot.last_heartbeat_at
                 if last is None:
                     if utcnow() - managed.started_at > HEARTBEAT_TIMEOUT:
