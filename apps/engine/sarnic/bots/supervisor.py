@@ -422,6 +422,22 @@ class BotSupervisor:
             try:
                 async with session_scope() as session:
                     await prune_scores(session, retention_days=settings.scores_retention_days)
+                    # Olaylar ve okunmuş bildirimler de büyüyordu (48k / 122k satır):
+                    # 60 günden eski olay, 30 günden eski OKUNMUŞ bildirim silinir.
+                    from sqlalchemy import delete
+
+                    from sarnic.db.models import BotEvent as _BE
+                    from sarnic.db.models import Notification as _N
+
+                    simdi = utcnow()
+                    await session.execute(
+                        delete(_BE).where(_BE.created_at < simdi - timedelta(days=60))
+                    )
+                    await session.execute(
+                        delete(_N).where(
+                            _N.read_at.is_not(None), _N.created_at < simdi - timedelta(days=30)
+                        )
+                    )
             except asyncio.CancelledError:
                 raise
             except Exception:

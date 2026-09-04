@@ -79,7 +79,7 @@ class ConnectionHub:
         self._stop = asyncio.Event()
 
     async def start(self) -> None:
-        if self._reader is None:
+        if self._reader is None or self._reader.done():
             self._reader = asyncio.create_task(self._read_loop(), name="ws-hub")
 
     async def stop(self) -> None:
@@ -92,15 +92,21 @@ class ConnectionHub:
         await self.bus.close()
 
     async def _read_loop(self) -> None:
-        try:
-            async for _entry_id, event in self.bus.listen(last_id="$"):
-                if self._stop.is_set():
-                    break
-                self.broadcast(event)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            log.exception("ws_hub_read_failed")
+        # Okuyucu bir kez düşünce eskiden hiç kalkmıyordu: her istemci sessizce
+        # hiçbir şey almıyordu (API yeniden başlayana dek). Düşerse 5 sn sonra
+        # yeniden dinler; kapanış istenene dek.
+        while not self._stop.is_set():
+            try:
+                async for _entry_id, event in self.bus.listen(last_id="$"):
+                    if self._stop.is_set():
+                        break
+                    self.broadcast(event)
+                return
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                log.exception("ws_hub_read_failed")
+                await asyncio.sleep(5)
 
     def broadcast(self, event: Event) -> None:
         channel = channel_of(event)
@@ -178,6 +184,14 @@ async def websocket_endpoint(
     await hub.start()
 
     sender = asyncio.create_task(_sender(client))
+
+    # Gönderici ölürse soket açık kalıp panel sessizce bayatlıyordu (DESIGN §3
+
+    # ihlali). Gönderici bitince soketi kapat — istemci 'yeniden bağlanıyor' der.
+
+    sender.add_done_callback(
+        lambda t: asyncio.ensure_future(_close_quietly(websocket)) if not t.cancelled() else None
+    )
     try:
         # Yeni bağlanan istemci geçmişi alır — boş ekranla başlamaz.
         history = await hub.bus.history(count=200)
@@ -227,3 +241,9 @@ async def _handle_client_message(client: Client, raw: str) -> None:
         client.channels = wanted or set(ALL_CHANNELS)
     elif action == "ping":
         await client.websocket.send_text(json.dumps({"channel": "pong"}))
+
+
+async def _close_quietly(websocket) -> None:
+    if websocket.client_state is not WebSocketState.DISCONNECTED:
+        with contextlib.suppress(Exception):
+            await websocket.close()

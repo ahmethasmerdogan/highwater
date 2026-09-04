@@ -152,7 +152,9 @@ async def equity(session: SessionDep, user: CurrentUser, bot_id: int | None = No
 
 
 @router.get("/portfolio/benchmark")
-async def benchmark(session: SessionDep, user: CurrentUser, since: datetime | None = None) -> dict:
+async def benchmark(
+    session: SessionDep, redis: RedisDep, user: CurrentUser, since: datetime | None = None
+) -> dict:
     """Botlar, aynı havuzun eşit ağırlıklı sepetini yenebiliyor mu? (§5.5)
 
     Faz 0a'nın 3. testi buydu ve sistem o testte kaybetmişti; canlı panel ise
@@ -163,6 +165,18 @@ async def benchmark(session: SessionDep, user: CurrentUser, since: datetime | No
     stratejinin kendi yüküdür ve kıyastan düşülmesi tabloyu botların lehine
     çevirirdi.
     """
+    # 60 sn Redis önbelleği (metrics ile aynı desen): bot × 5000 nokta hesabı
+    # üç sayfadan 120-300 sn'de bir yoklanıyordu.
+    cache_key = f"{METRICS_CACHE_KEY}:benchmark:{since.isoformat() if since else 'all'}"
+    cached = await redis.get(cache_key)
+    if cached:
+        return json.loads(cached)
+    payload = await _benchmark_compute(session, since)
+    await redis.set(cache_key, json.dumps(payload, default=str), ex=60)
+    return payload
+
+
+async def _benchmark_compute(session, since: datetime | None) -> dict:
     bots = (await session.execute(select(Bot.id, Bot.name).order_by(Bot.id))).all()
     curves = {bid: await equity_curve(session, bid) for bid, _ in bots}
 
