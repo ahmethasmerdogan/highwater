@@ -1501,3 +1501,9 @@ Kaybetmeye hazır olunduğu açıkça söylendi; eleme kuralı aynen (14 gün).
 Beklenti dürüstçe: kenar +0,46R/işlemse A1'de işlem başına ≈ +%4 beklenen
 getiri ile ≈ %25 sapma; en kötü gün −%20…−%40 mümkün. Kâr da kayıp da
 görünür olacak; tablo iki haftada konuşur.
+
+**Düzeltme (aynı gece):** A1–A4 ilk barda kısıtlara takıldı — risk çarpanı
+hedef boyutu büyütünce %25 doluluk kuralı ve maruziyet/küme tavanları her
+girişi reddetti (tam SISTEM-ANALIZI §3.15). Tanımlar v2: `min_fill_ratio`
+0, brüt maruziyet tavanı kaldıraç × 0,8 (2,4 / 4,0), küme tavanı 1,5 / 2,5;
+A4'te kaldıraç eşiği kapıya (75) çekildi. Katılım damgası ve sermaye aynı.
