@@ -1555,3 +1555,11 @@ geçerse stop dolumdan planlanan mesafeye çapalanır ve WARN yazılır, (3) MFE
 ±9 999 ile sınırlı. Pozisyon 304 elle onarıldı (stop 133,28 = dolum − 3,587);
 olay bot_events'e yazıldı. Bu, maraton koluna dokunan bir hata düzeltmesidir;
 strateji tanımı değişmedi.
+
+**İlk short (15:00Z, 2026-09-04):** S1 ve S2 ROBOUSDT'yi 0,011331'den
+3× kaldıraçla sattı; stop 0,011988 (girişin ÜSTÜNDE), notional ≈ 358 $,
+risk %4,9. Satış geliri nakde girdi (S1 nakit 400 → 758,41), özsermaye
+girişte 399,64 (nakit − ödünç varlık değeri; fark komisyon). Emir kaydı
+MARKET SELL dolu; bekleyen stop emri (uzunda da) adaptör belleğinde, tabloya
+yazılmıyor — eskiden beri böyle. Küçük pürüz: açılış mesajındaki "R" kısa
+için ters okunuyor (rr_geometry uzun geometrisi) — gösterim, karar değil.
