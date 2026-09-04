@@ -22,6 +22,7 @@ from sqlalchemy import select
 
 from sarnic.config import settings
 from sarnic.core.clock import utcnow
+from sarnic.core.deadman import Deadman
 from sarnic.core.enums import BotState, EventKind, PositionStatus
 from sarnic.core.events import EventBus, get_event_bus
 from sarnic.core.logging import get_logger
@@ -93,6 +94,8 @@ class BotSupervisor:
     # ------------------------------------------------------------------ #
     async def run(self) -> None:
         log.info("supervisor_starting")
+        self.deadman = Deadman("supervisor", threshold_seconds=900)
+        self.deadman.start()
         await self._recover_state()
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
@@ -141,6 +144,7 @@ class BotSupervisor:
     # ------------------------------------------------------------------ #
     async def _supervise_loop(self) -> None:
         while not self._stop.is_set():
+            self.deadman.beat()
             try:
                 await self._reconcile()
             except asyncio.CancelledError:
@@ -158,6 +162,34 @@ class BotSupervisor:
             )
             wanted = {b.id: b for b in bots}
 
+            # Fırtına limiti kalıcı ölüm değildir: 30 dk soğuduktan sonra bir
+            # şans daha (sayaç pencere dışına çıkmıştır). Sürekli hızlı çöken
+            # yine ERROR'a döner; insan müdahalesi gerekiyorsa kayıt orada.
+            for b in (
+                await session.execute(
+                    select(Bot).where(
+                        Bot.state == BotState.ERROR, Bot.halt_reason == "tekrarlayan çökme"
+                    )
+                )
+            ).scalars():
+                son = b.last_heartbeat_at or b.created_at
+                if son is not None and utcnow() - son > timedelta(minutes=30):
+                    b.state = BotState.PAPER_RUNNING
+                    b.halt_reason = None
+                    log.warning("worker_storm_cooldown_retry", bot_id=b.id)
+                    session.add(
+                        BotEvent(
+                            bot_id=b.id,
+                            kind=str(EventKind.BOT_STATE_CHANGED),
+                            level="WARN",
+                            payload={
+                                "state": str(BotState.PAPER_RUNNING),
+                                "message": "30 dk soğuma sonrası yeniden deneniyor.",
+                            },
+                        )
+                    )
+                    wanted[b.id] = b
+
             # Çalışmaması gerekenleri durdur.
             for bot_id in list(self.processes):
                 if bot_id not in wanted:
@@ -166,8 +198,15 @@ class BotSupervisor:
             for bot_id, bot in wanted.items():
                 managed = self.processes.get(bot_id)
                 if managed is None or not managed.alive:
+                    hizli_cokme = False
                     if managed is not None:
                         code = managed.process.returncode
+                        # Fırtına sayacı yalnız HIZLI çökmeleri sayar (60 sn içinde
+                        # ölen worker). Nabız zaman aşımı restart'ları sayılmaz:
+                        # 3 Eylül'de swap tıkanması 9 botu aynı saniyede nabızsız
+                        # bıraktı; bu sayılsaydı tüm filo ERROR'a düşer, maraton
+                        # sessizce biterdi.
+                        hizli_cokme = (utcnow() - managed.started_at) < timedelta(seconds=60)
                         log.warning("worker_exited", bot_id=bot_id, code=code)
                         session.add(
                             BotEvent(
@@ -177,7 +216,7 @@ class BotSupervisor:
                                 payload={"exit_code": code},
                             )
                         )
-                    await self._spawn(session, bot)
+                    await self._spawn(session, bot, count_restart=hizli_cokme)
                     continue
 
                 # Heartbeat gözetimi
@@ -190,7 +229,7 @@ class BotSupervisor:
                         session, bot, f"heartbeat {int((utcnow() - last).total_seconds())} sn önce"
                     )
 
-    async def _spawn(self, session, bot: Bot) -> None:
+    async def _spawn(self, session, bot: Bot, count_restart: bool = True) -> None:
         managed = self.processes.get(bot.id)
         restarts = managed.restarts if managed else []
         cutoff = utcnow() - RESTART_WINDOW
@@ -235,7 +274,7 @@ class BotSupervisor:
             bot_id=bot.id,
             process=process,
             started_at=utcnow(),
-            restarts=[*recent, utcnow()],
+            restarts=[*recent, utcnow()] if count_restart else recent,
         )
         log.info("worker_spawned", bot_id=bot.id, pid=process.pid)
         session.add(BotEvent(bot_id=bot.id, kind="worker.spawned", payload={"pid": process.pid}))
@@ -252,7 +291,7 @@ class BotSupervisor:
             message=f"Yeniden başlatılıyor: {reason}",
         )
         await self._terminate(bot.id, reason, keep_history=True)
-        await self._spawn(session, bot)
+        await self._spawn(session, bot, count_restart=False)
 
     async def _terminate(self, bot_id: int, reason: str, keep_history: bool = False) -> None:
         managed = self.processes.get(bot_id)
