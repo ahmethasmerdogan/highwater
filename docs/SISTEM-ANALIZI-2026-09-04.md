@@ -31,13 +31,13 @@
 
 | # | Bulgu | Kanıt | Düzeltme | Etki | Durum |
 |---|---|---|---|---|---|
-| 1 | Ticker bayatlık kesimi (900 s) = tam tazeleme süresi (900 s) → hiç işlem görmeyen sembol her döngüde 60 sn "yok"; havuz yenilemesi hayalet eklenen/çıkan yazar | marketdata.py:75,444,949 | tazeleme 300 s; kesim 2× | S | kuyruk |
+| 1 | Ticker bayatlık kesimi (900 s) = tam tazeleme süresi (900 s) → hiç işlem görmeyen sembol her döngüde 60 sn "yok"; havuz yenilemesi hayalet eklenen/çıkan yazar | marketdata.py:75,444,949 | tazeleme 300 s; kesim 2× | S | **yapıldı** |
 | 2 | Tek küresel nabız üç pazarı kapılıyor: equitydata ölürse BIST/US bayat fiyatla işler, marketdata ölürse hisse botları gereksiz durur | marketdata.py:401, worker.py:511 | pazar başına `heartbeat:{market}` | S/M | kuyruk |
 | 3 | Hisse ticker'ı ve `_last_close` hiç süresi dolmaz/temizlenmez; delist BIST adı son fiyatta "canlı" | marketdata.py:946, equities.py:452-596 | N seans yaşlı girdiyi düş; `at` ↔ son seans | S | kuyruk |
-| 4 | Açık seans kapanmış bar olarak yazılıyor (`is_closed=True`); gün içi restart kısmi barı kalıcılaştırır | equities.py:236,298-337, store.py:59 | `day > last_closed_session` satırlarını düş | S | kuyruk |
-| 5 | `KEY_LAST_BAR` TTL'siz ve yaş kontrolsüz; açık pozisyonları fiyatlıyor; sessiz kline soketi yeşil nabızla donuk fiyat bırakır | marketdata.py:552-555,962; worker.py:1179 | expire 3×bar, yaş süzgeci, akış başına canlılık | S/M | kuyruk |
+| 4 | Açık seans kapanmış bar olarak yazılıyor (`is_closed=True`); gün içi restart kısmi barı kalıcılaştırır | equities.py:236,298-337, store.py:59 | `day > last_closed_session` satırlarını düş | S | **yapıldı** |
+| 5 | `KEY_LAST_BAR` TTL'siz ve yaş kontrolsüz; açık pozisyonları fiyatlıyor; sessiz kline soketi yeşil nabızla donuk fiyat bırakır | marketdata.py:552-555,962; worker.py:1179 | expire 3×bar (yapıldı); yaş süzgeci/akış canlılığı | S/M | **kısmen** |
 | 6 | Hisse veri kalitesi kör: yalnız `find_gaps` + log; `/data-quality`'de hisse satırı yok | equities.py:683-701 | `audit_frame` + `persist_report` + aralık yeniden çekimi | M | kuyruk |
-| 7 | `last_closed_session` 10 takvim günü geriye bakar; bayram+haftasonu 9 gün → `None` → `_due` kalıcı False | calendar.py:91,114; equities.py:412 | `date_to_session(direction="previous")` | S | kuyruk |
+| 7 | `last_closed_session` 10 takvim günü geriye bakar; bayram+haftasonu 9 gün → `None` → `_due` kalıcı False | calendar.py:91,114; equities.py:412 | 30 güne çıkarıldı | S | **yapıldı** |
 | 8 | Halted/delist kripto canlı gibi fiyatlanır (status yalnız girişte) | filters.py:151 | açık pozisyon fiyatlarken `status` kontrolü | S/M | kuyruk |
 | 9 | Hisselerde tick/lot/min-notional yok → kesirli hisse dolumu | marketdata.py:158-197, sizing 281-287 | statik hisse SymbolInfo (BIST fiyat adımı, lot 1) | M | kuyruk |
 | 10 | Fonlama/OI/likidasyon akışı yok — geriye doldurulamaz, toplamaya ŞİMDİ başlanmalı | — | `/fapi/v1/fundingRate`, `openInterestHist` | M/L | kuyruk |
@@ -97,8 +97,8 @@
 
 | # | Bulgu | Kanıt | Düzeltme | Etki | Durum |
 |---|---|---|---|---|---|
-| 1 | `kill` ucu "pozisyonlar kapatılıyor" der, yalnız STOPPED yazar → öksüz pozisyon | bots.py:253-258 | kapat-sonra-durdur tek işlemde | S | kuyruk |
-| 2 | Re-base `equity_peak`'i klemplemiyor → aşağı re-base ilk barda MAX_DRAWDOWN kill | portfolio.py:187, bots.py:150 | peak = max(capital, equity@rebase) | S | kuyruk |
+| 1 | `kill` ucu "pozisyonlar kapatılıyor" der, yalnız STOPPED yazar → öksüz pozisyon | bots.py:253-258 | metin gerçeği söyler; kapat-sonra-durdur kuyrukta | S | **kısmen** |
+| 2 | Re-base `equity_peak`'i klemplemiyor → aşağı re-base ilk barda MAX_DRAWDOWN kill | portfolio.py:187, bots.py:150 | peak = max(capital, equity@rebase) | S | **yapıldı** |
 | 3 | Kısmi kârlı işlemde canlı R son dilime bakıyordu | worker.py:828 | paylaşılan `weighted_r` | S | **yapıldı** |
 | 4 | `check_stop_triggers` asla ateşlemez; STOP_LOSS_LIMIT emirleri iptal edilmez, hayalet birikir | paper.py:399-416, worker.py:1087 | sil ya da gerçek stop alanıyla uygula | S | kuyruk |
 | 5 | Rotasyon kurbanı boyutlandırmadan ÖNCE kapatır; ret gelirse slot boş kalır | worker.py:903-921, engine.py:737-751 | önce boyutla, kabulde rotasyon | M | kuyruk (backtest) |
@@ -137,16 +137,16 @@ uygunluğu) + fonlama akışı. Sıra: veri (fonlama) → paper/backtest simetri
 | 1 | 2 GB tavan 14 worker'ı swap'a itti; 9 nabız restart'ı aynı saniyede | bellek.conf | 5G + `OOMPolicy=continue` | **yapıldı** |
 | 2 | Fırtına limiti nabız zaman aşımlarını sayıyor → filo toptan ERROR riski | supervisor 40,198 | yalnız hızlı çökme; 30 dk soğuma | **yapıldı** |
 | 3 | `_last_bar` bellekte → her doğuşta bar yeniden koşuyor (günde ~50) | worker 113,216 | `bots.last_bar_at` | **yapıldı** |
-| 4 | DEGRADED tek yönlü kapı; puanlamaz ama sağlıklı görünür | worker 210,534 | allow_entry=False ile koş, temizlenince dön | kuyruk |
+| 4 | DEGRADED tek yönlü kapı; puanlamaz ama sağlıklı görünür | worker 210,534 | allow_entry=False ile koşar; kurtarma kenarı kuyrukta | **kısmen** |
 | 5 | `/system/attention` 112k satırı her 20 sn yüklüyordu | main.py:338 | count + limit 1 | **yapıldı** |
-| 6 | WS hub okuyucu bir kez düşünce hiç kalkmıyor | ws.py:81-83 | `done()` kontrolü | kuyruk (S) |
-| 7 | Ölü `_sender` = sessizce bayat panel | ws.py:210 | done_callback → kapat | kuyruk (S) |
+| 6 | WS hub okuyucu bir kez düşünce hiç kalkmıyor | ws.py:81-83 | yeniden dinler | **yapıldı** |
+| 7 | Ölü `_sender` = sessizce bayat panel | ws.py:210 | done_callback → kapat | **yapıldı** |
 | 8 | Bildirimci restart'ta olay kaybeder (`$`, tüketici grubu yok) | notify 196, events 142 | XREADGROUP/ack | kuyruk (M) |
 | 9 | Supervisor/notifier deadman yok | — | eklendi (supervisor) | **yapıldı** (notifier kuyruk) |
-| 10 | `list_bots` N+1 (37 sorgu/15 sn) | bots.py:41-90 | group_by + selectinload | kuyruk (S) |
-| 11 | `/portfolio/benchmark` önbelleksiz, O(bot×5000) | portfolio 166 | 60 s Redis | kuyruk (S) |
-| 12 | Tanım süreç ömrü boyunca önbellekli | worker 130 | sv değişince yeniden oku | kuyruk (S) |
-| 13 | Yalnız scores budanıyor; notifications 122k, bot_events 48k büyüyor | supervisor 380 | olay budama döngüsü | kuyruk (S) |
+| 10 | `list_bots` N+1 (37 sorgu/15 sn) | bots.py:41-90 | tek sorgu | **yapıldı** |
+| 11 | `/portfolio/benchmark` önbelleksiz, O(bot×5000) | portfolio 166 | 60 s Redis | **yapıldı** |
+| 12 | Tanım süreç ömrü boyunca önbellekli | worker 130 | sv değişince yeniden oku | **yapıldı** |
+| 13 | Yalnız scores budanıyor; notifications 122k, bot_events 48k büyüyor | supervisor 380 | olay budama döngüsü | **yapıldı** |
 | 14 | `run-web.sh` her açılışta derliyor; OOM'da sonsuz derleme döngüsü | run-web.sh:33 | ayrı derleme adımı | kuyruk (S) |
 | 15 | `ExecStartPre` migration ve docker sıralaması yok | units | `After=docker` + alembic | kuyruk (S) |
 | 16 | Yedek tek diskte | yedek-al.sh | rsync dışarı | kuyruk (S) |
@@ -171,7 +171,7 @@ uygunluğu) + fonlama akışı. Sıra: veri (fonlama) → paper/backtest simetri
    → iz/kısmi geç ateşler — F sonucuna karşı önyargı); MFE/MAE kapanıştan;
    dolum sabitleri iki yerde; hisselerde rejim uydurma ("boğa"); çapalar
    farklı. **M.**
-6. **Hisse Sharpe 365/252 hatası (1,20×).** **S.**
+6. **Hisse Sharpe 365/252 hatası (1,20×).** **S — yapıldı.**
 7. **Araştırma CLI:** spec → ön-doğrulama (ölü varyant yakalar) → panel →
    süreç havuzu → `sweep_runs/sweep_variants` defteri + markdown. **M.**
 8. Metrik boşlukları: maliyet payı, maruziyete göre getiri, saat/gün
@@ -202,6 +202,9 @@ sözleşmesiyle kopyalıyor. **M.** 23–24. Günlük admin notu; çevrimdışı
 şerit `aria-live`. **S.**
 
 ## 7. Sıra (etki × güven ÷ emek)
+
+*Durum 2026-09-04 gece:* §1.1/1.4/1.5/1.7, §3.2/3.3/3.8, §4.1-3/5-7/9-13, §5.6 ve §6'nın
+10 S maddesi kapatıldı; iki puanlama deney kolu (V1, M1) ve P2 açıldı.
 
 **Bu hafta (S):** veri 1,4,5,7 · risk 1,2 · ops 6,7,10,11,13,20 · web 2,4,5,6,11,12,20
 · puanlama 1 (kalibrasyon sızıntısı) · backtest 6 (Sharpe) · kuyruktaki

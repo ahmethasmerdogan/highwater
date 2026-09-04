@@ -1885,3 +1885,31 @@ lig tablosu + hafta şeridi; Botlar kol defteri ve tek Durum bloğu; Araştırma
 rapor anatomisi; Günlük gün başlıklı akış; Yönetim'de Görünüm (kip, vurgu,
 yazı tipi). Konfeti gitti; kutlama yalnız bildirim. 13 sayfa açık ve koyu
 temada tarayıcı denetiminden geçti.
+
+
+## 2026-09-04 — Sistem analizi, cüretkâr deney kolları, üç düzeltme partisi
+
+Altı salt-okunur analiz (veri · özellik/puanlama · havuz/boyut/risk/yürütme ·
+botlar/API/ops · backtest/araştırma · panel) tek belgede birleşti
+(SISTEM-ANALIZI-2026-09-04.md). En ağır bulgu puanlamada: araştırma
+verisinde yalnız vol ailesi pozitif öngörü taşıyor, trend/momentum/flow
+anlamlı negatif, sr sabit — kalibrasyonun "p80+ negatif" bulgusuyla tutarlı.
+Sahibin anlayışıyla (kağıtta cüretkâr ol, kaybedeni ele) sekiz deney kolu
+açıldı: G9 kaldıraç sondası, G10 yarı-Kelly, G11 tam-Kelly, T1 uzun tutma,
+P1/P2 kısmi kâr (taramada kuralı geçen tek aile), V1 vol-ağırlıklı, M1
+ortalamaya dönüş. Kısmi kâr alma canlıya girdi (migration 0009/0010,
+paylaşılan `weighted_r`).
+
+Analizin açığa çıkardığı canlı kusurlar aynı gün kapatıldı: 2 GB bellek
+tavanı 14 worker'ı swap'a itiyordu (5G + OOMPolicy=continue); fırtına
+limiti nabız zaman aşımlarını sayıp filoyu ERROR'a düşürebilirdi; her
+worker doğuşu son barı yeniden koşuyordu (bots.last_bar_at); dikkat ucu
+112k bildirim satırını her 20 sn yüklüyordu; ticker bayatlık kesimi
+tazeleme süresine eşitti; son-bar hash'i TTL'sizdi; açık seans kapanmış bar
+gibi yazılıyordu; takvim 10 günlük pencereyi aşamıyordu; WS hub okuyucusu
+düşünce kalkmıyordu; re-base tepe klempi yoktu; hisse Sharpe'ı 1,20× şişkindi;
+list_bots N+1'di; kill ucu yalan söylüyordu. Panelde açık tema kontrastı,
+portal odak/hareket kapsamı, hata dalı, pazar bağlantıları, rol koruması,
+saat dilimi eki düzeltildi. Kuyrukta kalanlar belgede önceliklidir: panel
+önbelleği + araştırma CLI, pazar başına nabız, kalibrasyon sızıntısı,
+bar-içi fidelite, fonlama akışı, kısa taraf.
