@@ -40,6 +40,7 @@ from sarnic.core.enums import (
 )
 from sarnic.core.events import EventBus, get_event_bus
 from sarnic.core.logging import get_logger
+from sarnic.core.memory import bellek_iade
 from sarnic.core.observability import DECISION_ERRORS
 from sarnic.data.marketdata import data_is_stale, read_last_bars, read_tickers
 from sarnic.data.store import last_closed_bar, load_frame
@@ -262,6 +263,8 @@ class BotWorker:
         # ancak bir sonraki bar kapanışında olurdu.
         if await self.run_bar(bar):
             self._last_bar = bar
+        # Bar başına 100+ sembolün çerçeveleri geçicidir; arenayı geri ver.
+        bellek_iade()
 
     async def run_bar(self, bar_time: datetime) -> bool:
         async with self._bot_kilidi:

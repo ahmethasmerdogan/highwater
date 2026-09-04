@@ -26,6 +26,7 @@ from sarnic.core.deadman import Deadman
 from sarnic.core.enums import BotState, EventKind, PositionStatus
 from sarnic.core.events import EventBus, get_event_bus
 from sarnic.core.logging import get_logger
+from sarnic.core.memory import bellek_iade
 from sarnic.core.observability import UNIVERSE_SIZE
 from sarnic.db.models import Bot, BotEvent, Position
 from sarnic.db.session import session_scope
@@ -355,6 +356,7 @@ class BotSupervisor:
                             skip_if_unchanged=not due,
                         )
                         new_size = len(result.symbols)
+                        bellek_iade()
                         # Boyut değişmediyse susulur: aksi hâlde havuz hedefin
                         # altında kaldığı sürece her 3 dakikada bir aynı satır loglanır.
                         if new_size != last_size:
@@ -410,6 +412,7 @@ class BotSupervisor:
                         symbols = await self.universe.current_symbols(session)
                         if symbols:
                             await compute_clusters(session, symbols)
+                            bellek_iade()
             except asyncio.CancelledError:
                 raise
             except Exception:
@@ -461,6 +464,7 @@ class BotSupervisor:
                         session,
                         since=utcnow() - timedelta(days=OBSERVATIONS_LOOKBACK_DAYS),
                     )
+                bellek_iade()
             except asyncio.CancelledError:
                 raise
             except Exception:
