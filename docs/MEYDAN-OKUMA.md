@@ -1543,3 +1543,15 @@ eksi → arşiv.
 borç oranı; boyutlandırma nakit tavanının komisyon payı (A3'te "yetersiz
 marj" retleri: `serbest_nakit × lev` komisyonsuz, adaptör komisyon ekleyince
 marj yetmiyor).
+
+**Olay (2026-09-04 13:01–14:2x UTC, bot 5 "Havuz Momentum · 30 dakika"):**
+MSTRBUSDT girişinde stop (138,92) dolumun (136,87) ÜSTÜNDE kaldı: bundle 12:30
+barı yerine 12:00 kapanışını (142,51) taşıyordu, stop ondan hesaplandı, emir
+ise gerçek defterden doldu. 1R ≈ 0 → MFE/MAE sonsuz → `NUMERIC(14,8)` taşması
+→ gözetim ve karar döngüsü ~75 dakika boyunca her turda çöktü, 12:30 sonrası
+bar işlenmedi. Üç katmanlı düzeltme: (1) karar barı taze olmayan sembol artık
+kriptoda da atlanır (seanslı pazardaki kural genelleştirildi), (2) dolum stopu
+geçerse stop dolumdan planlanan mesafeye çapalanır ve WARN yazılır, (3) MFE/MAE
+±9 999 ile sınırlı. Pozisyon 304 elle onarıldı (stop 133,28 = dolum − 3,587);
+olay bot_events'e yazıldı. Bu, maraton koluna dokunan bir hata düzeltmesidir;
+strateji tanımı değişmedi.
