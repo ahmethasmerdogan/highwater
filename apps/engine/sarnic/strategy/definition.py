@@ -90,6 +90,14 @@ class EntrySpec:
     #: tek işleme bağımlı hâle geliyor ve tek isim maruziyeti %40'a çıkıyor.
     #: 4'te tek isim %20 — `max_position_pct` tavanının (%30) altında marjla.
     max_positions: int = 4
+    #: Yön: LONG (yalnız uzun — bugünkü davranış), SHORT (yalnız kısa), BOTH.
+    #: Kısa puan aynı özelliklerden yönlü aileler ters çevrilerek üretilir
+    #: (KISA-YON-PLANI §3); öngürü gücü henüz ölçülmemiş bir hipotezdir.
+    direction: str = "LONG"
+
+    def directions(self) -> tuple[int, ...]:
+        """+1 uzun, −1 kısa; worker ve backtest yalnız bunu tüketir."""
+        return {"LONG": (1,), "SHORT": (-1,), "BOTH": (1, -1)}.get(self.direction, (1,))
 
 
 @dataclass(slots=True)
@@ -149,7 +157,12 @@ class StrategyDefinition:
 
     # ------------------------------------------------------------------ #
     def to_dict(self) -> dict:
-        return asdict(self)
+        data = asdict(self)
+        # LONG ise anahtar yazılmaz: saklı tanımların JSON'u ve hash'i (9 maraton
+        # kolu dâhil) değişmez. Eski JSON `from_dict` ile varsayılan LONG olur.
+        if data["entry"].get("direction", "LONG") == "LONG":
+            data["entry"].pop("direction", None)
+        return data
 
     def hash(self) -> str:
         return hashlib.sha256(
@@ -206,6 +219,8 @@ class StrategyDefinition:
             raise ValueError("entry.hours_utc: 0–23 arası saatlerden oluşan, boş olmayan liste")
         if not 0 <= self.entry.min_score <= 100:
             errors.append("entry.min_score 0–100 aralığında olmalı")
+        if self.entry.direction not in ("LONG", "SHORT", "BOTH"):
+            errors.append("entry.direction LONG, SHORT ya da BOTH olmalı")
         if self.entry.max_positions < 1:
             errors.append("entry.max_positions en az 1 olmalı")
         if self.exit.score_exit >= self.entry.min_score:
