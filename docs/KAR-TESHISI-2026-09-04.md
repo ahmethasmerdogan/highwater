@@ -76,6 +76,46 @@ Yeni kollar (400 $, deney, 14 gün eleme kuralı): **N1** gece penceresi (18–0
 **N2** kapı 85 · 3 slot, **N3** gece + vol 60 + kapı 82. Şerit H uzun pencerede
 (veri izin verdiği kadar geriye) in-sample/holdout ile koşar; sonuç deftere.
 
+## 6. Ek ölçüm: özellik bazında IC (35.366 puan satırı, 391 bar, 138 sembol)
+
+Aile ortalaması ailenin içindeki ayrışmayı gizliyordu. `scores.rationale.percentiles`
+üzerinden 17 özelliğin tek tek kesitsel rank-IC'si (24 saat ileri getiri):
+
+| Özellik | IC | t | Yorum |
+|---|---|---|---|
+| `atr_pct` | **+0,129** | **+17,4** | volatilite oranı — en güçlü sinyal |
+| `bb_width` | **+0,094** | **+12,6** | Bollinger genişliği |
+| `trend_1d` | +0,029 | +4,9 | günlük eğim, zayıf ama gerçek |
+| `taker_buy_ratio` | +0,013 | +2,4 | alıcı baskısı |
+| `score` (bileşik) | +0,005 | +0,8 | **sıfır** |
+| `macd_hist_slope` | −0,019 | −2,5 | ters |
+| `trend_4h` | −0,030 | −4,0 | ters |
+| `ema_alignment` | −0,032 | −3,9 | ters |
+| `price_over_ema200` | −0,039 | −5,0 | ters |
+| `ret_168h_skip6` | −0,049 | −5,5 | 7 günlük momentum **ters** |
+
+**Bu beta değil, gerçek kenar.** Kesit medyanı çıkarılınca (piyasa-nötr) IC aynı
+kalıyor: +0,129. Rejime göre ayrıldığında `atr_pct` yukarı barlarda +0,088 (t +7,7),
+aşağı barlarda **+0,167** (t +18,9) — düşen piyasada daha da güçlü. Desil farkı
+piyasa-nötr **+86 bps/gün** (üst %10: +84 bps, alt %10: −2 bps).
+
+**Trend ailesi rejime bağlı ve toplamda zararlı.** `price_over_ema200`, `ema_alignment`,
+`trend_4h` yukarı barlarda ≈ 0 (+0,01…+0,02), aşağı barlarda −0,07…−0,09. Bileşik puan
+da öyle: yukarı barlarda +0,028 (t +3,4), aşağı barlarda −0,015. Sistem yalnız yükselen
+piyasada çalışıyor, düşende aktif olarak zarar ediyor — ve ağırlıkların %55'i orada.
+
+**Bileşik puanın uçları yine de ayrışıyor.** IC ≈ 0 olmasına rağmen desil farkı +55 bps
+(üst %10 +38 bps, alt %10 −18 bps): ilişki doğrusal değil, yalnız uçta bilgi var. Kapıyı
+80'den 85'e çekmenin canlı defterdeki lehte sonucu bununla tutarlı.
+
+### Bunun anlamı
+
+1. `vol` ailesini ağırlıklandırmak (V1/A3 kolları) ölçümün doğrudan sonucu — ve bu iki
+   kol şu an filo lideri (+%2,7 ve +%6,0). Tesadüf değil.
+2. Trend/momentum ağırlığı düşürülmeli ya da **rejime bağlanmalı**: bugünkü
+   `regime_multiplier` yalnız pozisyon boyutunu kısıyor, sinyalin işaretini değiştirmiyor.
+3. Kapı yükseltmek (82–85) uçtaki bilgiyi kullanır.
+
 ## 5. Dürüstlük notu
 
 69 işlem az; kesitler 5–30 işlemlik. Yön ve büyüklük tutarlı (Faz 0a IC, 18 günlük
