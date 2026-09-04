@@ -37,6 +37,8 @@ class OpenPosition:
     realized_fees: float = 0.0
     leverage: float = 1.0
     partial_done: bool = False
+    entry_qty: float = 0.0
+    realized_points: float = 0.0
 
     def notional(self, price: float) -> float:
         return self.qty * price
@@ -100,6 +102,8 @@ async def load_open_positions(session: AsyncSession, bot_id: int) -> list[OpenPo
             score_at_entry=float(p.score_at_entry),
             breakeven_locked=p.breakeven_locked,
             partial_done=bool(getattr(p, "partial_done", False)),
+            entry_qty=float(p.entry_qty or 0),
+            realized_points=float(p.realized_points or 0),
             mfe=float(p.mfe),
             mae=float(p.mae),
             entry_fees=float(p.entry_fees),

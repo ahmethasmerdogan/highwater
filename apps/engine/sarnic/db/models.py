@@ -329,6 +329,8 @@ class Bot(Base):
     config: Mapped[dict] = mapped_column(JSONB, default=dict)
     last_heartbeat_at: Mapped[datetime | None] = mapped_column(TimestampTZ, default=None)
     entries_blocked_until: Mapped[datetime | None] = mapped_column(TimestampTZ, default=None)
+    #: Tüketilen son karar barı — yeniden doğuşta aynı bar yeniden koşmasın.
+    last_bar_at: Mapped[datetime | None] = mapped_column(TimestampTZ, default=None)
     halt_reason: Mapped[str | None] = mapped_column(String(64), default=None)
     created_at: Mapped[datetime] = mapped_column(TimestampTZ, server_default=func.now())
 
@@ -409,6 +411,9 @@ class Position(Base):
     #: raporlar, daha öncesinde gerçekleşen kâr/zarar hiçbir yerde görünmez.
     realized_pnl: Mapped[Decimal] = mapped_column(MONEY, default=0, server_default="0")
     realized_fees: Mapped[Decimal] = mapped_column(MONEY, default=0, server_default="0")
+    #: Giriş miktarı ve satılmış dilimlerin fiyat-puanı (Σ qty×(çıkış−giriş)) — kısmi R.
+    entry_qty: Mapped[Decimal] = mapped_column(QTY, default=0, server_default="0")
+    realized_points: Mapped[Decimal] = mapped_column(MONEY, default=0, server_default="0")
     status: Mapped[PositionStatus] = mapped_column(
         String(12), default=PositionStatus.OPEN, index=True
     )

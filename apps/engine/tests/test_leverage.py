@@ -178,3 +178,15 @@ async def test_adapter_no_leverage_meta_unchanged():
         OrderRequest(symbol="T", side=OrderSide.BUY, type=OrderType.MARKET, qty=12.0)
     )
     assert ret.status == OrderStatus.REJECTED  # 1.200 > 1.000
+
+
+def test_agirlikli_r_kismi_yoksa_eski_formul():
+    """weighted_r: kısmi satış yoksa (exit−entry)/risk ile birebir; kısmi
+    varsa giriş miktarına göre ağırlıklı — elle hesap 1,5R (bkz. backtest testi)."""
+    from sarnic.execution.accounting import weighted_r
+
+    assert weighted_r(100.0, 110.0, 10.0, 5.0) == 2.0
+    assert weighted_r(100.0, 110.0, 10.0, 5.0, realized_points=0.0, entry_qty=10.0) == 2.0
+    # 10 adet @100, 5'i 105'ten satıldı (puan 25), kalan 5 adet 110'dan: (25+50)/(5×10)=1,5
+    assert weighted_r(100.0, 110.0, 5.0, 5.0, realized_points=25.0, entry_qty=10.0) == 1.5
+    assert weighted_r(100.0, 110.0, 0.0, 5.0) == 0.0

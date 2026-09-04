@@ -46,3 +46,22 @@ def total_fees(*, entry_fees: float, exit_fees: float, realized_fees: float = 0.
     sorusu yanlış cevaplanır.
     """
     return entry_fees + realized_fees + exit_fees
+
+
+def weighted_r(
+    entry: float,
+    exit_price: float,
+    qty: float,
+    risk_per_unit: float,
+    realized_points: float = 0.0,
+    entry_qty: float = 0.0,
+) -> float:
+    """R çarpanı, giriş miktarına göre ağırlıklı fiyat-puanı.
+
+    Kısmi kâr alma yoksa (realized_points=0, entry_qty=qty) eski formülle
+    birebir: (exit − entry)/risk. Worker ve backtest aynı fonksiyonu çağırır.
+    """
+    toplam = entry_qty if entry_qty > 0 else qty
+    if toplam <= 0 or risk_per_unit <= 0:
+        return 0.0
+    return (realized_points + (exit_price - entry) * qty) / (risk_per_unit * toplam)
