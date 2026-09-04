@@ -778,7 +778,8 @@ class BotWorker:
                     symbol=position.symbol,
                     message=(
                         f"{position.symbol} kısmi kâr alındı: {result.filled_qty:.4f} satıldı "
-                        f"@ {exit_price:.6f} ({dilim_pnl - dilim_borc:+.2f}), {kalan:.4f} iz sürüyor."
+                        f"@ {exit_price:.6f} ({dilim_pnl - dilim_borc:+.2f}), "
+                        f"{kalan:.4f} iz sürüyor."
                     ),
                 )
                 return

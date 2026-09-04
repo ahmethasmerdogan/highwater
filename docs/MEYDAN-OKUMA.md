@@ -1447,3 +1447,14 @@ kesiciler her kolda açık ("kaybederken kontrollü"):
 Eleme kuralı: bir kol 14 günde kontrolünün (bot 3) altında VE mutlak
 zararda ise durdurulur ve arşive gider; kalanlar maraton tablosunda
 yarışır. Kaynak kollara dokunulmaz.
+
+**E ve F şeridi sonuçları (2026-09-04):**
+- *E — saat penceresi:* dört pencere de girişleri boğdu (in n=7–12, holdout
+  n=1–2); holdout'ta hepsi negatif. Canlı defterdeki 00–06 UTC farkı
+  backtest'te yeniden üretilemedi (çok az işlem). H1 PARK; düğme duruyor,
+  maraton verisi büyüyünce yeniden bakılır.
+- *F — kısmi kâr alma:* üç varyant da in-sample'da kontrolü geçti (+0,63 /
+  +0,65 / +0,70R vs +0,25) ve holdout'ta daha az kaybetti (−0,01 / −0,01 /
+  −0,08 vs −0,23); düşüş kontrolden düşük. "1R %50" ön-kayıtlı kuralı geçen
+  ilk varyant — bot 18 (P1) olarak canlıda. Örneklem küçük (14/3); kararı
+  maraton verecek.
