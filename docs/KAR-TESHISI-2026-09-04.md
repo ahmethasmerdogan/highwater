@@ -20,9 +20,11 @@ Atlanan şey tek bir şey değil, dört şeyin üst üste binmesi:
    yakalıyor, 24 saatte tersine dönüyor.
 3. **06–12 UTC girişleri kaybediyor.** 29 işlem (tümünün %42'si), −51 $, −0,53R, kazanma
    %24. 18–24 UTC: +0,61R, kazanma %62. 00–06: +0,18R. Backtest H1 ile aynı yönde.
-4. **Filo tek bir bahis.** 19 kol aynı puanı üretip aynı sembolü alıyor: LINKUSDT 11
-   kolda −52 $ (ortalama −1,08R). Kollar arası "çeşitlendirme" yok; bir sinyal
-   kaybedince bütün filo kaybediyor.
+4. **Deney kollarının çoğu yanlış yeri kurcalıyor.** Ölçüldü (§8): giriş sinyalini
+   değiştirmeyen kollar (çıkış, kısmi kâr, tutma süresi, risk çarpanı) birbiriyle
+   %83–100 örtüşüyor; aynı sembolleri alıyorlar. Kayıp girişte olduğuna göre bu kollar
+   dar bir soruyu ölçüyor. Yığılan 6 sembol filoya −33 $ getirdi, LINKUSDT tek başına
+   12 kolda −52 $.
 
 Sorun olmayanlar (ölçüldü, temize çıktı): **maliyet** (komisyon+borç brüt hareketin %8,5'i,
 işlem başına ≈0,09R), **dolum** (giriş dolumu karar barı kapanışından ortalama 4 bps
@@ -164,3 +166,24 @@ en sakin 4** → medyan +48,3 bps (193 seçim).
   bandı 42 örnekte −192 bps; bantlar arasında monoton bir düzen yok. Kapıyı yükseltmek
   tek başına çözüm değil — H şeridi buna karar verecek.
 - "Kenar yalnız vol ailesinde" doğrulandı ve güçlendi; asıl mesele **ağırlık**, yön değil.
+
+## 8. Filo çeşitliliği (126 pozisyon, 23 kol, 43 sembol)
+
+| Ölçü | Değer |
+|---|---|
+| Kol çiftlerinde medyan sembol örtüşmesi (Jaccard) | 0,00 |
+| Hiç örtüşmeyen çift | 136 / 252 |
+| %50+ örtüşen çift | 26 / 252 |
+| Tek kolun aldığı sembol | 23 / 43 |
+
+Örtüşme rastgele dağılmıyor, **ayarın türüne göre** kümeleniyor:
+
+- **%83–100 örtüşen çiftlerin hepsi giriş sinyalini aynı bırakan kollar**: G9 (kaldıraç),
+  P1/P2 (kısmi kâr), T1 (uzun tutma), A1 (risk çarpanı). Bunlar aynı sembolleri alıp
+  farklı kapatıyor.
+- Ağırlıkları değiştiren kollar (V1 vol-ağır, M1 ortalamaya dönüş) örtüşmüyor — gerçek
+  çeşitlilik yalnız **puanlama** değişince doğuyor.
+
+Sonuç: kayıp girişte olduğuna göre (§2, §7), filonun büyük kısmı yanlış değişkeni
+tarıyor. Yeni kol kurarken öncelik **puanlama ağırlığı / seçim kuralı**; çıkış ve risk
+düğmeleri ancak giriş düzeldikten sonra anlam taşır.
