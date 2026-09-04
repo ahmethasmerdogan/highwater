@@ -15,7 +15,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
-from sqlalchemy import select, text, update
+from sqlalchemy import func, select, text, update
 from starlette.responses import Response
 
 from sarnic.api.deps import CurrentUser, RedisDep, SessionDep, close_redis, get_redis
@@ -335,24 +335,32 @@ def create_app() -> FastAPI:
                     market=market,
                 )
 
-        kritik = (
-            (
-                await session.execute(
-                    select(Notification).where(
-                        Notification.read_at.is_(None),
-                        Notification.level.in_(("ERROR", "CRITICAL")),
-                    )
-                )
-            )
-            .scalars()
-            .all()
+        # Sayım ve tek başlık — tüm satırları yüklemek değil (112k okunmamış
+        # ERROR/CRITICAL satırı her 20 sn'de ORM'e alınıyordu; API'nin bellek
+        # baskısının kaynağı buydu).
+        kritik_kosul = (
+            Notification.read_at.is_(None),
+            Notification.level.in_(("ERROR", "CRITICAL")),
         )
-        if kritik:
+        kritik_n = (
+            await session.execute(
+                select(func.count()).select_from(Notification).where(*kritik_kosul)
+            )
+        ).scalar_one()
+        if kritik_n:
+            baslik = (
+                await session.execute(
+                    select(Notification.title)
+                    .where(*kritik_kosul)
+                    .order_by(Notification.created_at.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
             ekle(
                 "INFO",
                 "unread_critical",
-                f"{len(kritik)} okunmamış kritik bildirim",
-                kritik[0].title,
+                f"{kritik_n} okunmamış kritik bildirim",
+                baslik or "",
                 "/gunluk?tab=bildirimler",
             )
 
