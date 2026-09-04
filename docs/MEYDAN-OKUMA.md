@@ -1628,3 +1628,16 @@ ekliyordu; tavana dayanan her emir "yetersiz marj" ile reddediliyordu. A3 kolu
 **4. Bütçe tükendiğinde gürültü.** Maruziyet tavanı dolunca sistem her aday için
 sizing çağırıp ayrı ret satırı yazıyordu: M1 kolu 24 saatte 420 satır. Üçüncü
 bütçe reddinden sonra döngü tek özetle biter (adaya özgü retler sayılmaz).
+
+**Karar süresi 157 sn → 16,5 sn (2026-09-04 21:07Z sonrası, 28 bar).** İki adımda:
+(1) bar başına özellik önbelleği (`features/onbellek.py`) — indikatör/S-R/formasyon
+hesabı strateji ayarından bağımsız, 20 kol aynı işi yapıyordu; (2) **izdiham
+kilidi** — önbellek tek başına işe yaramadı, çünkü 20 kol aynı saniyede uyanıp
+hepsi önbelleği boş buluyordu (ölçüm: 21:00 barında hepsi 160–177 sn'de aynı anda
+bitirdi). Artık kilidi alan hesaplar, diğerleri bekleyip paylaşır; kilit sahibi
+yetişmezse kalanı kendileri hesaplar (fail-open). Ölçülen aralık 8,9–21,4 sn,
+sistem yükü 21 → 1,7.
+
+Bunun kâr tarafındaki karşılığı: emir artık bar kapanışından ~16 saniye sonra
+veriliyor, 157 saniye sonra değil. Teşhiste (§1) "sorun değil" diye geçilen
+4 bps ortalama dolum sapmasının (p90 34 bps) büyük kısmı bu gecikmeydi.
