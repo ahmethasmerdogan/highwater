@@ -806,3 +806,30 @@ maraton sonrası karara bağlanmalı.
   tavanını komisyonsuz hesaplar; `PaperAdapter` marj kuralına komisyonu
   ekler → tavan bağlayınca emir "yetersiz marj/bakiye" ile reddedilir.
   Düzeltme 1× uzun davranışını da değiştireceği için maraton sonrası.
+
+## Bug hunt kalıntıları (2026-09-04, karar bekliyor)
+
+Ölçüldü ve doğrulandı ama spec kararı gerektirdiği için kapatılmadı:
+
+- **Bekleyen stop emirleri iptal edilmiyor.** Her girişte adaptöre bir
+  `STOP_LOSS_LIMIT` bırakılıyor, pozisyon kapanınca iptal edilmiyor;
+  `_open_orders` süreç ömrü boyunca büyüyor ve `get_open_orders()` yanlış
+  söylüyor. Bellek etkisi ihmal edilebilir. Asıl soru: paper'ın "borsada
+  bekleyen stop" özelliği tamamen dekoratif mi olsun (stopları worker
+  yönetiyor), yoksa gerçekten simüle mi edilsin?
+- **`PaperAdapter.check_stop_triggers` ölü ve tek yönlü.**
+  `getattr(order, "_stop_price", None)` hiçbir yerde set edilmiyor → her
+  zaman boş liste. Ayrıca `price <= stop_price` yalnız uzun için doğru.
+  Çağıranı yok. Silinsin mi, canlandırılsın mı?
+- **DELIST çıkış yolu ölü.** `ExitReason.DELIST` yalnız `MarketView.delisted`
+  ile tetikleniyor; o bayrak hiçbir yerde `True` yapılmıyor,
+  `PaperAdapter.halt_symbol` ve `UniverseEngine.mark_delisted` hiç
+  çağrılmıyor. Delist tespiti nereden gelecek?
+- **Kill switch yetim bırakabiliyor.** `_close_all` sırasında reddedilen ya da
+  kısmi dolan çıkış pozisyonu açık bırakıyor; `bot.state` o anda `STOPPED`
+  olduğu için worker onu bir daha yönetmiyor. Kapanamayan pozisyon ne olsun?
+- **Rotasyon kurbanı boşa gidebiliyor.** Kurban kapatıldıktan sonra sizing
+  yeni girişi reddederse slot boş kalıyor (backtest'te de aynı — tutarlı ama
+  bilinçli bir karar değil).
+- **Okunmamış bildirim saklama süresi yok.** Günde ~600 bildirim üretiliyor,
+  hiç okunmuyor; temizlik yalnız okunmuşları siliyor. Süre koymak ürün kararı.
