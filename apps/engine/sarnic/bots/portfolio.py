@@ -14,7 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from sarnic.core.enums import PositionStatus
+from sarnic.core.enums import OrderSide, PositionStatus
 from sarnic.db.models import Bot, EquityPoint, Position, Trade
 
 
@@ -39,12 +39,18 @@ class OpenPosition:
     partial_done: bool = False
     entry_qty: float = 0.0
     realized_points: float = 0.0
+    #: +1 uzun, −1 kısa (positions.side). Notional brüttür; değer ve kâr işaretli.
+    direction: int = 1
 
     def notional(self, price: float) -> float:
         return self.qty * price
 
+    def market_value(self, price: float) -> float:
+        """Özsermayeye katkı: kısa pozisyon negatif (ödünç varlık borcu)."""
+        return self.direction * self.qty * price
+
     def unrealized(self, price: float) -> float:
-        return (price - self.entry_price) * self.qty
+        return self.direction * (price - self.entry_price) * self.qty
 
 
 @dataclass(slots=True)
@@ -64,7 +70,9 @@ class PortfolioSnapshot:
 
     @property
     def equity(self) -> float:
-        return self.cash + self.exposure
+        return self.cash + sum(
+            p.market_value(self.prices.get(p.symbol, p.entry_price)) for p in self.positions
+        )
 
     @property
     def symbols(self) -> set[str]:
@@ -101,6 +109,7 @@ async def load_open_positions(session: AsyncSession, bot_id: int) -> list[OpenPo
             initial_stop=float(p.initial_stop),
             score_at_entry=float(p.score_at_entry),
             breakeven_locked=p.breakeven_locked,
+            direction=OrderSide(p.side).direction if p.side else 1,
             partial_done=bool(getattr(p, "partial_done", False)),
             entry_qty=float(p.entry_qty or 0),
             realized_points=float(p.realized_points or 0),
