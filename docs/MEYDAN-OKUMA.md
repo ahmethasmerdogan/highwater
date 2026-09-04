@@ -1485,3 +1485,19 @@ pozisyon nakdi kilitleyip sonraki girişleri düşürüyor. Kısmi kâr + iz 2,5
 holdout'ta pozitif tek varyant (+0,10R) ve iki pencerede kuralı geçiyor →
 **bot 21 (P2)** olarak katıldı. Kısmi kâr ailesi (P1, P2) şimdilik
 taramanın tek tutarlı kazananı.
+
+## AGRESİF KOLLAR — 2026-09-04 (sahibin talimatı: "paper'da korumacı olma, yüksek kâr")
+
+Yeni düğme `sizing.leverage.scale_risk`: kaldıraç riski de çarpar (işlem
+başına risk = risk_pct × kaldıraç). Kesiciler açık ama gevşek (günlük −%15,
+haftalık −%30, düşüş −%60/70, 8 ardışık zarar); likidasyon modeli aynen.
+Kaybetmeye hazır olunduğu açıkça söylendi; eleme kuralı aynen (14 gün).
+- **bot 22 · A1:** bot 3 kopyası, risk %3 × 3× = işlem başına **%9**, 6 slot.
+- **bot 23 · A2:** bot 5 (30 dk) kopyası, risk %4 × 5× = **%20**, 6 slot,
+  düşüş kesicisi −%70. En agresif kol; stop-marj sığması 0,8 → stop girişin
+  %16'sından uzaksa kaldıraç kendiliğinden düşer.
+- **bot 24 · A3:** V1 (vol-ağırlıklı) + risk %3 × 3×.
+- **bot 25 · A4:** kapı 75, 6 slot, kademeler 75'ten, risk %3, 2×/3×.
+Beklenti dürüstçe: kenar +0,46R/işlemse A1'de işlem başına ≈ +%4 beklenen
+getiri ile ≈ %25 sapma; en kötü gün −%20…−%40 mümkün. Kâr da kayıp da
+görünür olacak; tablo iki haftada konuşur.
