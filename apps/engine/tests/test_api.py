@@ -938,3 +938,88 @@ async def test_attention_giris_yasagini_ve_akislari_listeler(api_client, api_ses
 
     tek = (await api_client.get(f"/bots/{bot.id}", headers=auth)).json()
     assert tek.get("entries_blocked_until"), tek
+
+
+# --------------------------------------------------------------------------- #
+#  /bots/fleet — Köprü'nün filo defteri tek uçtan
+# --------------------------------------------------------------------------- #
+async def test_fleet_bos_filoda_liste_doner(api_client, auth):
+    response = await api_client.get("/bots/fleet", headers=auth)
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+
+
+async def test_fleet_satiri_islem_istatistigi_ve_pencereleri_tasir(api_client, auth, api_session):
+    """Bir bot, biri kârlı biri zararlı iki kapanmış işlem; açık kısa pozisyon
+    negatif değer taşır, maruziyet brüttür."""
+    from datetime import UTC, datetime
+
+    bot, _ = await make_bot(api_session, "filo-bot")
+    bot.config = {"deney": True, "rebased_at": "2026-09-01T00:00:00+00:00"}
+    simdi = datetime.now(UTC)
+    for i, (pnl, pnl_r) in enumerate([(90.0, 1.5), (-30.0, -1.0)]):
+        pos = Position(
+            bot_id=bot.id,
+            symbol=f"F{i}USDT",
+            side="BUY",
+            qty=Decimal("1"),
+            entry_price=Decimal("100"),
+            entry_time=simdi - timedelta(hours=5),
+            stop=Decimal("90"),
+            initial_stop=Decimal("90"),
+            score_at_entry=Decimal("80"),
+            status=PositionStatus.CLOSED,
+        )
+        api_session.add(pos)
+        await api_session.flush()
+        api_session.add(
+            Trade(
+                bot_id=bot.id,
+                symbol=pos.symbol,
+                position_id=pos.id,
+                exit_price=Decimal("100"),
+                exit_time=simdi - timedelta(hours=1 + i),
+                exit_reason="STOP",
+                pnl=Decimal(str(pnl)),
+                pnl_r=Decimal(str(pnl_r)),
+                fees=Decimal("1"),
+                slippage_bps=Decimal("5"),
+                mfe=Decimal("0"),
+                mae=Decimal("0"),
+                hold_hours=Decimal("4"),
+            )
+        )
+    # Açık kısa: 10 adet @ 50 → değer −500, maruziyet 500 (fiyat yok → giriş).
+    api_session.add(
+        Position(
+            bot_id=bot.id,
+            symbol="KISAUSDT",
+            side="SELL",
+            qty=Decimal("10"),
+            entry_price=Decimal("50"),
+            entry_time=simdi,
+            stop=Decimal("55"),
+            initial_stop=Decimal("55"),
+            score_at_entry=Decimal("80"),
+            leverage=Decimal("3"),
+            status=PositionStatus.OPEN,
+        )
+    )
+    await api_session.commit()
+
+    rows = (await api_client.get("/bots/fleet", headers=auth)).json()
+    satir = next(r for r in rows if r["id"] == bot.id)
+    assert satir["group"] == "deney" and satir["deney"] is True
+    assert satir["trades"] == 2 and satir["win_rate"] == pytest.approx(0.5)
+    assert satir["avg_r"] == pytest.approx(0.25)
+    assert satir["profit_factor"] == pytest.approx(3.0)
+    assert satir["consecutive_losses"] == 0  # en yeni işlem kârlı
+    assert satir["realized_since_rebase"] == pytest.approx(60.0)
+    assert satir["realized_today"] == satir["realized_24h"] == satir["realized_7d"]
+    assert (
+        satir["open_positions"] == 1 and satir["open_short"] == 1 and satir["open_leveraged"] == 1
+    )
+    assert satir["exposure"] == pytest.approx(500.0)
+    assert satir["equity"] == pytest.approx(5000.0 - 500.0)
+    assert satir["return_pct"] == pytest.approx(-0.1)
+    assert satir["rebased_at"].startswith("2026-09-01")

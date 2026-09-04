@@ -180,6 +180,56 @@ class BotOut(BaseModel):
     created_at: datetime
 
 
+class FleetRowOut(BaseModel):
+    """Filo satırı — `GET /bots/fleet`. Köprü'nün defter tablosu tek uçtan beslenir.
+
+    Kâr/zarar ve değer işaretlidir (kısa pozisyon negatif değer taşır);
+    maruziyet brüttür. Pencereler UTC: bugün = gün başından, 24s / 7g
+    kayan, katılımdan beri = `config.rebased_at` (yoksa maraton başlangıcı).
+    """
+
+    id: int
+    name: str
+    state: BotState
+    #: maraton | deney | arsiv — panel grupları bu alandan kurar.
+    group: str = "maraton"
+    market: str = "CRYPTO"
+    timeframe: str
+    direction: str = "LONG"
+    deney: bool = False
+    agresif: bool = False
+    kisa: bool = False
+    capital: float
+    cash: float
+    equity: float
+    exposure: float = 0.0
+    exposure_pct: float | None = None
+    open_positions: int = 0
+    open_long: int = 0
+    open_short: int = 0
+    open_leveraged: int = 0
+    unrealized_pnl: float = 0.0
+    realized_today: float = 0.0
+    realized_24h: float = 0.0
+    realized_7d: float = 0.0
+    realized_since_rebase: float = 0.0
+    return_pct: float | None = None
+    drawdown_pct: float | None = None
+    trades: int = 0
+    win_rate: float | None = None
+    avg_r: float | None = None
+    profit_factor: float | None = None
+    consecutive_losses: int = 0
+    max_leverage: float = 1.0
+    risk_pct: float = 0.01
+    rebased_at: datetime | None = None
+    last_bar_at: datetime | None = None
+    last_heartbeat_at: datetime | None = None
+    heartbeat_age_s: float | None = None
+    entries_blocked_until: datetime | None = None
+    halt_reason: str | None = None
+
+
 class BotCreate(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     strategy_version_id: int
