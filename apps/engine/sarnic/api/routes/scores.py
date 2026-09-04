@@ -6,12 +6,13 @@ döndürür ve yorumu yumuşatmaz (§5.5).
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime, timedelta
 
 import numpy as np
 from fastapi import APIRouter, HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sarnic.api.deps import CurrentUser, RedisDep, SessionDep
@@ -27,24 +28,55 @@ from sarnic.strategy.definition import StrategyDefinition
 router = APIRouter(tags=["scores"])
 
 
-async def _default_config(session) -> tuple[str, str] | None:
+VARSAYILAN_KONF_ANAHTARI = "sarnic:cache:default-config"
+
+
+async def _default_config(session, redis=None) -> tuple[str, str] | None:
     """Panelin varsayılan sıralaması: bot sırasına göre ilki.
 
     Bot eşlemesi kurulamazsa (tanım bozuk, bot silinmiş) mevcut çiftlerden
     sözlük sırasına göre ilki seçilir — keyfi ama **deterministik**.
+
+    Sonuç 5 dakika Redis'te tutulur. Hesabı iki pahalı adımdan oluşuyor ve
+    ikisi de her `/scores` isteğinde tekrarlanıyordu: `DISTINCT config_hash,
+    timeframe` 567 bin satırlık `scores` tablosunu baştan sona tarayıp
+    (ölçüldü 2026-09-04: 212 ms, 310 bin tampon okuması, 2 paralel işçi)
+    **dokuz** çift buluyor, ardından `_config_labels` 30 botun tanımından
+    `config_hash`'i yeniden hesaplıyordu. Cevap ise ancak bot listesi ya da
+    bir stratejinin ağırlıkları değiştiğinde değişir; 5 dakikalık bayatlık
+    panelin varsayılan seçimi için görünmezdir. Önbelleksiz `/scores` 178 ms,
+    önbellekli 15 ms.
+
+    `redis` verilmezse önbellek atlanır — eski davranış birebir korunur.
     """
+    if redis is not None:
+        cached = await redis.get(VARSAYILAN_KONF_ANAHTARI)
+        if cached:
+            veri = json.loads(cached)
+            return None if veri is None else (veri[0], veri[1])
+
     present = {
         (h, tf)
         for h, tf in (
             await session.execute(select(Score.config_hash, Score.timeframe).distinct())
         ).all()
     }
-    if not present:
-        return None
-    for key, _label in await _config_labels(session):
-        if key in present:
-            return key
-    return min(present)
+    secim: tuple[str, str] | None = None
+    if present:
+        for key, _label in await _config_labels(session):
+            if key in present:
+                secim = key
+                break
+        else:
+            secim = min(present)
+
+    if redis is not None:
+        await redis.set(
+            VARSAYILAN_KONF_ANAHTARI,
+            json.dumps(None if secim is None else list(secim)),
+            ex=300,
+        )
+    return secim
 
 
 async def _config_labels(session) -> list[tuple[tuple[str, str], str]]:
@@ -111,19 +143,32 @@ async def score_configs(session: SessionDep, user: CurrentUser) -> list[dict]:
     if not son_barlar:
         return []
 
+    # Dokuz sıralama için dokuz ayrı sorgu atılıyordu (her biri kendi son
+    # barına filtreli). Üçlü `(config_hash, timeframe, bar_time)` listesiyle
+    # tek gruplu sorgu aynı satırları seçer; gidiş-dönüş 9 → 1.
     counts: dict[tuple[str, str], tuple[int, float]] = {}
     markets: dict[tuple[str, str], str] = {}
-    for (h, tf), bar in son_barlar.items():
-        row = (
-            await session.execute(
-                select(func.count(), func.max(Score.score), func.min(Score.symbol)).where(
-                    Score.config_hash == h, Score.timeframe == tf, Score.bar_time == bar
+    ozetler = (
+        await session.execute(
+            select(
+                Score.config_hash,
+                Score.timeframe,
+                func.count(),
+                func.max(Score.score),
+                func.min(Score.symbol),
+            )
+            .where(
+                tuple_(Score.config_hash, Score.timeframe, Score.bar_time).in_(
+                    [(h, tf, bar) for (h, tf), bar in son_barlar.items()]
                 )
             )
-        ).one()
-        counts[(h, tf)] = (row[0], float(row[1] or 0.0))
+            .group_by(Score.config_hash, Score.timeframe)
+        )
+    ).all()
+    for h, tf, adet, en_yuksek, ornek_sembol in ozetler:
+        counts[(h, tf)] = (adet, float(en_yuksek or 0.0))
         # Pazar: kesitteki herhangi bir sembolün ekinden (kesit tek pazardır).
-        ornek = row[2] or ""
+        ornek = ornek_sembol or ""
         markets[(h, tf)] = (
             "BIST" if ornek.endswith(".IS") else "US" if ornek.endswith(".US") else "CRYPTO"
         )
@@ -151,6 +196,7 @@ async def score_configs(session: SessionDep, user: CurrentUser) -> list[dict]:
 @router.get("/scores", response_model=list[ScoreOut])
 async def latest_scores(
     session: SessionDep,
+    redis: RedisDep,
     user: CurrentUser,
     limit: int = 100,
     min_score: float = 0.0,
@@ -170,7 +216,7 @@ async def latest_scores(
     """
     secim = (config_hash, timeframe) if config_hash and timeframe else None
     if secim is None:
-        varsayilan = await _default_config(session)
+        varsayilan = await _default_config(session, redis)
         if varsayilan is None:
             return []
         secim = (config_hash or varsayilan[0], timeframe or varsayilan[1])
@@ -212,7 +258,11 @@ async def latest_scores(
 
 @router.get("/scores/{symbol}", response_model=ScoreDetail)
 async def score_detail(
-    symbol: str, session: SessionDep, user: CurrentUser, config_hash: str | None = None
+    symbol: str,
+    session: SessionDep,
+    redis: RedisDep,
+    user: CurrentUser,
+    config_hash: str | None = None,
 ) -> ScoreDetail:
     """Tek sembolün puan kartı.
 
@@ -233,7 +283,7 @@ async def score_detail(
                 .limit(1)
             )
         ).scalar_one_or_none()
-        varsayilan = await _default_config(session) if last_bar else None
+        varsayilan = await _default_config(session, redis) if last_bar else None
         if varsayilan is not None:
             conditions.append(Score.config_hash == varsayilan[0])
             conditions.append(Score.timeframe == varsayilan[1])
@@ -282,6 +332,7 @@ async def score_by_id(score_id: int, session: SessionDep, user: CurrentUser) -> 
 async def score_history(
     symbol: str,
     session: SessionDep,
+    redis: RedisDep,
     user: CurrentUser,
     days: int = 7,
     config_hash: str | None = None,
@@ -294,7 +345,7 @@ async def score_history(
     if config_hash is not None:
         conditions.append(Score.config_hash == config_hash)
     else:
-        varsayilan = await _default_config(session)
+        varsayilan = await _default_config(session, redis)
         if varsayilan is not None:
             conditions.append(Score.config_hash == varsayilan[0])
             conditions.append(Score.timeframe == varsayilan[1])
@@ -372,13 +423,21 @@ async def calibration(
         for family in DEFAULT_FAMILY_WEIGHTS
     }
 
-    report = build_report(
+    # `build_report` saf CPU ve ~17 saniye sürüyor (ölçüldü 2026-09-04:
+    # 159.577 gözlem, 800 spearman çağrısı). `async def` içinde doğrudan
+    # çağrılınca olay döngüsünü o süre boyunca KİLİTLİYORDU: önbellek her
+    # dolduğunda (10 dk) ya da yeni bir horizon/days çifti istendiğinde
+    # API'nin tamamı — diğer uçlar, WebSocket'ler — duruyordu. Ayrı iş
+    # parçacığında koşuyor; sonuç birebir aynı.
+    gate = await _entry_gate(session)
+    report = await asyncio.to_thread(
+        build_report,
         horizon=horizon,
         times=times,
         scores=scores,
         returns=returns,
         family_values=family_values,
-        gate=await _entry_gate(session),
+        gate=gate,
     )
     payload = report.as_dict()
     await redis.set(cache_key, json.dumps(payload), ex=600)
