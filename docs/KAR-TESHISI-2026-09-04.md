@@ -76,15 +76,26 @@ Yeni kollar (400 $, deney, 14 gün eleme kuralı): **N1** gece penceresi (18–0
 **N2** kapı 85 · 3 slot, **N3** gece + vol 60 + kapı 82. Şerit H uzun pencerede
 (veri izin verdiği kadar geriye) in-sample/holdout ile koşar; sonuç deftere.
 
+## 5. Dürüstlük notu
+
+69 işlem az; kesitler 5–30 işlemlik. Yön ve büyüklük tutarlı (Faz 0a IC, 18 günlük
+tarama, canlı defter üçü aynı şeyi söylüyor), ama tek başına hiçbiri "kanıt" değil.
+Bu belge bir kararın gerekçesi değil, bir ölçüm programının gerekçesidir.
+
 ## 6. Ek ölçüm: özellik bazında IC (35.366 puan satırı, 391 bar, 138 sembol)
 
 Aile ortalaması ailenin içindeki ayrışmayı gizliyordu. `scores.rationale.percentiles`
 üzerinden 17 özelliğin tek tek kesitsel rank-IC'si (24 saat ileri getiri):
 
+**Yön uyarısı:** IC'ler **yüzdelik** üzerinden ölçüldü. `atr_pct` ve `bb_width`
+registry'de `higher_is_better=False` — yüzdelik yüksek demek ham değer **düşük**
+demektir. Yani pozitif IC = "sakin ve sıkışmış semboller kazanıyor". Sistemin
+mevcut yönü doğru; eksik olan ağırlık (vol ailesi 100 üzerinden yalnız 15).
+
 | Özellik | IC | t | Yorum |
 |---|---|---|---|
-| `atr_pct` | **+0,129** | **+17,4** | volatilite oranı — en güçlü sinyal |
-| `bb_width` | **+0,094** | **+12,6** | Bollinger genişliği |
+| `atr_pct` (ters) | **+0,129** | **+17,4** | **düşük** ATR% — sakinlik kazanıyor |
+| `bb_width` (ters) | **+0,094** | **+12,6** | **dar** bant — sıkışma kazanıyor |
 | `trend_1d` | +0,029 | +4,9 | günlük eğim, zayıf ama gerçek |
 | `taker_buy_ratio` | +0,013 | +2,4 | alıcı baskısı |
 | `score` (bileşik) | +0,005 | +0,8 | **sıfır** |
@@ -95,9 +106,10 @@ Aile ortalaması ailenin içindeki ayrışmayı gizliyordu. `scores.rationale.pe
 | `ret_168h_skip6` | −0,049 | −5,5 | 7 günlük momentum **ters** |
 
 **Bu beta değil, gerçek kenar.** Kesit medyanı çıkarılınca (piyasa-nötr) IC aynı
-kalıyor: +0,129. Rejime göre ayrıldığında `atr_pct` yukarı barlarda +0,088 (t +7,7),
-aşağı barlarda **+0,167** (t +18,9) — düşen piyasada daha da güçlü. Desil farkı
-piyasa-nötr **+86 bps/gün** (üst %10: +84 bps, alt %10: −2 bps).
+kalıyor: +0,129. Rejime göre ayrıldığında sakinlik yukarı barlarda +0,088 (t +7,7),
+aşağı barlarda **+0,167** (t +18,9) — düşen piyasada daha da güçlü; yani savunma
+değil, iki yönlü kenar. Desil farkı piyasa-nötr **+86 bps/gün** (en sakin %10:
++84 bps, en oynak %10: −2 bps). Oynak coin kovalamak 24 saatlik ufukta kaybettiriyor.
 
 **Trend ailesi rejime bağlı ve toplamda zararlı.** `price_over_ema200`, `ema_alignment`,
 `trend_4h` yukarı barlarda ≈ 0 (+0,01…+0,02), aşağı barlarda −0,07…−0,09. Bileşik puan
@@ -111,13 +123,8 @@ piyasada çalışıyor, düşende aktif olarak zarar ediyor — ve ağırlıklar
 ### Bunun anlamı
 
 1. `vol` ailesini ağırlıklandırmak (V1/A3 kolları) ölçümün doğrudan sonucu — ve bu iki
-   kol şu an filo lideri (+%2,7 ve +%6,0). Tesadüf değil.
+   kol şu an filo lideri (+%2,7 ve +%6,0). Tesadüf değil. Aile yönü zaten doğruydu,
+   ağırlığı (15) ölçülen güce göre çok düşüktü.
 2. Trend/momentum ağırlığı düşürülmeli ya da **rejime bağlanmalı**: bugünkü
    `regime_multiplier` yalnız pozisyon boyutunu kısıyor, sinyalin işaretini değiştirmiyor.
 3. Kapı yükseltmek (82–85) uçtaki bilgiyi kullanır.
-
-## 5. Dürüstlük notu
-
-69 işlem az; kesitler 5–30 işlemlik. Yön ve büyüklük tutarlı (Faz 0a IC, 18 günlük
-tarama, canlı defter üçü aynı şeyi söylüyor), ama tek başına hiçbiri "kanıt" değil.
-Bu belge bir kararın gerekçesi değil, bir ölçüm programının gerekçesidir.
