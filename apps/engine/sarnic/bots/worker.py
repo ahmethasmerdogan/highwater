@@ -111,6 +111,7 @@ class BotWorker:
         self._adapter: PaperAdapter | None = None
         self._definition: StrategyDefinition | None = None
         self._last_bar: datetime | None = None
+        self._definition_sv: int | None = None
         self._empty_universe_warned_for: datetime | None = None
         #: Önceki barda giriş kapısının üstünde olan semboller — "eşik aşıldı"
         #: olayı bir geçiştir ve geçişi görmek için önceki durum gerekir.
@@ -128,10 +129,13 @@ class BotWorker:
         return bot
 
     def _definition_of(self, bot: Bot) -> StrategyDefinition:
-        if self._definition is None:
+        # Sürüm değişirse (PATCH /bots/{id}) yeniden okunur; eskiden süreç ömrü
+        # boyunca ilk tanım kalıyordu ve değişiklik ancak restart'ta görülüyordu.
+        if self._definition is None or self._definition_sv != bot.strategy_version_id:
             self._definition = StrategyDefinition.from_dict(
                 bot.strategy_version.definition
             ).require_valid()
+            self._definition_sv = bot.strategy_version_id
         return self._definition
 
     async def _emit(self, session, kind: EventKind | str, level: str = "INFO", **payload) -> None:
@@ -207,7 +211,7 @@ class BotWorker:
     async def _maybe_run_bar(self) -> None:
         async with session_scope() as session:
             bot = await self._load_bot(session)
-            if bot.state != BotState.PAPER_RUNNING:
+            if bot.state not in (BotState.PAPER_RUNNING, BotState.DEGRADED):
                 return
             definition = self._definition_of(bot)
             timeframe = definition.timeframe
@@ -235,7 +239,7 @@ class BotWorker:
         started = self.clock.now()
         async with session_scope() as session:
             bot = await self._load_bot(session)
-            if bot.state != BotState.PAPER_RUNNING:
+            if bot.state not in (BotState.PAPER_RUNNING, BotState.DEGRADED):
                 return False
             definition = self._definition_of(bot)
 
@@ -304,7 +308,8 @@ class BotWorker:
             verdict = await self._check_risk(session, bot, definition, snapshot)
 
             # 3) Girişler
-            if verdict.allow_entry:
+            # DEGRADED: puanlar, çıkışları yönetir, özsermaye kaydeder — giriş yok.
+            if verdict.allow_entry and bot.state == BotState.PAPER_RUNNING:
                 await self._consider_entries(session, bot, definition, snapshot, ctx)
 
             await record_equity(session, bot, snapshot, bar_time)
