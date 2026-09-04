@@ -1465,3 +1465,23 @@ yarışır. Kaynak kollara dokunulmaz.
   vol 40 / sr 10 — 24 saat ufkunda trend ve momentum anlamlı NEGATİF IC
   (t −8,6 / −10,7); ters çevrilmiş ağırlıklar. Kural gereği toplam > 0.
   Puan ölçeği farklı → kapı seçiciliği farklı; eleme kuralı aynen.
+
+**G şeridi (kaldıraç/risk) ve F'nin dördüncüsü — 2026-09-04:**
+| varyant | in n | in R | in net | in düşüş | out n | out R | out net | out düşüş |
+|---|---|---|---|---|---|---|---|---|
+| kontrol | 13 | +0,25 | +3,6% | 2,4% | 3 | −0,23 | −0,9% | 3,3% |
+| risk %3 (1×) | 10 | +0,54 | +5,0% | 1,8% | 2 | −0,34 | −1,5% | 3,8% |
+| lev 2× trio'suz | 9 | +0,60 | +4,8% | 2,3% | 3 | −0,23 | −0,8% | 4,0% |
+| risk %3 + 2× | 7 | +0,76 | +5,9% | 1,8% | 2 | −0,34 | −1,3% | 4,7% |
+| risk %5 + 3× | 9 | +0,31 | +4,7% | 2,8% | 2 | −0,34 | −1,8% | 4,2% |
+| 2× yalnız headroom | 9 | +0,60 | +5,8% | 2,3% | 3 | −0,23 | −0,9% | 3,3% |
+| **kısmi 1R %50 + iz 2,5** | 15 | +0,65 | +4,5% | 1,7% | 3 | **+0,10** | −0,1% | 2,8% |
+
+Okuma: kaldıraç/risk varyantları R'yi iyileştirmiyor, in-sample net'i biraz
+büyütüp holdout'ta daha çok kaybediyor, düşüşü 2× büyütüyor — "çarpan,
+kenar değil" aritmetiği aynen çıktı (holdout n=2-3, kanıt değil; G10/G11
+kağıtta ölçüyor). Kaldıraç işlem SETİNİ de değiştiriyor (13→9): büyük
+pozisyon nakdi kilitleyip sonraki girişleri düşürüyor. Kısmi kâr + iz 2,5
+holdout'ta pozitif tek varyant (+0,10R) ve iki pencerede kuralı geçiyor →
+**bot 21 (P2)** olarak katıldı. Kısmi kâr ailesi (P1, P2) şimdilik
+taramanın tek tutarlı kazananı.
