@@ -1458,3 +1458,10 @@ yarışır. Kaynak kollara dokunulmaz.
   −0,08 vs −0,23); düşüş kontrolden düşük. "1R %50" ön-kayıtlı kuralı geçen
   ilk varyant — bot 18 (P1) olarak canlıda. Örneklem küçük (14/3); kararı
   maraton verecek.
+- **bot 19 · vol-ağırlıklı (V1):** ağırlıklar trend 15 / momentum 10 / flow
+  10 / vol 60 / sr 5 — araştırma verisinde tek pozitif IC taşıyan aile vol
+  (SISTEM-ANALIZI §2). Kapı 80 korundu; seçicilik canlıda ölçülecek.
+- **bot 20 · ortalamaya dönüş (M1):** trend −15 / momentum −15 / flow 20 /
+  vol 40 / sr 10 — 24 saat ufkunda trend ve momentum anlamlı NEGATİF IC
+  (t −8,6 / −10,7); ters çevrilmiş ağırlıklar. Kural gereği toplam > 0.
+  Puan ölçeği farklı → kapı seçiciliği farklı; eleme kuralı aynen.
