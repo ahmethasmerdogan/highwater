@@ -1598,3 +1598,33 @@ anda 2 şerit; sonuçlar `scratchpad/tarama_H*.out`, deftere işlenecek.
 **Yeni kollar (400 $, deney, 19:53Z):** N1 gece penceresi 18–05 (bot 28), N2
 kapı 85 · 3 slot (bot 29), N3 gece + vol 60 + kapı 82 (bot 30). Hepsi bot 1'in
 tanımından türedi; 14 gün eleme kuralına tabi.
+
+## Sistem felci ve kurtarma — 2026-09-04 20:00–20:30Z
+
+Kullanıcının "botları tek tek kontrol edelim, bug hunt yapalım" talimatıyla yapılan
+incelemede sistemin **kendi kendini felç ettiği** ortaya çıktı. Üç bulgu:
+
+**1. Nabız eşiği bar karar süresinden kısaydı (kök sebep).** Ölçüldü (162 bar):
+karar süresi p50 157 sn, p90 270 sn. Supervisor eşiği 35 sn. Yani supervisor
+worker'ı **tam karar verirken** öldürüyor; worker yeniden doğup aynı barı baştan
+hesaplıyor, yük artıyor, daha çok worker gecikiyordu. 24 saatte **1697 yeniden
+başlatma** (saatte 600'e varan tırmanış). Bar kararları yarıda kesildiği için
+girişler ve çıkışlar da eksik kalıyordu — yani ölçtüğümüz −0,083R beklenti
+bozuk bir sistemin çıktısı. Eşik 360 sn'ye çıkarıldı, 180 sn soğuma eklendi.
+Sonuç: restart 0, bar süresi **157 sn → 53 sn**, load 21 → 5,5.
+
+**2. Kripto tazelik kontrolü geri alındı.** Aynı gün eklenen "karar barı taze
+olmayan sembolü atla" kuralı kriptoda hiçbir sembolü taze saymadı; 19:00 barı
+veride 114 sembolle dururken 1h kollarının hepsi 18:00'de dondu (bir saatlik
+karar kaybı). Seanslı pazarda kural yerinde; kriptonun bayat-bar riski
+`stop_anchored_to_fill` ile kapalı.
+
+**3. Nakit tavanı komisyonu saymıyordu.** `SizingEngine` tavanı tam
+`serbest_nakit × kaldıraç` veriyor, `PaperAdapter` marj kuralına komisyonu da
+ekliyordu; tavana dayanan her emir "yetersiz marj" ile reddediliyordu. A3 kolu
+(filonun en kârlısı) 24 saatte **22 giriş** kaybetmiş. `NAKIT_EMNIYET_PAYI`
+(0,995) eklendi.
+
+**4. Bütçe tükendiğinde gürültü.** Maruziyet tavanı dolunca sistem her aday için
+sizing çağırıp ayrı ret satırı yazıyordu: M1 kolu 24 saatte 420 satır. Üçüncü
+bütçe reddinden sonra döngü tek özetle biter (adaya özgü retler sayılmaz).
