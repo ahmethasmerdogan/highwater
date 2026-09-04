@@ -28,6 +28,18 @@ TRADES_RED_FLAG = 20  # bu sayının altında hiçbir metrik güvenilir değil
 BARS_PER_YEAR = {tf: round(365 * 24 * 60 / minutes) for tf, minutes in TIMEFRAME_MINUTES.items()}
 
 
+def _bars_per_year(market: str, timeframe: str) -> int:
+    """Pazar-farkındalı: hisse 1d = 252 seans, kripto 1d = 365. Aksi hâlde
+    BIST/ABD Sharpe'ı √(365/252) ≈ 1,20 kat şişiyordu (SISTEM-ANALIZI §5.6)."""
+    from sarnic.core.markets import BIST, CRYPTO, US, bars_per_year
+
+    pazar = {"BIST": BIST, "US": US}.get(market, CRYPTO)
+    try:
+        return int(bars_per_year(pazar, timeframe))
+    except Exception:
+        return BARS_PER_YEAR.get(timeframe, 8760)
+
+
 @dataclass(slots=True)
 class Metrics:
     start: datetime | None = None
@@ -139,6 +151,7 @@ def compute_metrics(
     timeframe: str = "1h",
     exposure_series: list[float] | None = None,
     turnover_notional: float = 0.0,
+    market: str = "CRYPTO",
 ) -> Metrics:
     m = Metrics()
     if not equity_curve:
@@ -152,7 +165,7 @@ def compute_metrics(
     m.total_return = m.final_equity / m.initial_equity - 1 if m.initial_equity else 0.0
 
     rets = np.diff(equity) / np.where(equity[:-1] == 0, 1, equity[:-1])
-    ppy = BARS_PER_YEAR.get(timeframe, 8760)
+    ppy = _bars_per_year(market, timeframe)
     m.sharpe = sharpe_ratio(rets, ppy)
     m.sortino = sortino_ratio(rets, ppy)
     m.volatility = float(rets.std(ddof=1) * math.sqrt(ppy)) if len(rets) > 1 else float("nan")
@@ -235,6 +248,7 @@ def regime_split(
     equity_curve: list[tuple[datetime, float]],
     btc_regime: dict[datetime, str],
     timeframe: str = "1h",
+    market: str = "CRYPTO",
 ) -> dict[str, dict]:
     """Rejim bazlı ayrıştırma — boğa/ayı piyasasında ayrı performans (§11)."""
     if not equity_curve or not btc_regime:
@@ -246,7 +260,7 @@ def regime_split(
         ret = (e / prev_equity - 1) if prev_equity else 0.0
         buckets.setdefault(regime, []).append(ret)
         prev_equity = e
-    ppy = BARS_PER_YEAR.get(timeframe, 8760)
+    ppy = _bars_per_year(market, timeframe)
     return {
         regime: {
             "bars": len(rets),

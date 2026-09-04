@@ -500,8 +500,11 @@ class BacktestEngine:
             timeframe=self.timeframe,
             exposure_series=exposure_series,
             turnover_notional=turnover,
+            market=self.definition.universe.market,
         )
-        metrics.regime_breakdown = regime_split(curve, btc_regime, self.timeframe)
+        metrics.regime_breakdown = regime_split(
+            curve, btc_regime, self.timeframe, market=self.definition.universe.market
+        )
 
         close_series = {s: self._close_series(data, s) for s in universe.at(times[-1]) if times}
         close_series = {s: v for s, v in close_series.items() if v is not None and len(v)}
