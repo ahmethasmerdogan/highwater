@@ -263,8 +263,11 @@ class BotWorker:
         # ancak bir sonraki bar kapanışında olurdu.
         if await self.run_bar(bar):
             self._last_bar = bar
-        # Bar başına 100+ sembolün çerçeveleri geçicidir; arenayı geri ver.
-        bellek_iade()
+            # Yalnız bar GERÇEKTEN işlendiğinde: 100+ sembolün çerçeveleri o
+            # anda serbest kalır. Boş turda çağırmak ölçüldü (66 ms) ve hiçbir
+            # şey serbest bırakmıyor; 26 worker × 3 tur/dk ile dakikada ~5
+            # çekirdek-saniye boşa gidiyordu.
+            bellek_iade()
 
     async def run_bar(self, bar_time: datetime) -> bool:
         async with self._bot_kilidi:
