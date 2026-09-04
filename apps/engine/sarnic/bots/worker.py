@@ -45,7 +45,7 @@ from sarnic.data.marketdata import data_is_stale, read_last_bars, read_tickers
 from sarnic.data.store import last_closed_bar, load_frame
 from sarnic.db.models import Bot, BotEvent, Order, Position, Score, Trade
 from sarnic.db.session import session_scope
-from sarnic.execution.accounting import net_pnl, total_fees
+from sarnic.execution.accounting import net_pnl, total_fees, weighted_r
 from sarnic.execution.base import OrderRequest, OrderResult
 from sarnic.execution.exits import (
     ExitDecision,
@@ -211,6 +211,10 @@ class BotWorker:
                 return
             definition = self._definition_of(bot)
             timeframe = definition.timeframe
+            # Yeniden doğuşta bellek boş; DB'deki iz tüketilmiş barı yeniden
+            # koşmayı önler (çıkış/giriş/rotasyon idempotent değil).
+            if self._last_bar is None and bot.last_bar_at is not None:
+                self._last_bar = bot.last_bar_at
 
         bar = last_closed_bar(self.clock.now(), timeframe, market_code=definition.universe.market)
         if self._last_bar is not None and bar <= self._last_bar:
@@ -305,6 +309,7 @@ class BotWorker:
 
             await record_equity(session, bot, snapshot, bar_time)
             bot.cash = Decimal(str(round(snapshot.cash, 8)))
+            bot.last_bar_at = bar_time
 
             elapsed_ms = (self.clock.now() - started).total_seconds() * 1000
             await self._emit(
@@ -753,6 +758,7 @@ class BotWorker:
             position.qty = kalan
             position.realized_pnl += dilim_pnl - dilim_borc
             position.realized_fees += result.fees + dilim_borc
+            position.realized_points += (exit_price - position.entry_price) * result.filled_qty
             await session.execute(
                 Position.__table__.update()
                 .where(Position.id == position.id)
@@ -760,6 +766,7 @@ class BotWorker:
                     qty=Decimal(str(round(kalan, 10))),
                     realized_pnl=Decimal(str(round(position.realized_pnl, 8))),
                     realized_fees=Decimal(str(round(position.realized_fees, 8))),
+                    realized_points=Decimal(str(round(position.realized_points, 8))),
                 )
             )
             snapshot.cash += exit_price * result.filled_qty - result.fees - dilim_borc
@@ -825,7 +832,14 @@ class BotWorker:
             - borc
         )
         risk_per_unit = max(position.entry_price - position.initial_stop, 1e-12)
-        pnl_r = (exit_price - position.entry_price) / risk_per_unit
+        pnl_r = weighted_r(
+            position.entry_price,
+            exit_price,
+            result.filled_qty,
+            risk_per_unit,
+            realized_points=position.realized_points,
+            entry_qty=position.entry_qty,
+        )
 
         await session.execute(
             Position.__table__.update()
@@ -1066,6 +1080,7 @@ class BotWorker:
             symbol=candidate.symbol,
             side=OrderSide.BUY,
             qty=Decimal(str(round(result.filled_qty, 10))),
+            entry_qty=Decimal(str(round(result.filled_qty, 10))),
             entry_price=Decimal(str(round(entry_price, 10))),
             entry_time=self.clock.now(),
             stop=Decimal(str(round(decision.stop, 10))),
