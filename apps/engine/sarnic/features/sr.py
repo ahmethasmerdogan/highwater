@@ -385,7 +385,7 @@ def compute_sr(
 
 
 def stop_from_sr(
-    sr: SRResult, atr_multiple: float = 0.5, entry: float | None = None
+    sr: SRResult, atr_multiple: float = 0.5, entry: float | None = None, direction: int = 1
 ) -> float | None:
     """Stop = `nearest_support − k×ATR`, ama girişe `k×ATR`'den yakın olamaz.
 
@@ -403,6 +403,14 @@ def stop_from_sr(
     onu hiç uygulamıyordu. Destek zaten daha aşağıdaysa hiçbir şey değişmez —
     taban yalnızca fazla dar olan durumu keser.
     """
+    if direction < 0:
+        # Kısa: stop en yakın DİRENCİN üstünde; direnç yoksa stop yok (simetrik).
+        if sr.nearest_resistance is None or sr.atr <= 0:
+            return None
+        stop = sr.nearest_resistance.price + atr_multiple * sr.atr
+        if entry is not None and entry > 0:
+            stop = max(stop, entry + atr_multiple * sr.atr)
+        return stop
     if sr.nearest_support is None or sr.atr <= 0:
         return None
     stop = sr.nearest_support.price - atr_multiple * sr.atr
