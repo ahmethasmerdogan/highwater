@@ -1913,3 +1913,15 @@ portal odak/hareket kapsamı, hata dalı, pazar bağlantıları, rol koruması,
 saat dilimi eki düzeltildi. Kuyrukta kalanlar belgede önceliklidir: panel
 önbelleği + araştırma CLI, pazar başına nabız, kalibrasyon sızıntısı,
 bar-içi fidelite, fonlama akışı, kısa taraf.
+
+## Kısa yön — 2026-09-04
+
+Önce-sat (short) pozisyonlar isteğe bağlı bir yetenek olarak eklendi:
+`entry.direction: LONG | SHORT | BOTH`. Tek `direction` çarpanı tüm karar
+yolundan (muhasebe, çıkış, boşluk dolumu, S/R stopu, boyut, kaldıraç,
+puanlama, paper adaptörü, backtest, worker, API, panel) geçirildi; uzun-only
+tanımlar için aritmetik birebir aynı ve altın fixture ile korunuyor.
+Migrasyon 0011 `trades.side`. Kısa puan yönlü ailelerin tersidir (`vol`
+aynı) — öngörü gücü ölçülmemiş bir hipotez. Bilinçli olarak yapılmayan: aynı
+sembolde hedge, kısa için ayrı sizing/exit bloğu, strateji formunda yön
+seçici (JSON düzenleyici yeter), kısa kalibrasyon hedefi.

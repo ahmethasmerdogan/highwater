@@ -794,3 +794,15 @@ maraton sonrası karara bağlanmalı.
    **Karar (2026-09-03):** sahibi G9'u istedi; bot 14 olarak katıldı — kaynak
    bot 3, eşik 80, kontrol bot 3'ün kendisi. İlk barda ilk sebep kaydı geldi:
    "dirence yer yok (1,4 ATR < 2,0)".
+
+## Kısa yön (2026-09-04)
+
+- **Kısa puan kalibrasyonu.** `scoring/observations.py` yalnız uzun hedefle
+  (fwd_return) çalışır; kısa için hedef `−fwd_return` olmalı. Kısa puanın
+  öngörü gücü ölçülmeden S1/S2 sonuçları yalnız defter kaydıdır.
+- **Coin bazlı borç oranı.** Tek `hourly_rate` (günlük %0,05) kullanılıyor;
+  Binance marj oranları coin bazında ve kısa tarafta çoğu kez daha yüksek.
+- **Nakit tavanı komisyon payı.** `SizingEngine` `serbest_nakit × lev`
+  tavanını komisyonsuz hesaplar; `PaperAdapter` marj kuralına komisyonu
+  ekler → tavan bağlayınca emir "yetersiz marj/bakiye" ile reddedilir.
+  Düzeltme 1× uzun davranışını da değiştireceği için maraton sonrası.

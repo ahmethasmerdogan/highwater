@@ -1511,3 +1511,35 @@ Ayrıca kod düzeltmesi: `decide_leverage` "direnç bulunamadı" (None) değerin
 eşiksiz spec'te bile ret sayıyordu; artık `min_headroom_atr = 0` S/R teyidini
 kapatır (maraton spec'leri 2,0 ATR ile aynı davranır). Supervisor 05:36Z'de
 yeniden başladı; ilk kaldıraçlı girişler 06:00 barından itibaren beklenir.
+
+## Kısa yön (önce sat, sonra kapat) — 2026-09-04
+
+Sahibin "kaldıraçtan yüksek kâr, korumacı olma" isteğinin ikinci yarısı:
+düşüşten kazanç. Uygulama `docs/KISA-YON-PLANI.md`: tek `direction` çarpanı
+(+1 uzun, −1 kısa) enum → muhasebe → çıkış → boşluk dolumu → S/R stopu →
+boyut → kaldıraç → puanlama → tanım → portföy → paper → backtest → worker →
+API → panel zincirinden geçirildi. Uzun-only tanımlar için aritmetik bugünkü
+hâliyle birebir: `tests/test_altin_uzun.py` (iki altın fixture + tanım hash'i
++ puanlama config_hash'i) bunu tutar; 9 maraton kolu dokunulmadı.
+
+**Kısa puan hipotezi:** yönlü aileler (trend, momentum, flow, sr) ters
+çevrilir (100 − p), `vol` olduğu gibi kalır, düzelticiler işaret değiştirir.
+Faz 0a'da trend/momentum IC'si uzun için negatifti (≈ −0,03); tersinin kısa
+için pozitif olması beklenir ama **ölçülmedi** — bu bir hipotezdir, kabul
+ölçüsü kısa-only backtest + kalibrasyon.
+
+**Model:** kısa açılış SATIŞ emri (bid'ler tüketilir), gelir nakde girer,
+defterde negatif miktar; kapatma ALIŞ emri. Borç: satılan varlığın TAM
+notional'ı saatlik oranla (1× kısa bile borçludur). Likidasyon girişin
+üstünde `giriş × (1 + 0,9/L)`; stop direnç + k×ATR, yalnız aşağı iner.
+Aynı sembolde iki yön yok (hedge yok).
+
+**Yeni kollar (400 $, deney/agresif/kisa):** S1 "Kısa · 3× risk çarpanı"
+(SHORT) ve S2 "İki yön · 3× risk çarpanı" (BOTH) — A1'in tanımı, yalnız
+`entry.direction` farklı. Eleme kuralı aynı: 14 gün kontrolün altında ve
+eksi → arşiv.
+
+**Kuyruğa eklendi:** kısa puan kalibrasyonu (hedef −fwd_return); coin bazlı
+borç oranı; boyutlandırma nakit tavanının komisyon payı (A3'te "yetersiz
+marj" retleri: `serbest_nakit × lev` komisyonsuz, adaptör komisyon ekleyince
+marj yetmiyor).
