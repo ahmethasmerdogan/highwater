@@ -47,6 +47,11 @@ class LeverageSpec:
     #: Saatlik borç oranı (0.0000208 ≈ günlük %0,05 — Binance USDT marjını
     #: taklit eder; temkinli taraf).
     hourly_rate: float = 0.0000208
+    #: True ise kaldıraç RİSKİ de çarpar: işlem başına risk = risk_pct × kaldıraç.
+    #: Varsayılan (False) tasarım kararıdır — kaldıraç yalnız tavanları kaldırır.
+    #: Sahibin "paper'da korumacı olma" isteğiyle agresif kollar için açıldı
+    #: (2026-09-04); kazanç ve kayıp aynı çarpanla büyür, kesiciler yine bekler.
+    scale_risk: bool = False
 
     @classmethod
     def from_sizing(cls, sizing: dict | None) -> LeverageSpec:
@@ -61,6 +66,7 @@ class LeverageSpec:
             require_pattern=bool(blok.get("require_pattern", True)),
             stop_margin_fit=float(blok.get("stop_margin_fit", 0.8)),
             hourly_rate=float(blok.get("hourly_rate", 0.0000208)),
+            scale_risk=bool(blok.get("scale_risk", False)),
         )
 
     @property

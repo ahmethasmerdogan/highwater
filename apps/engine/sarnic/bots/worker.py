@@ -987,6 +987,7 @@ class BotWorker:
                     entry=entry,
                     stop=stop,
                     leverage=lev.leverage,
+                    risk_scale=lev.leverage if lev_spec.scale_risk else 1.0,
                     equity=snapshot.equity,
                     free_cash=snapshot.cash,
                     current_exposure=snapshot.exposure,

@@ -782,6 +782,7 @@ class BacktestEngine:
                     entry=entry,
                     stop=stop,
                     leverage=lev.leverage,
+                    risk_scale=lev.leverage if self.lev_spec.scale_risk else 1.0,
                     equity=equity,
                     free_cash=cash,
                     current_exposure=exposure,

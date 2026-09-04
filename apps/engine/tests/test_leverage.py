@@ -104,7 +104,7 @@ def test_liquidation_price_below_fitted_stop():
     liq = liquidation_price(entry, lev)
     assert liq == pytest.approx(100.0 * (1 - (1 / 3) * 0.9))
     # 3×'e sığan en geniş stop: %26,7 → 73,3 > liq (70,0).
-    assert 100.0 * (1 - (1 / 3) * 0.8) > liq
+    assert liq < 100.0 * (1 - (1 / 3) * 0.8)
 
 
 def test_sizing_caps_lift_with_leverage():
@@ -190,3 +190,21 @@ def test_agirlikli_r_kismi_yoksa_eski_formul():
     # 10 adet @100, 5'i 105'ten satıldı (puan 25), kalan 5 adet 110'dan: (25+50)/(5×10)=1,5
     assert weighted_r(100.0, 110.0, 5.0, 5.0, realized_points=25.0, entry_qty=10.0) == 1.5
     assert weighted_r(100.0, 110.0, 0.0, 5.0) == 0.0
+
+
+def test_risk_carpani_kaldiracla_buyur():
+    """scale_risk: risk bütçesi kaldıraç kadar büyür (3× → 3 kat notional,
+    tavanlar da 3× kalktığı için boyut gerçekten büyür). Kapalıyken eski davranış."""
+    from sarnic.sizing.engine import SizingEngine, SizingInput, SizingParams
+    from sarnic.sizing.leverage import LeverageSpec
+
+    assert LeverageSpec.from_sizing({"leverage": {"max_leverage": 3, "scale_risk": True}}).scale_risk
+    assert not LeverageSpec.from_sizing({"leverage": {"max_leverage": 3}}).scale_risk
+    e = SizingEngine(SizingParams(risk_pct=0.01, max_position_pct=0.9, max_exposure_pct=3.0,
+                                  cluster_exposure_pct=3.0, adv_fraction=1e9, min_fill_ratio=0.0))
+    ortak = dict(symbol="X", score=85.0, entry=100.0, stop=95.0, equity=10_000.0, free_cash=10_000.0,
+                 current_exposure=0.0, cluster_exposure=0.0, realized_vol_20d=0.6, adv_1h=1e12)
+    duz = e.size(SizingInput(**ortak))
+    kat = e.size(SizingInput(**ortak, leverage=3.0, risk_scale=3.0))
+    assert duz.accepted and kat.accepted
+    assert kat.qty == pytest.approx(duz.qty * 3.0, rel=1e-6)

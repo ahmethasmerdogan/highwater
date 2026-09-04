@@ -126,6 +126,8 @@ class SizingInput:
     #: Girişin kaldıracı (1 = spot davranışı). Kaldıraç RİSKİ çarpmaz;
     #: yalnız nakit ve tek-pozisyon tavanını kaldırır (sizing/leverage.py).
     leverage: float = 1.0
+    #: Risk bütçesi çarpanı (LeverageSpec.scale_risk ile kaldıraç kadar; yoksa 1).
+    risk_scale: float = 1.0
 
 
 @dataclass(slots=True)
@@ -218,8 +220,10 @@ class SizingEngine:
             return _reject(d, f"puan kademe eşiğinin altında ({inp.score:.1f})", steps)
 
         # --- 1) Risk bütçesi ---
-        risk_amount = inp.equity * p.risk_pct
+        risk_amount = inp.equity * p.risk_pct * max(inp.risk_scale, 1.0)
         steps.append({"step": "risk_bütçesi", "value": risk_amount})
+        if inp.risk_scale > 1.0:
+            steps.append({"step": "risk_çarpanı", "value": inp.risk_scale})
 
         # --- 2) Stop'tan boyut ---
         qty = risk_amount / (inp.entry - inp.stop)
