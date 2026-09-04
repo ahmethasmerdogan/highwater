@@ -188,7 +188,7 @@ async def load_snapshot(
         cash=float(bot.cash),
         positions=positions,
         prices=prices,
-        equity_peak=float(bot.equity_peak),
+        equity_peak=float(bot.equity_peak),  # re-base varsa aşağıda klemplenir
     )
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     week_start = day_start - timedelta(days=day_start.weekday())
@@ -205,12 +205,22 @@ async def load_snapshot(
         # ilerisindeyse de re-base ÖNCESİ noktalar (eski taban) süzülür.
         if rebase_at is not None and moment <= rebase_at:
             return float(bot.capital)
-        return await equity_at(
-            session, bot.id, moment, float(bot.capital), not_before=rebase_at
-        )
+        return await equity_at(session, bot.id, moment, float(bot.capital), not_before=rebase_at)
 
     snapshot.equity_start_of_day = await _anchor(day_start)
     snapshot.equity_start_of_week = await _anchor(week_start)
+    if rebase_at is not None:
+        # Eski taban cinsinden tepe, MAX_DRAWDOWN kill'ini ilk barda tetiklerdi
+        # (2985→400'de −%87 "düşüş"). Tepe = re-base sonrası noktaların en yükseği,
+        # en az yeni sermaye.
+        tepe = (
+            await session.execute(
+                select(func.max(EquityPoint.equity)).where(
+                    EquityPoint.bot_id == bot.id, EquityPoint.at >= rebase_at
+                )
+            )
+        ).scalar_one_or_none()
+        snapshot.equity_peak = max(float(bot.capital), float(tepe or 0.0))
     snapshot.consecutive_losses = await consecutive_losses(
         session,
         bot.id,
