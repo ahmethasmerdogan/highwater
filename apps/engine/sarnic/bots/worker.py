@@ -381,15 +381,18 @@ class BotWorker:
         bundles = await load_bundles(
             session, symbols, at=bar_time, decision_tf=definition.timeframe
         )
-        if True:
-            # Karar barının KENDİ satırı gelmemiş sembolü puanlamak, önceki
-            # kapanışla bu bar adına karar vermek olur — fiyat da stop da
-            # bayat kalır. Seanslı pazarda sağlayıcı gün sonunu gecikmeli basar
-            # (İş Yatırım T+dakikalar… saatler); kriptoda da tek tek semboller
-            # geç gelebiliyor: 2026-09-04 MSTRBUSDT'de 12:00 kapanışı (142,51)
-            # ile hesaplanan stop 138,92, gerçek dolum 136,87'nin ÜSTÜNDE kaldı
-            # ve bot 5 her turda çöktü. Taze olmayan her pazarda atlanır; bar
+        if definition.universe.market != "CRYPTO":
+            # Sağlayıcı gün sonunu gecikmeli basar (İş Yatırım T+dakikalar…
+            # saatler). Karar barının KENDİ satırı gelmemiş sembolü puanlamak,
+            # dünkü kapanışla bugünkü bar adına karar vermek olur — fiyat da
+            # sentetik defter de bayat kalır. Taze olmayan atlanır; bar
             # tüketilmediği için 20 sn sonra yeniden denenir.
+            #
+            # KRİPTOYA UYGULANMAZ (2026-09-04 20:00Z geri alındı): kontrol
+            # kriptoda hiçbir sembolü taze saymadı ve 1h kollarının hepsi
+            # 18:00 barında dondu — bir saatlik karar kaybı. Kriptonun bayat-bar
+            # riski `stop_anchored_to_fill` ile zaten kapalı (dolum stopun
+            # yanlış tarafındaysa stop dolumdan yeniden çapalanır).
             taze = []
             for b in bundles:
                 base = b.indicators.get(definition.timeframe)
