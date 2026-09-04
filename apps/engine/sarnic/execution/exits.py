@@ -34,14 +34,17 @@ class PositionView:
     initial_stop: float
     breakeven_locked: bool = False
     partial_done: bool = False
+    #: +1 uzun, −1 kısa. Her fiyat farkı bu çarpanla okunur; uzun için
+    #: aritmetik bugünkü hâliyle birebir (KISA-YON-PLANI §0).
+    direction: int = 1
 
     @property
     def initial_risk(self) -> float:
-        """1R = giriş − ilk stop. Pozisyonun ömrü boyunca sabittir."""
-        return max(self.entry_price - self.initial_stop, 1e-12)
+        """1R = stopun girişten koruyucu yöndeki uzaklığı. Ömür boyu sabittir."""
+        return max(self.direction * (self.entry_price - self.initial_stop), 1e-12)
 
     def r_multiple(self, price: float) -> float:
-        return (price - self.entry_price) / self.initial_risk
+        return self.direction * (price - self.entry_price) / self.initial_risk
 
 
 @dataclass(slots=True)
@@ -79,8 +82,8 @@ def evaluate_exit(
     if market.delisted:
         return ExitDecision(True, ExitReason.DELIST, "sembol delist edildi")
 
-    # --- 1) Stop ---
-    if market.price <= position.stop:
+    # --- 1) Stop: fiyat stopun kötü tarafına geçti (uzun ≤, kısa ≥) ---
+    if position.direction * (market.price - position.stop) <= 0:
         reason = ExitReason.STOP
         if position.breakeven_locked:
             # Başabaş/trailing sonrası tetiklenen stop ayrı raporlanır — çıkış
@@ -90,8 +93,9 @@ def evaluate_exit(
                 if math.isclose(position.stop, position.entry_price, rel_tol=1e-9)
                 else ExitReason.TRAILING
             )
+        isaret = "≤" if position.direction > 0 else "≥"
         return ExitDecision(
-            True, reason, f"stop tetiklendi: {market.price:.8f} ≤ {position.stop:.8f}"
+            True, reason, f"stop tetiklendi: {market.price:.8f} {isaret} {position.stop:.8f}"
         )
 
     # --- 4) Puan çıkışı (yalnızca bar kapanışında) ---
@@ -144,7 +148,7 @@ def evaluate_exit(
 
 
 def update_stop(position: PositionView, market: MarketView, spec: ExitSpec) -> float | None:
-    """Başabaş kilidi ve trailing. Stop **asla aşağı çekilmez**.
+    """Başabaş kilidi ve trailing. Stop **asla koruyucu yönün tersine çekilmez**.
 
     `breakeven_r <= 0` kilidi, `trail_atr <= 0` trailing'i kapatır. Kapatma
     açıkça mümkün olmalı: 0 "hemen kilitle" diye yorumlansaydı stop daha ilk
@@ -161,16 +165,16 @@ def update_stop(position: PositionView, market: MarketView, spec: ExitSpec) -> f
         if spec.breakeven_r > 0 and position.r_multiple(market.price) >= spec.breakeven_r:
             candidate = position.entry_price
     elif market.atr > 0 and spec.trail_atr > 0:
-        # Başabaş sonrası ATR katı kadar takip eden stop.
-        candidate = market.price - spec.trail_atr * market.atr
+        # Başabaş sonrası ATR katı kadar takip eden stop (kısa: fiyatın üstünde).
+        candidate = market.price - position.direction * spec.trail_atr * market.atr
 
     if candidate is None:
         return None
-    # Monotonluk: yalnızca yukarı.
-    if candidate <= position.stop:
+    # Monotonluk: yalnızca koruyucu yönde (uzun yukarı, kısa aşağı).
+    if position.direction * (candidate - position.stop) <= 0:
         return None
-    # Stop hiçbir zaman güncel fiyatın üstüne çıkamaz.
-    if candidate >= market.price:
+    # Stop hiçbir zaman güncel fiyatı geçemez.
+    if position.direction * (market.price - candidate) <= 0:
         return None
     return candidate
 
