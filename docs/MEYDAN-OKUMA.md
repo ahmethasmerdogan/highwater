@@ -1507,3 +1507,7 @@ hedef boyutu büyütünce %25 doluluk kuralı ve maruziyet/küme tavanları her
 girişi reddetti (tam SISTEM-ANALIZI §3.15). Tanımlar v2: `min_fill_ratio`
 0, brüt maruziyet tavanı kaldıraç × 0,8 (2,4 / 4,0), küme tavanı 1,5 / 2,5;
 A4'te kaldıraç eşiği kapıya (75) çekildi. Katılım damgası ve sermaye aynı.
+Ayrıca kod düzeltmesi: `decide_leverage` "direnç bulunamadı" (None) değerini
+eşiksiz spec'te bile ret sayıyordu; artık `min_headroom_atr = 0` S/R teyidini
+kapatır (maraton spec'leri 2,0 ATR ile aynı davranır). Supervisor 05:36Z'de
+yeniden başladı; ilk kaldıraçlı girişler 06:00 barından itibaren beklenir.
