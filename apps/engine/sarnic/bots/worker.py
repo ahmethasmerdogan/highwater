@@ -68,7 +68,7 @@ from sarnic.features.sr import stop_from_sr
 from sarnic.risk.engine import RiskEngine, RiskState
 from sarnic.scoring.engine import ScoreResult, ScoringEngine
 from sarnic.sizing.clusters import cluster_exposure, latest_clusters
-from sarnic.sizing.engine import SizingEngine, SizingInput
+from sarnic.sizing.engine import SizingEngine, SizingInput, stop_anchored_to_fill
 from sarnic.sizing.leverage import LeverageSpec, borrow_cost, decide_leverage
 from sarnic.strategy.definition import StrategyDefinition, entry_hour_allowed
 from sarnic.universe.engine import UniverseEngine
@@ -366,11 +366,14 @@ class BotWorker:
         bundles = await load_bundles(
             session, symbols, at=bar_time, decision_tf=definition.timeframe
         )
-        if definition.universe.market != "CRYPTO":
-            # Sağlayıcı gün sonunu gecikmeli basar (İş Yatırım T+dakikalar…
-            # saatler). Karar barının KENDİ satırı gelmemiş sembolü puanlamak,
-            # dünkü kapanışla bugünkü bar adına karar vermek olur — fiyat da
-            # sentetik defter de bayat kalır. Taze olmayan atlanır; bar
+        if True:
+            # Karar barının KENDİ satırı gelmemiş sembolü puanlamak, önceki
+            # kapanışla bu bar adına karar vermek olur — fiyat da stop da
+            # bayat kalır. Seanslı pazarda sağlayıcı gün sonunu gecikmeli basar
+            # (İş Yatırım T+dakikalar… saatler); kriptoda da tek tek semboller
+            # geç gelebiliyor: 2026-09-04 MSTRBUSDT'de 12:00 kapanışı (142,51)
+            # ile hesaplanan stop 138,92, gerçek dolum 136,87'nin ÜSTÜNDE kaldı
+            # ve bot 5 her turda çöktü. Taze olmayan her pazarda atlanır; bar
             # tüketilmediği için 20 sn sonra yeniden denenir.
             taze = []
             for b in bundles:
@@ -681,7 +684,9 @@ class BotWorker:
         price: float,
     ) -> None:
         # MFE/MAE takibi — her gözetim turunda güncellenir.
-        r = _view(position).r_multiple(price)
+        # Sayısal tavan: NUMERIC(14,8) 10^6'yı taşır; 1R≈0 bir pozisyonda r
+        # sonsuza gider ve döngü her turda çökerdi (bot 5, 2026-09-04).
+        r = max(-9_999.0, min(9_999.0, _view(position).r_multiple(price)))
         position.mfe = max(position.mfe, r)
         position.mae = min(position.mae, r)
 
@@ -1153,6 +1158,22 @@ class BotWorker:
         ).scalar_one_or_none()
 
         entry_price = result.avg_price
+        stop = stop_anchored_to_fill(
+            entry_price, ctx.prices.get(candidate.symbol, entry_price), decision.stop, direction
+        )
+        if stop != decision.stop:
+            await self._emit(
+                session,
+                EventKind.LOG,
+                level="WARN",
+                symbol=candidate.symbol,
+                message=(
+                    f"{candidate.symbol} dolum {entry_price:.6f} stopun "
+                    f"{'altında' if direction > 0 else 'üstünde'} kaldı "
+                    f"(karar {ctx.prices.get(candidate.symbol, entry_price):.6f}, stop "
+                    f"{decision.stop:.6f}); stop dolumdan aynı mesafeye çekildi → {stop:.6f}"
+                ),
+            )
         position = Position(
             bot_id=bot.id,
             symbol=candidate.symbol,
@@ -1161,8 +1182,8 @@ class BotWorker:
             entry_qty=Decimal(str(round(result.filled_qty, 10))),
             entry_price=Decimal(str(round(entry_price, 10))),
             entry_time=self.clock.now(),
-            stop=Decimal(str(round(decision.stop, 10))),
-            initial_stop=Decimal(str(round(decision.stop, 10))),
+            stop=Decimal(str(round(stop, 10))),
+            initial_stop=Decimal(str(round(stop, 10))),
             score_at_entry=round(candidate.score, 2),
             rationale_id=score_id,
             entry_fees=Decimal(str(round(result.fees, 8))),
@@ -1179,7 +1200,7 @@ class BotWorker:
                 side=yon.opposite,
                 type=OrderType.STOP_LOSS_LIMIT,
                 qty=result.filled_qty,
-                stop_price=decision.stop,
+                stop_price=stop,
                 bot_id=bot.id,
                 position_id=position.id,
             )
@@ -1193,8 +1214,8 @@ class BotWorker:
                 qty=result.filled_qty,
                 entry_price=entry_price,
                 entry_time=position.entry_time,
-                stop=decision.stop,
-                initial_stop=decision.stop,
+                stop=stop,
+                initial_stop=stop,
                 score_at_entry=candidate.score,
                 leverage=leverage,
                 breakeven_locked=False,
@@ -1213,12 +1234,12 @@ class BotWorker:
             symbol=candidate.symbol,
             qty=round(result.filled_qty, 8),
             entry=round(entry_price, 8),
-            stop=round(decision.stop, 8),
+            stop=round(stop, 8),
             score=candidate.score,
             rationale=candidate.rationale,
             message=(
                 f"{candidate.symbol} qty {result.filled_qty:.4f} @ {entry_price:.6f} · "
-                f"stop {decision.stop:.6f} · risk %{risk_pct * 100:.1f}"
+                f"stop {stop:.6f} · risk %{risk_pct * 100:.1f}"
                 + (" · KISA" if direction < 0 else "")
                 + (f" · {leverage:g}× kaldıraç" if leverage > 1.0 else "")
                 + (f" · R {rr:.2f}" if isinstance(rr, int | float) else "")
