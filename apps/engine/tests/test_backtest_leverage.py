@@ -191,8 +191,10 @@ def test_kismi_satis_muhasebesi_ve_agirlikli_r():
         score_at_entry=85.0,
         entry_qty=10.0,
     )
-    nakit = e._partial(poz, 0.5, 105.0, giris + timedelta(hours=1), 0.0)
+    nakit, devir = e._partial(poz, 0.5, 105.0, giris + timedelta(hours=1), 0.0)
     assert nakit == pytest.approx(525.0)
+    # Devir satılan dilimin TAM notional'ı: 5 adet × 105.
+    assert devir == pytest.approx(525.0)
     assert poz.qty == pytest.approx(5.0) and poz.partial_done
     assert poz.realized_pnl == pytest.approx(25.0)
     trades: list[dict] = []

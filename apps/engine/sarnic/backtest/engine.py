@@ -455,8 +455,11 @@ class BacktestEngine:
                 position.mae = min(position.mae, r)
 
                 if decision.partial_fraction > 0 and not position.partial_done:
-                    cash += self._partial(position, decision.partial_fraction, price, bar, cost_bps)
-                    turnover += position.qty * decision.partial_fraction * price
+                    nakit, dilim = self._partial(
+                        position, decision.partial_fraction, price, bar, cost_bps
+                    )
+                    cash += nakit
+                    turnover += dilim
                 if decision.stop_moved and decision.new_stop is not None:
                     position.stop = decision.new_stop
                     position.breakeven_locked = True
@@ -652,12 +655,17 @@ class BacktestEngine:
 
     def _partial(
         self, position: SimPosition, fraction: float, price: float, at: datetime, cost_bps: float
-    ) -> float:
+    ) -> tuple[float, float]:
         """Kısmi kâr alma: dilimi kapanış fiyatından satar, pozisyon açık kalır.
 
         Worker'ın kısmi-dolum muhasebesiyle aynı: dilimin kâr/komisyonu
         realized_* alanlarında birikir ve nihai işlemde tek satırda raporlanır
         (işlem sayısı 1 kalır). Borç maliyeti dilim için burada tahakkuk eder.
+
+        Döner: `(nakde dönen tutar, satılan dilimin notional'ı)`. Devir ikinci
+        değerden okunur; çağıran `position.qty`'ye bakamaz çünkü bu fonksiyon
+        onu ZATEN düşürmüştür — eskiden öyle okunuyordu ve devir her kısmi
+        satışta `kesir` katı eksik sayılıyordu (%50'de yarısı).
         """
         d = position.direction
         qty = position.qty * fraction
@@ -682,7 +690,7 @@ class BacktestEngine:
         position.entry_fees -= giris_payi
         position.entry_notional *= 1 - fraction
         position.partial_done = True
-        return d * gross - fee - borc
+        return d * gross - fee - borc, fiyat * qty
 
     def _close(
         self,
