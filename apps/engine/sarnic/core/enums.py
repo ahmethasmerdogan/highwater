@@ -29,6 +29,19 @@ class OrderSide(StrEnum):
     BUY = "BUY"
     SELL = "SELL"
 
+    @property
+    def direction(self) -> int:
+        """Pozisyon yönü: BUY = uzun (+1), SELL = kısa (−1)."""
+        return 1 if self is OrderSide.BUY else -1
+
+    @classmethod
+    def from_direction(cls, direction: int) -> OrderSide:
+        return cls.BUY if direction > 0 else cls.SELL
+
+    @property
+    def opposite(self) -> OrderSide:
+        return OrderSide.SELL if self is OrderSide.BUY else OrderSide.BUY
+
 
 class OrderType(StrEnum):
     MARKET = "MARKET"
