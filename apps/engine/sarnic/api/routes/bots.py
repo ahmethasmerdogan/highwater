@@ -37,18 +37,21 @@ ALLOWED: dict[str, set[BotState]] = {
 }
 
 
-async def _to_out(session, bot: Bot, prices: dict[str, float]) -> BotOut:
-    positions = (
-        (
-            await session.execute(
-                select(Position).where(
-                    Position.bot_id == bot.id, Position.status == PositionStatus.OPEN
+async def _to_out(
+    session, bot: Bot, prices: dict[str, float], positions: list[Position] | None = None
+) -> BotOut:
+    if positions is None:
+        positions = (
+            (
+                await session.execute(
+                    select(Position).where(
+                        Position.bot_id == bot.id, Position.status == PositionStatus.OPEN
+                    )
                 )
             )
+            .scalars()
+            .all()
         )
-        .scalars()
-        .all()
-    )
     exposure = sum(float(p.qty) * prices.get(p.symbol, float(p.entry_price)) for p in positions)
     return BotOut(
         id=bot.id,
@@ -59,9 +62,7 @@ async def _to_out(session, bot: Bot, prices: dict[str, float]) -> BotOut:
         state=bot.state,
         timeframe=bot.timeframe,
         market=str(
-            ((bot.strategy_version.definition or {}).get("universe") or {}).get(
-                "market", "CRYPTO"
-            )
+            ((bot.strategy_version.definition or {}).get("universe") or {}).get("market", "CRYPTO")
         ),
         capital=float(bot.capital),
         cash=float(bot.cash),
@@ -87,7 +88,16 @@ def _owns(user, bot: Bot) -> bool:
 async def list_bots(session: SessionDep, redis: RedisDep, user: CurrentUser) -> list[BotOut]:
     bots = (await session.execute(select(Bot).order_by(Bot.id))).scalars().all()
     prices = await _prices(redis)
-    return [await _to_out(session, b, prices) for b in bots]
+    # N+1 yerine tek sorgu: 20 bot × 15 sn = dakikada 80 gereksiz tur.
+    acik = (
+        (await session.execute(select(Position).where(Position.status == PositionStatus.OPEN)))
+        .scalars()
+        .all()
+    )
+    bot_pozisyon: dict[int, list[Position]] = {b.id: [] for b in bots}
+    for p in acik:
+        bot_pozisyon.setdefault(p.bot_id, []).append(p)
+    return [await _to_out(session, b, prices, bot_pozisyon.get(b.id, [])) for b in bots]
 
 
 @router.post("", response_model=BotOut, status_code=status.HTTP_201_CREATED)
@@ -249,7 +259,9 @@ async def kill_bot(
     bus: BusDep,
     user: RequireTrader,
 ) -> BotOut:
-    """Sert durdurma: her şey iptal, pozisyonlar market ile kapatılır (§10)."""
+    """Sert durdurma: worker durur. Pozisyonlar KAPATILMAZ (kapatma worker'ın
+    işidir; öksüz kalır — OPEN-QUESTIONS §re-base). Metin gerçeği söyler.
+    """
     bot = await _load(session, bot_id)
     if not _owns(user, bot):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Bu bot size ait değil.")
@@ -269,7 +281,10 @@ async def kill_bot(
         level="CRITICAL",
         bot_id=bot.id,
         state=str(BotState.STOPPED),
-        message=f"{bot.name} sert durduruldu. Açık emirler iptal, pozisyonlar kapatılıyor.",
+        message=(
+            f"{bot.name} sert durduruldu. Açık pozisyonlar KAPATILMADI — öksüz kaldı; "
+            "Pozisyonlar sayfasından elle kapatın."
+        ),
     )
     await write_audit(session, request, user.id, "bot.kill", target=str(bot.id))
     await session.commit()
