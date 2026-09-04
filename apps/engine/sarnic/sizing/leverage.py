@@ -88,16 +88,20 @@ def decide_leverage(
     headroom_atr: float | None,
     entry: float,
     stop: float,
+    direction: int = 1,
 ) -> LeverageDecision:
     """Teyit üçlüsü + marj sığması → nihai kaldıraç.
 
     Her ret gerekçelidir; panel/log "neden 1×" sorusuna cevap verebilir.
+    `direction` −1 ise formasyon teyidi AYI formasyonudur (negatif düzeltme),
+    `headroom_atr` işlem yönündeki yerdir (çağıran kısa için destek mesafesini
+    geçer) ve stop girişin üstündedir.
     """
     if not spec.enabled:
         return LeverageDecision(1.0, "kaldıraç kapalı")
     if score < spec.min_score:
         return LeverageDecision(1.0, f"puan {score:.1f} < eşik {spec.min_score:.0f}")
-    if spec.require_pattern and not (pattern_modifier or 0.0) > 0:
+    if spec.require_pattern and not direction * (pattern_modifier or 0.0) > 0:
         return LeverageDecision(1.0, "formasyon teyidi yok")
     # Eşik 0 ise S/R teyidi kapalıdır: 'direnç bulunamadı' (None) açık gökyüzüdür,
     # ret sebebi değil. Eşikli spec'te None hâlâ teyitsizdir → 1×.
@@ -119,9 +123,9 @@ def decide_leverage(
 
     # Marj sığması: stop mesafesi başlangıç marjının içinde kalmalı.
     # (entry-stop)/entry ≤ (1/lev) × fit → sığana kadar düşür.
-    if entry <= 0 or stop >= entry:
+    if entry <= 0 or direction * (entry - stop) <= 0:
         return LeverageDecision(1.0, "stop/giriş geçersiz")
-    stop_pct = (entry - stop) / entry
+    stop_pct = direction * (entry - stop) / entry
     while lev > 1.0 and stop_pct > (1.0 / lev) * spec.stop_margin_fit:
         lev = round(lev - 1.0, 4) if lev > 2.0 else 1.0
     if lev <= 1.0:
@@ -129,16 +133,33 @@ def decide_leverage(
     return LeverageDecision(lev, f"teyit tam: puan {score:.1f}, {lev:g}×")
 
 
-def borrow_cost(notional: float, leverage: float, hold_hours: float, hourly_rate: float) -> float:
-    """Borç maliyeti: yalnız BORÇ ALINAN kısım için, tutulan saat kadar."""
-    if leverage <= 1.0 or notional <= 0 or hold_hours <= 0:
+def borrow_cost(
+    notional: float,
+    leverage: float,
+    hold_hours: float,
+    hourly_rate: float,
+    direction: int = 1,
+) -> float:
+    """Borç maliyeti: yalnız BORÇ ALINAN kısım için, tutulan saat kadar.
+
+    Kısa pozisyonda satılan varlığın TAMAMI ödünçtür — kaldıraçtan bağımsız
+    olarak notional'ın tümü faiz işletir (1× kısa bile bedava değildir).
+    """
+    if notional <= 0 or hold_hours <= 0:
         return 0.0
-    borrowed = notional * (1.0 - 1.0 / leverage)
+    if direction < 0:
+        borrowed = notional
+    else:
+        if leverage <= 1.0:
+            return 0.0
+        borrowed = notional * (1.0 - 1.0 / leverage)
     return borrowed * hourly_rate * hold_hours
 
 
-def liquidation_price(entry: float, leverage: float, maintenance_fraction: float = 0.9) -> float:
-    """Uzun pozisyonun yaklaşık likidasyon fiyatı (bilgi amaçlı).
+def liquidation_price(
+    entry: float, leverage: float, maintenance_fraction: float = 0.9, direction: int = 1
+) -> float:
+    """Pozisyonun yaklaşık likidasyon fiyatı (bilgi amaçlı); kısa için girişin üstünde.
 
     Başlangıç marjının `maintenance_fraction`'ı tükenince: 3× için giriş
     fiyatının %30'unun %90'ı kadar altı. Stop sığma kuralı sayesinde
@@ -147,4 +168,4 @@ def liquidation_price(entry: float, leverage: float, maintenance_fraction: float
     """
     if leverage <= 1.0:
         return 0.0
-    return entry * (1.0 - (1.0 / leverage) * maintenance_fraction)
+    return entry * (1.0 - direction * (1.0 / leverage) * maintenance_fraction)
