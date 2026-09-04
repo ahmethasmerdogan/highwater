@@ -268,3 +268,55 @@ async def test_worker_bar_karari_ve_gozetim_ayni_kilidi_paylasir():
     await asyncio.gather(worker.run_bar(None), worker._manage_open_positions())
     # Gözetim, bar kararı bitmeden araya giremez.
     assert sira == ["bar-başla", "bar-bitti", "gözetim"]
+
+
+# --------------------------------------------------------------------------- #
+#  Havuzdan düşen pozisyon yönetilmeye devam eder (bug hunt, 2026-09-04)
+# --------------------------------------------------------------------------- #
+async def test_havuzdan_dusen_pozisyon_ticker_fiyatiyla_yonetilir(api_session, test_database):
+    """Sembol havuzdan çıkarsa `ctx.prices` onu içermez. Sessizce atlamak çıkış
+    kurallarını o pozisyon için kapatır ve gerçekleşmemiş zararı özsermayeden
+    gizler. Ticker fiyatı varsa yönetim devam etmeli."""
+    from datetime import UTC, datetime
+
+    from sarnic.bots.worker import BarContext, BotWorker
+    from tests.conftest import utc
+    from tests.test_api import make_bot
+    from tests.test_paper import _SessizVeriyolu
+
+    bot, _ = await make_bot(api_session, "havuz-disi")
+    await api_session.refresh(bot, attribute_names=["strategy_version"])
+    worker = BotWorker(bot.id, bus=_SessizVeriyolu())
+
+    acik = OpenPosition(
+        id=1,
+        symbol="DUSMUSUSDT",
+        qty=10.0,
+        entry_price=100.0,
+        entry_time=utc(2026, 8, 18, 0),
+        stop=90.0,
+        initial_stop=90.0,
+        score_at_entry=85.0,
+        breakeven_locked=False,
+    )
+    snapshot = PortfolioSnapshot(bot_id=bot.id, cash=0.0, positions=[acik])
+    ctx = BarContext(
+        bar_time=datetime(2026, 9, 4, 12, tzinfo=UTC),
+        symbols=["BTCUSDT"],  # pozisyonun sembolü havuzda YOK
+        scores={},
+        stops={},
+        atr={},
+        prices={"BTCUSDT": 50_000.0},
+        realized_vol={},
+        adv_1h={},
+        havuz_disi_fiyat={"DUSMUSUSDT": 80.0},  # stopun altında → çıkış gerekir
+    )
+    gorulen: list[float] = []
+
+    async def sahte_uygula(session, bot_, snap, position, decision, price):
+        gorulen.append(price)
+
+    worker._apply_exit_decision = sahte_uygula  # type: ignore[method-assign]
+    definition = worker._definition_of(bot)
+    await worker._manage_exits(api_session, bot, definition, snapshot, ctx, bar_closed=True)
+    assert gorulen == [80.0], "havuzdan düşen pozisyon ticker fiyatıyla yönetilmeli"

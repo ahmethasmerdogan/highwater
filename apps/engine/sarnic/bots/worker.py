@@ -100,6 +100,9 @@ class BarContext:
     pattern_mod: dict[str, float] = field(default_factory=dict)
     btc_below_ema200: bool = False
     btc_vol_above_p90: bool = False
+    #: Havuzdan düşmüş ama elde tutulan sembollerin son ticker fiyatı; çıkış
+    #: kuralları bu pozisyonlar için de çalışsın diye (bkz. `_manage_exits`).
+    havuz_disi_fiyat: dict[str, float] = field(default_factory=dict)
     #: Kısa yön (tanım opt-in): kısa puan, direnç üstü stop, desteğe uzaklık.
     short_scores: dict[str, ScoreResult] = field(default_factory=dict)
     short_stops: dict[str, float] = field(default_factory=dict)
@@ -316,7 +319,9 @@ class BotWorker:
                 # 15:00'te tam bunu yaşadık: "0 sembol puanlandı" yazıp bar
                 # yendi. Açık pozisyonların bar-stop denetimi yine çalışır;
                 # uyarı bar başına bir kez, dönüş False → 20 sn sonra yeniden.
-                snapshot = await load_snapshot(session, bot, ctx.prices, now=bar_time)
+                snapshot = await load_snapshot(
+                    session, bot, {**ctx.prices, **ctx.havuz_disi_fiyat}, now=bar_time
+                )
                 if definition.universe.market != "CRYPTO":
                     await self._bar_stop_exits(session, bot, definition, snapshot, bar_time)
                 if self._empty_universe_warned_for != bar_time:
@@ -335,7 +340,9 @@ class BotWorker:
 
             await self._persist_scores(session, ctx, definition)
 
-            snapshot = await load_snapshot(session, bot, ctx.prices, now=bar_time)
+            snapshot = await load_snapshot(
+                session, bot, {**ctx.prices, **ctx.havuz_disi_fiyat}, now=bar_time
+            )
 
             # 1) Çıkışlar önce — sermaye önce korunur.
             if definition.universe.market != "CRYPTO":
@@ -481,6 +488,23 @@ class BotWorker:
 
         # Likidite tavanı için 1 saatlik ortalama quote hacmi.
         tickers = await read_tickers(redis)
+        # Havuzdan düşmüş ama hâlâ elde olan pozisyonların fiyatı: çıkış
+        # kuralları ve özsermaye bu semboller için de doğru çalışsın.
+        havuz_disi: dict[str, float] = {}
+        elde = (
+            await session.execute(
+                select(Position.symbol).where(
+                    Position.bot_id == self.bot_id, Position.status == PositionStatus.OPEN
+                )
+            )
+        ).scalars()
+        havuzda = set(symbols)
+        for sembol in elde:
+            if sembol in havuzda:
+                continue
+            t = tickers.get(sembol)
+            if t and float(t.get("last_price") or 0) > 0:
+                havuz_disi[sembol] = float(t["last_price"])
         for symbol in symbols:
             t = tickers.get(symbol)
             adv[symbol] = float(t["quote_volume"]) / 24 if t else 0.0
@@ -497,6 +521,7 @@ class BotWorker:
             realized_vol=rvol_map,
             adv_1h=adv,
             sr_headroom_atr=sr_headroom,
+            havuz_disi_fiyat=havuz_disi,
             pattern_mod=pattern_mod,
             btc_below_ema200=btc_below,
             btc_vol_above_p90=btc_vol_high,
@@ -694,7 +719,25 @@ class BotWorker:
         for position in list(snapshot.positions):
             price = ctx.prices.get(position.symbol)
             if price is None:
-                continue
+                # Sembol havuzdan düştü ama pozisyon elimizde. Sessizce atlamak
+                # çıkış kurallarını (puan, süre, kısmi kâr, stop taşıma) o
+                # pozisyon için tamamen kapatır ve `load_snapshot` onu giriş
+                # fiyatından değerlediği için gerçekleşmemiş zarar özsermayede
+                # ve risk kapısında GÖRÜNMEZ. Ticker son fiyatı varsa onunla
+                # yönetilir; o da yoksa uyarı yazılır — sessiz varsayım yok.
+                price = ctx.havuz_disi_fiyat.get(position.symbol)
+                if price is None:
+                    await self._emit(
+                        session,
+                        EventKind.LOG,
+                        level="WARN",
+                        symbol=position.symbol,
+                        message=(
+                            f"{position.symbol} havuzdan düştü ve fiyatı yok; "
+                            "çıkış kuralları bu barda uygulanamadı."
+                        ),
+                    )
+                    continue
             score = ctx.score_for(position.symbol, position.direction)
             market = MarketView(
                 price=price,
