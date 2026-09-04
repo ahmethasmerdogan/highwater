@@ -30,7 +30,7 @@ from sarnic.core.enums import TIMEFRAME_MINUTES, ExitReason
 from sarnic.core.logging import get_logger
 from sarnic.data.store import load_frames
 from sarnic.db.models import UniverseSnapshot
-from sarnic.execution.accounting import net_pnl, total_fees
+from sarnic.execution.accounting import net_pnl, total_fees, weighted_r
 from sarnic.execution.exits import MarketView, PositionView, evaluate_exit, rotation_candidate
 from sarnic.execution.gapfill import stop_fill_price
 from sarnic.features.indicators import ema, realized_vol
@@ -628,11 +628,12 @@ class BacktestEngine:
         borc = borrow_cost(
             position.entry_price * qty, position.leverage, hold_hours, self.lev_spec.hourly_rate
         )
+        giris_payi = position.entry_fees * fraction
         position.realized_points += (fiyat - position.entry_price) * qty
-        position.realized_pnl += (fiyat - position.entry_price) * qty - fee - borc
-        position.realized_fees += fee + borc
+        position.realized_pnl += (fiyat - position.entry_price) * qty - fee - borc - giris_payi
+        position.realized_fees += fee + borc + giris_payi
         position.qty -= qty
-        position.entry_fees *= 1 - fraction
+        position.entry_fees -= giris_payi
         position.entry_notional *= 1 - fraction
         position.partial_done = True
         return gross - fee - borc
@@ -661,19 +662,25 @@ class BacktestEngine:
         )
         fee += borc
         proceeds = gross - fee
-        pnl = net_pnl(
-            gross=(price - position.entry_price) * position.qty,
-            entry_fees=position.entry_fees,
-            exit_fees=fee,
-        ) + position.realized_pnl
+        pnl = (
+            net_pnl(
+                gross=(price - position.entry_price) * position.qty,
+                entry_fees=position.entry_fees,
+                exit_fees=fee,
+            )
+            + position.realized_pnl
+        )
         fee += position.realized_fees
         risk_per_unit = max(position.entry_price - position.initial_stop, 1e-12)
         # R: giriş miktarına göre ağırlıklı fiyat-puanı — kısmi satış yoksa
         # eski formülle birebir aynı ((price − entry)/risk).
-        toplam_qty = position.entry_qty or position.qty
-        r_carpani = (
-            (position.realized_points + (price - position.entry_price) * position.qty)
-            / (risk_per_unit * toplam_qty)
+        r_carpani = weighted_r(
+            position.entry_price,
+            price,
+            position.qty,
+            risk_per_unit,
+            realized_points=position.realized_points,
+            entry_qty=position.entry_qty,
         )
         trades.append(
             {
