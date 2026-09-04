@@ -214,13 +214,18 @@ async def kilit_al(redis, timeframe: str, bar_time: datetime, saniye: int = 240)
 
 
 async def bekle(
-    redis, timeframe: str, bar_time: datetime, symbols: list[str], azami_saniye: float = 150.0
+    redis, timeframe: str, bar_time: datetime, symbols: list[str], azami_saniye: float = 60.0
 ) -> dict[str, object]:
     """Kilidi tutan kolun yazmasını bekler; dolan önbelleği döner.
 
     Bekleme `asyncio.sleep` ile: olay döngüsü serbest kalır, nabız atmaya
     devam eder. Süre dolarsa elde ne varsa onunla döner — çağıran eksikleri
     kendisi hesaplar, yani kilit sahibi ölse bile karar gecikmez.
+
+    Azami süre dar tutuldu (60 sn): bekleyen kol bar kilidini elinde tuttuğu
+    için gözetim turu (stop denetimi) o sürede çalışamaz. Kilit sahibinin
+    ölçülen hesap süresi ~20–25 sn; 60 sn hem tampon bırakır hem stopları
+    uzun süre bekletmez.
     """
     import asyncio
 
