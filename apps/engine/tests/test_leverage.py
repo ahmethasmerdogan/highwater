@@ -234,3 +234,23 @@ def test_risk_carpani_kaldiracla_buyur():
     kat = e.size(SizingInput(**ortak, leverage=3.0, risk_scale=3.0))
     assert duz.accepted and kat.accepted
     assert kat.qty == pytest.approx(duz.qty * 3.0, rel=1e-6)
+
+
+def test_esiksiz_specte_direnc_yoklugu_ret_degil():
+    """min_headroom_atr=0 → S/R teyidi kapalı; None (direnç bulunamadı) kaldıracı düşürmez."""
+    spec = LeverageSpec(
+        max_leverage=3.0,
+        min_score=75.0,
+        tiers=((75.0, 2.0), (82.0, 3.0)),
+        min_headroom_atr=0.0,
+        require_pattern=False,
+    )
+    d = decide_leverage(
+        spec, score=83.0, pattern_modifier=None, headroom_atr=None, entry=100.0, stop=97.0
+    )
+    assert d.leverage == 3.0, d.reason
+    # Eşikli spec'te None hâlâ teyitsiz → 1×.
+    d2 = decide_leverage(
+        SPEC, score=95.0, pattern_modifier=3.0, headroom_atr=None, entry=100.0, stop=95.0
+    )
+    assert d2.leverage == 1.0 and "dirence yer yok" in d2.reason

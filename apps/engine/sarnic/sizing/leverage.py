@@ -99,7 +99,9 @@ def decide_leverage(
         return LeverageDecision(1.0, f"puan {score:.1f} < eşik {spec.min_score:.0f}")
     if spec.require_pattern and not (pattern_modifier or 0.0) > 0:
         return LeverageDecision(1.0, "formasyon teyidi yok")
-    if headroom_atr is None or headroom_atr < spec.min_headroom_atr:
+    # Eşik 0 ise S/R teyidi kapalıdır: 'direnç bulunamadı' (None) açık gökyüzüdür,
+    # ret sebebi değil. Eşikli spec'te None hâlâ teyitsizdir → 1×.
+    if spec.min_headroom_atr > 0 and (headroom_atr is None or headroom_atr < spec.min_headroom_atr):
         return LeverageDecision(
             1.0,
             f"dirence yer yok ({'—' if headroom_atr is None else f'{headroom_atr:.1f}'} ATR "
@@ -123,9 +125,7 @@ def decide_leverage(
     while lev > 1.0 and stop_pct > (1.0 / lev) * spec.stop_margin_fit:
         lev = round(lev - 1.0, 4) if lev > 2.0 else 1.0
     if lev <= 1.0:
-        return LeverageDecision(
-            1.0, f"stop marja sığmadı (mesafe %{stop_pct * 100:.1f})"
-        )
+        return LeverageDecision(1.0, f"stop marja sığmadı (mesafe %{stop_pct * 100:.1f})")
     return LeverageDecision(lev, f"teyit tam: puan {score:.1f}, {lev:g}×")
 
 
