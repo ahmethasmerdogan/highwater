@@ -132,6 +132,14 @@ class BotWorker:
         self._redis_url = redis_url or settings.redis_url
         self._redis: aioredis.Redis | None = None
         self._stop = asyncio.Event()
+        # Karar ve gözetim döngüleri aynı botun nakit/pozisyon durumunu
+        # DEĞİŞTİRİR; ikisi aynı anda koşarsa son yazan kazanır. 2026-09-04
+        # 12:30Z, bot 4: gözetim ADA+DASH'i kapatıp nakdi 307'ye yazdı, karar
+        # döngüsü botu 12:30:07'de (nakit 140) okumuş, pozisyonları kapanmış
+        # bulmuş, özsermayeyi 214 sanıp kill switch'i tetiklemiş ve 214'ü
+        # üstüne yazmış: 167 $ satış geliri buharlaştı, bot hayalet zararla
+        # durdu. Tek kilit: bar kararı ile gözetim turu sırayla koşar.
+        self._bot_kilidi = asyncio.Lock()
         self._adapter: PaperAdapter | None = None
         self._definition: StrategyDefinition | None = None
         self._last_bar: datetime | None = None
@@ -256,6 +264,10 @@ class BotWorker:
             self._last_bar = bar
 
     async def run_bar(self, bar_time: datetime) -> bool:
+        async with self._bot_kilidi:
+            return await self._run_bar_kilitli(bar_time)
+
+    async def _run_bar_kilitli(self, bar_time: datetime) -> bool:
         """Bir bar kapanışının tam karar zinciri.
 
         Döner: bar işlendiyse `True`; atlandıysa `False` (çağıran yeniden dener).
@@ -1285,6 +1297,10 @@ class BotWorker:
             await asyncio.sleep(MANAGE_INTERVAL)
 
     async def _manage_open_positions(self) -> None:
+        async with self._bot_kilidi:
+            await self._manage_open_positions_kilitli()
+
+    async def _manage_open_positions_kilitli(self) -> None:
         async with session_scope() as session:
             bot = await self._load_bot(session)
             if bot.state not in (BotState.PAPER_RUNNING, BotState.DEGRADED):

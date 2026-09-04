@@ -240,3 +240,31 @@ async def test_worker_kisa_pozisyonu_alisla_kapatir(api_session, test_database):
         2500.0 - fiyat * miktar - fiyat * miktar * 0.001 - borc, abs=0.01
     )
     assert snapshot.positions == []
+
+
+# --------------------------------------------------------------------------- #
+#  Karar ve gözetim döngüleri aynı botta sırayla koşar (bot 4 yarışı, 2026-09-04)
+# --------------------------------------------------------------------------- #
+async def test_worker_bar_karari_ve_gozetim_ayni_kilidi_paylasir():
+    import asyncio
+
+    from sarnic.bots.worker import BotWorker
+    from tests.test_paper import _SessizVeriyolu
+
+    worker = BotWorker(999, bus=_SessizVeriyolu())
+    sira: list[str] = []
+
+    async def sahte_bar(bar_time):
+        sira.append("bar-başla")
+        await asyncio.sleep(0.05)
+        sira.append("bar-bitti")
+        return True
+
+    async def sahte_gozetim():
+        sira.append("gözetim")
+
+    worker._run_bar_kilitli = sahte_bar  # type: ignore[method-assign]
+    worker._manage_open_positions_kilitli = sahte_gozetim  # type: ignore[method-assign]
+    await asyncio.gather(worker.run_bar(None), worker._manage_open_positions())
+    # Gözetim, bar kararı bitmeden araya giremez.
+    assert sira == ["bar-başla", "bar-bitti", "gözetim"]
