@@ -19,7 +19,13 @@ from sarnic.features.indicators import IndicatorSet
 from sarnic.features.patterns import PatternResult
 from sarnic.features.sr import SRResult
 from sarnic.scoring.normalize import NEUTRAL, normalize_matrix
-from sarnic.scoring.registry import FEATURES, FEATURES_BY_FAMILY, FeatureDef, family_weights
+from sarnic.scoring.registry import (
+    DIRECTIONAL_FAMILIES,
+    FEATURES,
+    FEATURES_BY_FAMILY,
+    FeatureDef,
+    family_weights,
+)
 
 # §5.2 kalabalıklaşma cezası — parabolik hareketlere karşı koruma.
 #
@@ -210,26 +216,35 @@ class ScoringEngine:
         self.use_crowding = use_crowding
 
     # ------------------------------------------------------------------ #
-    def config_hash(self) -> str:
-        payload = json.dumps(
-            {
-                "weights": {k: round(v, 6) for k, v in sorted(self.weights.items())},
-                "features": [f.key for f in FEATURES],
-                "pattern": self.use_pattern,
-                "candle": self.use_candle,
-                "crowding": self.use_crowding,
-                "crowding_tiers": list(CROWDING_TIERS),
-            },
-            sort_keys=True,
-        )
+    def config_hash(self, direction: int = 1) -> str:
+        payload_dict: dict = {
+            "weights": {k: round(v, 6) for k, v in sorted(self.weights.items())},
+            "features": [f.key for f in FEATURES],
+            "pattern": self.use_pattern,
+            "candle": self.use_candle,
+            "crowding": self.use_crowding,
+            "crowding_tiers": list(CROWDING_TIERS),
+        }
+        # Yalnız kısa için anahtar eklenir: uzun hash'i ve `scores` satırları
+        # değişmez; kısa puanlar aynı tabloya ayrı config_hash ile yazılır.
+        if direction < 0:
+            payload_dict["direction"] = -1
+        payload = json.dumps(payload_dict, sort_keys=True)
         return hashlib.sha256(payload.encode()).hexdigest()[:32]
 
     # ------------------------------------------------------------------ #
-    def score_cross_section(self, features: list[SymbolFeatures]) -> list[ScoreResult]:
+    def score_cross_section(
+        self, features: list[SymbolFeatures], direction: int = 1
+    ) -> list[ScoreResult]:
         """Bir bardaki tüm havuzu birlikte puanlar.
 
         Normalizasyon **kesitseldir**: bir sembolü tek başına puanlamak mümkün
         değildir, çünkü yüzdelik sırası havuza bağlıdır. Bu bilinçlidir.
+
+        `direction=-1` kısa puan: yönlü ailelerin yüzdelikleri ters çevrilir
+        (100 − p), `vol` olduğu gibi kalır, düzelticiler işaret değiştirir
+        (ayı formasyonu artı, çöküşü kovalamak cezalı). Uzun için kod yolu ve
+        aritmetik bugünkü hâliyle birebirdir.
         """
         usable = [f for f in features if f.usable]
         if not usable:
@@ -237,7 +252,13 @@ class ScoringEngine:
 
         higher = {f.key: f.higher_is_better for f in FEATURES}
         matrix = normalize_matrix({f.symbol: f.raw for f in usable}, higher)
-        cfg_hash = self.config_hash()
+        if direction < 0:
+            ters = {d.key for fam in DIRECTIONAL_FAMILIES for d in FEATURES_BY_FAMILY.get(fam, ())}
+            matrix = {
+                s: {k: (100.0 - v if k in ters else v) for k, v in pct.items()}
+                for s, pct in matrix.items()
+            }
+        cfg_hash = self.config_hash(direction)
 
         results: list[ScoreResult] = []
         for feats in usable:
@@ -245,9 +266,9 @@ class ScoringEngine:
             families, contributions = self._family_scores(pct)
             base = round(sum(families.values()), 4)
 
-            pattern_mod = feats.pattern_modifier if self.use_pattern else 0.0
-            candle_mod = feats.candle_modifier if self.use_candle else 0.0
-            crowd = crowding_penalty(feats.ret_24h) if self.use_crowding else 0.0
+            pattern_mod = direction * feats.pattern_modifier if self.use_pattern else 0.0
+            candle_mod = direction * feats.candle_modifier if self.use_candle else 0.0
+            crowd = crowding_penalty(direction * feats.ret_24h) if self.use_crowding else 0.0
 
             total = max(0.0, min(100.0, base + pattern_mod + candle_mod + crowd))
 
@@ -270,6 +291,8 @@ class ScoringEngine:
                     config_hash=cfg_hash,
                 )
             )
+            if direction < 0:
+                results[-1].rationale["direction"] = -1
         results.sort(key=lambda r: (-r.score, r.symbol))
         return results
 

@@ -58,6 +58,11 @@ FEATURES: tuple[FeatureDef, ...] = (
     FeatureDef("support_strength", "sr", 1.0, True, "destek gücü"),
 )
 
+#: Kısa puanda ters çevrilen aileler (KISA-YON-PLANI §3). `vol` yönsüzdür:
+#: sıkışma (dar bant, düşük ATR%) iki yönde de "hareket geliyor" der; ters
+#: çevirmek "geniş bant iyi" demek olur ve tek sağlam bulguyla çelişir.
+DIRECTIONAL_FAMILIES: tuple[str, ...] = ("trend", "momentum", "flow", "sr")
+
 FEATURES_BY_FAMILY: dict[str, tuple[FeatureDef, ...]] = {
     fam: tuple(f for f in FEATURES if f.family == fam) for fam in DEFAULT_FAMILY_WEIGHTS
 }
