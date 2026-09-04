@@ -335,7 +335,13 @@ class PaperAdapter:
         notional = fill_price * outcome.filled_qty
         fee = notional * self.config.taker_fee
 
-        if order.side == OrderSide.BUY:
+        # Yön çarpanı (KISA-YON-PLANI §5): uzun +1, kısa −1. Kısa pozisyon
+        # defterde NEGATİF miktardır (ödünç alınıp satılan varlık); açılış
+        # satışının geliri nakde girer, kapatma alışı nakitten çıkar. Uzun
+        # için aritmetik bugünkü hâliyle birebir (d = 1).
+        d = 1 if float(order.meta.get("direction") or 1) > 0 else -1
+        opening = (order.side == OrderSide.BUY) == (d > 0)
+        if opening:
             # Marj kuralı: kaldıraçlı girişte nakit yalnız MARJI (notional/lev)
             # karşılamak zorunda; kalan borçtur. Akış yine TAM notional ile
             # düşülür — nakit eksiye iner ve borç GÖRÜNÜR kalır (özsermaye =
@@ -347,16 +353,16 @@ class PaperAdapter:
                     result,
                     "yetersiz bakiye" if lev <= 1.0 else "yetersiz marj",
                 )
-            self._free -= notional + fee
+            self._free -= d * notional + fee
             self._positions[order.symbol] = (
-                self._positions.get(order.symbol, 0.0) + outcome.filled_qty
+                self._positions.get(order.symbol, 0.0) + d * outcome.filled_qty
             )
         else:
             held = self._positions.get(order.symbol, 0.0)
-            if outcome.filled_qty > held + 1e-9:
+            if outcome.filled_qty > d * held + 1e-9:
                 return _reject(result, "yetersiz pozisyon")
-            self._positions[order.symbol] = held - outcome.filled_qty
-            self._free += notional - fee
+            self._positions[order.symbol] = held - d * outcome.filled_qty
+            self._free += d * notional - fee
 
         result.status = (
             OrderStatus.FILLED if not outcome.exhausted else OrderStatus.PARTIALLY_FILLED
