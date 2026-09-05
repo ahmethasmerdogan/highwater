@@ -4,31 +4,32 @@
  * ZİNCİR — "Karar nasıl alındı, aday nerede öldü, veri sağlam mı?"
  *
  * Karar zinciri dört basamaktır: veri → havuz → puan → boyut → emir. Bu ekran
- * o zinciri tek sayfada gösterir. v3'te aynı bilgi üç sayfaya dağılmıştı
+ * o zinciri tek sayfada gösterir; v3'te aynı bilgi üç sayfaya dağılmıştı
  * (Piyasa, Botlar, Günlük) ve sentez kullanıcıya kalıyordu.
- *
- * Merkezi bileşen karar hunisidir (§4). Sağında havuz hunisi (likidite
- * filtresi) ve veri kalitesi durur; ikisi de zincirin daha erken basamakları.
  */
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type DataQualityEntry, type FunnelStep, type Huni, type Nobet } from "@/lib/api";
-import { Bolum, Etiket, Muhakeme } from "@/v4/kutu";
-import { adet, Damga, Sessizlik } from "@/v4/olcum";
-import { KararHunisi, OZELLIK_ADI } from "@/v4/huni";
+import { Kart, Not } from "@/panel/kart";
+import { adet, Damga, Kunye, MONO, Sessizlik } from "@/panel/olcum";
+import { KararHunisi, OZELLIK_ADI } from "@/panel/huni";
+import { Secim } from "@/panel/secim";
+import { Chip } from "@/components/base/badges/chip";
+import { Select, SelectItem } from "@/components/base/select/select";
+import { cx } from "@/utils/cx";
 
 const OZELLIKLER = ["atr_pct", "bb_width", "trend_1d", "ret_168h_skip6", "taker_buy_ratio"];
 const PENCERELER = [
-  { saat: 24, ad: "24 saat" },
-  { saat: 72, ad: "3 gün" },
-  { saat: 168, ad: "7 gün" },
-];
+  { id: "24", ad: "24 saat" },
+  { id: "72", ad: "3 gün" },
+  { id: "168", ad: "7 gün" },
+] as const;
 
 export default function ZincirEkrani() {
   const [ozellik, setOzellik] = useState("atr_pct");
-  const [saat, setSaat] = useState(24);
-  const [botId, setBotId] = useState<number | null>(null);
+  const [saat, setSaat] = useState<"24" | "72" | "168">("24");
+  const [botId, setBotId] = useState<string>("hepsi");
 
   const nobet = useQuery({
     queryKey: ["nobet", 24],
@@ -36,7 +37,12 @@ export default function ZincirEkrani() {
   });
   const huni = useQuery({
     queryKey: ["huni", saat, ozellik, botId],
-    queryFn: () => api.get<Huni>("/kontrol/huni", { saat, ozellik, bot_id: botId }),
+    queryFn: () =>
+      api.get<Huni>("/kontrol/huni", {
+        saat: Number(saat),
+        ozellik,
+        bot_id: botId === "hepsi" ? undefined : Number(botId),
+      }),
     refetchInterval: 60_000,
   });
   const havuz = useQuery({
@@ -51,190 +57,163 @@ export default function ZincirEkrani() {
     queryFn: () => api.get<DataQualityEntry[]>("/data-quality", { limit: 40 }),
   });
 
+  const kollar = [
+    { id: "hepsi", label: "Tüm kollar" },
+    ...(nobet.data?.kollar ?? []).map((k) => ({ id: String(k.id), label: `${k.id} · ${k.ad}` })),
+  ];
+  const acikKalite = (kalite.data ?? []).filter((k) => !k.resolved);
+
   return (
     <>
-      <Bolum
-        baslik="karar hunisi"
+      <Kart
+        baslik="Karar hunisi"
         soru="Kapıyı geçen aday nerede öldü ve ölenlerin ölçülen kenarı neydi?"
         sag={
-          <div className="flex items-center gap-2">
-            <select
-              className="v4-olcum"
-              value={botId ?? ""}
-              onChange={(e) => setBotId(e.target.value ? Number(e.target.value) : null)}
-              style={{
-                border: "1px solid var(--v4-cizgi-koyu)",
-                borderRadius: 2,
-                padding: "2px 6px",
-                background: "var(--v4-kagit)",
-              }}
-            >
-              <option value="">tüm kollar</option>
-              {(nobet.data?.kollar ?? []).map((k) => (
-                <option key={k.id} value={k.id}>
-                  {k.id} · {k.ad}
-                </option>
-              ))}
-            </select>
-            <select
-              className="v4-olcum"
-              value={ozellik}
-              onChange={(e) => setOzellik(e.target.value)}
-              style={{
-                border: "1px solid var(--v4-cizgi-koyu)",
-                borderRadius: 2,
-                padding: "2px 6px",
-                background: "var(--v4-kagit)",
-              }}
-            >
-              {OZELLIKLER.map((o) => (
-                <option key={o} value={o}>
-                  {OZELLIK_ADI[o]}
-                </option>
-              ))}
-            </select>
-            {PENCERELER.map((p) => (
-              <button
-                key={p.saat}
-                type="button"
-                onClick={() => setSaat(p.saat)}
-                className="v4-etiket"
-                style={{
-                  padding: "2px 7px",
-                  borderRadius: 2,
-                  border: "1px solid var(--v4-cizgi-koyu)",
-                  background: saat === p.saat ? "var(--v4-oyuk)" : "var(--v4-kagit)",
-                  color: saat === p.saat ? "var(--v4-murekkep)" : "var(--v4-ikincil)",
-                }}
+          <>
+            <div className="w-52">
+              <Select
+                aria-label="Kol"
+                selectedKey={botId}
+                onSelectionChange={(k) => setBotId(String(k))}
+                size="sm"
               >
-                {p.ad}
-              </button>
-            ))}
-          </div>
+                {kollar.map((k) => (
+                  <SelectItem key={k.id} id={k.id} textValue={k.label}>
+                    {k.label}
+                  </SelectItem>
+                ))}
+              </Select>
+            </div>
+            <Secim
+              ariaLabel="Kenar özelliği"
+              secenekler={OZELLIKLER.map((o) => ({ id: o, ad: OZELLIK_ADI[o] }))}
+              deger={ozellik}
+              degistir={setOzellik}
+            />
+            <Secim
+              ariaLabel="Pencere"
+              secenekler={[...PENCERELER]}
+              deger={saat}
+              degistir={setSaat}
+            />
+          </>
         }
+        govdeSiz
       >
         {huni.isLoading ? (
-          <div className="v4-kunye px-4 py-3">huni okunuyor…</div>
+          <p className="px-5 py-6 text-body-2-regular text-text-tertiary">huni okunuyor…</p>
         ) : huni.data ? (
           <>
-            <div className="v4-kunye px-4 pt-2">
+            <Kunye className="px-5 pb-2">
               {adet(huni.data.bar_sayisi)} bar · {huni.data.pencere_saat} saat ·{" "}
-              {botId ? `kol ${botId}` : "tüm kollar"} · üretim{" "}
+              {botId === "hepsi" ? "tüm kollar" : `kol ${botId}`} · üretim{" "}
               {new Date(huni.data.uretim).toLocaleString("tr-TR")}
-            </div>
+            </Kunye>
             <KararHunisi veri={huni.data} ozellik={ozellik} />
           </>
         ) : (
           <Sessizlik beklenen="Karar izi okunamadı." />
         )}
-      </Bolum>
+      </Kart>
 
-      <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))" }}>
-        <Bolum
-          baslik="havuz hunisi"
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Kart
+          baslik="Havuz hunisi"
           soru="Kesit kurulurken hangi filtre kaç sembol düşürdü?"
           sag={
             havuz.data?.taken_at ? (
-              <span className="v4-kunye">
-                {new Date(havuz.data.taken_at).toLocaleString("tr-TR")}
-              </span>
+              <Kunye>{new Date(havuz.data.taken_at).toLocaleString("tr-TR")}</Kunye>
             ) : null
           }
+          govdeSiz
         >
           {havuz.data?.funnel?.length ? (
-            <table className="v4-tablo">
-              <thead>
-                <tr>
-                  <th style={{ width: 34 }}>#</th>
-                  <th>filtre</th>
-                  <th className="sayi" style={{ width: 74 }}>
-                    kalan
-                  </th>
-                  <th className="sayi" style={{ width: 74 }}>
-                    düşen
-                  </th>
-                  <th>örnek</th>
-                </tr>
-              </thead>
-              <tbody>
-                {havuz.data.funnel.map((f) => (
-                  <tr key={f.index}>
-                    <td className="sayi" style={{ color: "var(--v4-ikincil)" }}>
-                      {f.index}
-                    </td>
-                    <td>{f.name}</td>
-                    <td className="sayi">{adet(f.kept)}</td>
-                    <td className="sayi" style={{ color: f.dropped ? undefined : "var(--v4-olu)" }}>
-                      {adet(f.dropped)}
-                    </td>
-                    <td className="v4-kunye">{f.examples.slice(0, 3).join(" ") || "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <ul className="divide-y divide-separator-border">
+              {havuz.data.funnel.map((f) => {
+                const en = havuz.data!.funnel[0]?.kept || 1;
+                return (
+                  <li key={f.index} className="px-5 py-2.5">
+                    <div className="flex items-baseline gap-3">
+                      <span className={cx(MONO, "w-6 text-caption-1-regular text-text-quaternary")}>
+                        {f.index}
+                      </span>
+                      <span className="flex-1 truncate text-body-2-regular text-text-primary">
+                        {f.name}
+                      </span>
+                      <span className={cx(MONO, "text-body-2-medium text-text-primary")}>
+                        {adet(f.kept)}
+                      </span>
+                      {f.dropped ? (
+                        <Chip variant="caption" color="neutral">
+                          <span className={MONO}>{f.dropped > 0 ? "−" : "+"}{adet(Math.abs(f.dropped))}</span>
+                        </Chip>
+                      ) : (
+                        <Chip variant="caption" color="gray">
+                          hiç düşürmedi
+                        </Chip>
+                      )}
+                    </div>
+                    <div className="mt-1.5 ml-9 h-1 overflow-hidden rounded-full bg-chart-track">
+                      <div
+                        className="h-full rounded-full bg-chart-neutral"
+                        style={{ width: `${Math.min(100, (f.kept / en) * 100)}%` }}
+                      />
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
           ) : (
             <Sessizlik beklenen="Havuz anlık görüntüsü yok. Havuz her yenilemede DB'ye snapshot'lanır (bozulmaz kural 3); snapshot yoksa dürüst backtest imkânsızdır." />
           )}
-        </Bolum>
+        </Kart>
 
-        <Bolum
-          baslik="veri kalitesi"
+        <Kart
+          baslik="Veri kalitesi"
           soru="Zincirin ilk basamağında ne bozuk?"
           sag={
-            kalite.data?.length ? (
-              <Damga tur="supheli">{kalite.data.filter((k) => !k.resolved).length} açık</Damga>
-            ) : (
-              <Damga tur="saglikli">açık kayıt yok</Damga>
-            )
+            <Damga durum={acikKalite.length ? "uyari" : "notr"}>
+              {acikKalite.length ? `${acikKalite.length} açık` : "açık kayıt yok"}
+            </Damga>
           }
+          govdeSiz
         >
           {kalite.data?.length ? (
-            <table className="v4-tablo">
-              <thead>
-                <tr>
-                  <th>tür</th>
-                  <th>sembol</th>
-                  <th style={{ width: 56 }}>dilim</th>
-                  <th style={{ width: 82 }}>ağırlık</th>
-                  <th style={{ width: 74 }}>durum</th>
-                </tr>
-              </thead>
-              <tbody>
-                {kalite.data.slice(0, 14).map((k) => (
-                  <tr key={k.id}>
-                    <td>{k.kind}</td>
-                    <td className="sayi" style={{ textAlign: "left" }}>
-                      {k.symbol}
-                    </td>
-                    <td className="sayi">{k.timeframe}</td>
-                    <td>
-                      <span
-                        className="v4-etiket"
-                        style={{
-                          color:
-                            k.severity === "CRITICAL" || k.severity === "ERROR"
-                              ? "var(--v4-kirmizi)"
-                              : "var(--v4-amber)",
-                        }}
-                      >
-                        {k.severity}
-                      </span>
-                    </td>
-                    <td className="v4-kunye">{k.resolved ? "kapandı" : "açık"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <ul className="divide-y divide-separator-border">
+              {kalite.data.slice(0, 14).map((k) => (
+                <li key={k.id} className="flex items-center gap-3 px-5 py-2.5">
+                  <Chip
+                    variant="caption"
+                    color={
+                      k.severity === "CRITICAL" || k.severity === "ERROR" ? "rose" : "yellow"
+                    }
+                  >
+                    {k.severity}
+                  </Chip>
+                  <span className="text-body-2-regular text-text-primary">{k.kind}</span>
+                  <span className={cx(MONO, "text-body-2-regular text-text-secondary")}>
+                    {k.symbol}
+                  </span>
+                  <span className={cx(MONO, "text-caption-1-regular text-text-tertiary")}>
+                    {k.timeframe}
+                  </span>
+                  <span className="ml-auto">
+                    <Chip variant="caption" color={k.resolved ? "gray" : "yellow"}>
+                      {k.resolved ? "kapandı" : "açık"}
+                    </Chip>
+                  </span>
+                </li>
+              ))}
+            </ul>
           ) : (
-            <div className="px-4 py-4">
-              <Etiket>kayıt yok</Etiket>
-              <Muhakeme>
-                Kalite raporu boş. Bu iyi haber değil, bir ölçüm yokluğudur: denetimin
-                koştuğunu ve hiçbir şey bulmadığını ayırt eden bir sayaç henüz yok.
-              </Muhakeme>
+            <div className="px-5 py-6">
+              <Not>
+                Kalite raporu boş. Bu iyi haber değil, bir ölçüm yokluğudur: denetimin koştuğunu
+                ve hiçbir şey bulmadığını ayırt eden bir sayaç henüz yok.
+              </Not>
             </div>
           )}
-        </Bolum>
+        </Kart>
       </div>
     </>
   );

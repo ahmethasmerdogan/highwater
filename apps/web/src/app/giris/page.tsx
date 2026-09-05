@@ -5,39 +5,18 @@
  *
  * Açık kayıt yoktur: hesaplar yalnızca yönetici daveti ile oluşur ve iki
  * adımlı doğrulama zorunludur. Akış iki adımlı — önce parola, sonra kod.
- *
- * v4 dili burada da geçerli: tek renk vurgusu hata için ayrılmıştır, sayılar
- * mono, metin serif değil sans (bu bir muhakeme değil bir form).
  */
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { RiShieldKeyholeLine } from "@remixicon/react";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { demoCredentials, devCredentials, totpNow } from "@/lib/dev-auth";
-
-const KUTU: React.CSSProperties = {
-  width: "100%",
-  padding: "7px 9px",
-  border: "1px solid var(--v4-cizgi-koyu)",
-  borderRadius: 2,
-  background: "var(--v4-kagit)",
-  fontFamily: "var(--v4-mono)",
-  fontSize: "var(--v4-olcum)",
-  color: "var(--v4-murekkep)",
-};
-
-const DUGME: React.CSSProperties = {
-  width: "100%",
-  padding: "7px 10px",
-  border: "1px solid var(--v4-murekkep)",
-  borderRadius: 2,
-  background: "var(--v4-murekkep)",
-  color: "var(--v4-kagit)",
-  fontSize: 12,
-  letterSpacing: "0.04em",
-  transition: "opacity var(--v4-gecis)",
-};
+import { Button } from "@/components/base/buttons/button";
+import { Input } from "@/components/base/input/input";
+import { InputOtp } from "@/components/base/input-otp/input-otp";
+import { cx } from "@/utils/cx";
 
 export default function GirisSayfasi() {
   const router = useRouter();
@@ -124,99 +103,78 @@ export default function GirisSayfasi() {
   };
 
   return (
-    <div
-      className="flex min-h-screen items-center justify-center p-4"
-      style={{ background: "var(--v4-zemin)" }}
-    >
-      <div className="w-full" style={{ maxWidth: 340 }}>
-        <div className="v4-etiket" style={{ color: "var(--v4-murekkep)", letterSpacing: "0.16em" }}>
-          HIGHWATER
+    <div className="flex min-h-screen items-center justify-center bg-background-full p-4">
+      <div className="w-full max-w-sm">
+        <div className="mb-5 flex items-center gap-3">
+          <span className="flex size-10 items-center justify-center rounded-2xl bg-background-tertiary-default text-foreground-icon-secondary">
+            <RiShieldKeyholeLine className="size-5" aria-hidden />
+          </span>
+          <div>
+            <p className="text-title-3-semibold text-text-primary">HIGHWATER</p>
+            <p className="text-body-2-regular text-text-tertiary">
+              kontrol odası · kağıt üstü · canlı para yok
+            </p>
+          </div>
         </div>
-        <p className="v4-kunye" style={{ marginTop: 4 }}>
-          kontrol odası · kağıt üstü · canlı para yok
-        </p>
 
-        <div className="v4-bolum" style={{ marginTop: 14, padding: 16 }}>
+        <div className="rounded-3xl border border-border-button-default bg-background-primary-default p-5">
           {adim === "parola" ? (
-            <form onSubmit={parolaGonder} className="flex flex-col gap-3">
-              <label className="flex flex-col gap-1">
-                <span className="v4-etiket">e-posta</span>
-                <input
-                  style={KUTU}
-                  type="email"
-                  autoComplete="username"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="v4-etiket">parola</span>
-                <input
-                  style={KUTU}
-                  type="password"
-                  autoComplete="current-password"
-                  value={parola}
-                  onChange={(e) => setParola(e.target.value)}
-                  required
-                />
-              </label>
-              <button type="submit" style={{ ...DUGME, opacity: mesgul ? 0.5 : 1 }} disabled={mesgul}>
-                {mesgul ? "doğrulanıyor…" : "devam"}
-              </button>
+            <form onSubmit={parolaGonder} className="flex flex-col gap-4">
+              <Input
+                label="E-posta"
+                type="email"
+                autoComplete="username"
+                value={email}
+                onChange={setEmail}
+                isRequired
+              />
+              <Input
+                label="Parola"
+                type="password"
+                autoComplete="current-password"
+                value={parola}
+                onChange={setParola}
+                isRequired
+              />
+              <Button type="submit" disabled={mesgul} className="w-full">
+                {mesgul ? "doğrulanıyor…" : "Devam"}
+              </Button>
             </form>
           ) : (
-            <form onSubmit={kodGonder} className="flex flex-col gap-3">
+            <form onSubmit={kodGonder} className="flex flex-col gap-4">
               {kurulumAnahtari ? (
-                <div style={{ background: "var(--v4-amber-zemin)", padding: 10, borderRadius: 2 }}>
-                  <div className="v4-etiket" style={{ color: "var(--v4-amber)" }}>
-                    ilk kurulum
-                  </div>
-                  <p style={{ fontSize: 12, marginTop: 4 }}>
+                <div className="rounded-2xl bg-status-yellow-background/60 p-3">
+                  <p className="text-body-2-medium text-status-yellow-text">İlk kurulum</p>
+                  <p className="mt-1 text-body-2-regular text-text-secondary">
                     Bu anahtarı doğrulama uygulamanıza ekleyin; bir daha gösterilmeyecek.
                   </p>
-                  <div className="v4-olcum" style={{ marginTop: 6, wordBreak: "break-all" }}>
+                  <p className="mt-2 font-mono text-body-2-regular break-all text-text-primary">
                     {kurulumAnahtari}
-                  </div>
+                  </p>
                 </div>
               ) : null}
-              <label className="flex flex-col gap-1">
-                <span className="v4-etiket">altı haneli kod</span>
-                <input
-                  style={{ ...KUTU, letterSpacing: "0.3em", textAlign: "center" }}
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  maxLength={6}
-                  value={kod}
-                  onChange={(e) => setKod(e.target.value.replace(/\D/g, ""))}
-                  required
-                />
-              </label>
-              <button type="submit" style={{ ...DUGME, opacity: mesgul ? 0.5 : 1 }} disabled={mesgul}>
-                {mesgul ? "doğrulanıyor…" : "giriş"}
-              </button>
-              <button
+              <div>
+                <p className="mb-2 text-body-2-medium text-text-secondary">Altı haneli kod</p>
+                <InputOtp length={6} value={kod} onChange={setKod} groupEvery={3} />
+              </div>
+              <Button type="submit" disabled={mesgul || kod.length < 6} className="w-full">
+                {mesgul ? "doğrulanıyor…" : "Giriş"}
+              </Button>
+              <Button
                 type="button"
+                variant="secondary"
                 onClick={() => setAdim("parola")}
-                className="v4-kunye"
-                style={{ background: "none", border: 0, textAlign: "center" }}
+                className="w-full"
               >
-                geri
-              </button>
+                Geri
+              </Button>
             </form>
           )}
 
           {hata ? (
             <div
-              style={{
-                marginTop: 12,
-                padding: "7px 9px",
-                borderRadius: 2,
-                background: "var(--v4-kirmizi-zemin)",
-                color: "var(--v4-kirmizi)",
-                fontSize: 12,
-              }}
               role="alert"
+              className="mt-4 rounded-xl bg-status-rose-background/60 px-3 py-2 text-body-2-regular text-status-rose-text"
             >
               {hata}
             </div>
@@ -224,22 +182,15 @@ export default function GirisSayfasi() {
         </div>
 
         {demo ? (
-          <button
-            type="button"
+          <Button
+            variant="secondary"
+            size="small"
             onClick={demoGir}
             disabled={mesgul}
-            className="v4-kunye"
-            style={{
-              marginTop: 10,
-              width: "100%",
-              padding: "5px 8px",
-              border: "1px solid var(--v4-cizgi-koyu)",
-              borderRadius: 2,
-              background: "var(--v4-kagit)",
-            }}
+            className={cx("mt-3 w-full")}
           >
-            demo hesabıyla gir
-          </button>
+            Demo hesabıyla gir
+          </Button>
         ) : null}
       </div>
     </div>

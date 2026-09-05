@@ -1,67 +1,50 @@
-@import "tailwindcss";
-@import "../v4/tokens.css";
-
 /* =====================================================================
- * HIGHWATER — belge biçimleri
+ * HIGHWATER — genel biçimler
  *
- * Tasarım kararlarının tamamı `v4/tokens.css` içindedir. Burada yalnızca
- * belgenin kendisine ait olan biçimler durur.
+ * Panelde iki katman yan yana duruyor:
  *
- * uicean CSS'i bilinçli olarak içe aktarılmadı: v4 dili beş anlamlı renk
- * ve üç tipografik ses üzerine kurulu; genel amaçlı bir bileşen paletinin
- * vurgu renkleri ve gölge/yuvarlaklık ölçeği bu bütçeyi ikiye böler.
- * Bileşen gerektiğinde uicean'dan tek tek alınır ve token'lara bağlanır.
+ *   · BoardUI (`src/styles/*`) — yeni tasarım dili: semantik renk token'ları,
+ *     bileşik tipografi ölçeği, açık/koyu tema, `src/components/**`.
+ *   · 2. nesil katman (`design/tokens.css` + `uicean`) — henüz taşınmamış
+ *     sayfalar hâlâ bunu kullanıyor. Sayfalar tek tek BoardUI'ye geçtikçe
+ *     bu iki satır kalkacak.
+ *
+ * İkisi ayrı önek kullanıyor (`--v4-*`/BoardUI semantik adları ile `--sn-*`),
+ * bu yüzden çakışmıyorlar.
  * ===================================================================== */
 
+@import "../styles/globals.css";
+@import "../design/tokens.css";
+@import "uicean/css";
+@import "dockview-react/dist/styles/dockview.css";
+
+/* ---------------------------------------------------------------------
+ * Anayasa kuralı 6: her sayı monospace ve `tabular-nums`.
+ * Hizalanmayan rakam kabul edilmez.
+ * ------------------------------------------------------------------- */
 @layer base {
-  html {
-    text-size-adjust: 100%;
+  .font-mono {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1, "zero" 1;
+    letter-spacing: -0.01em;
   }
+}
 
-  body {
-    background: var(--v4-zemin);
-    color: var(--v4-murekkep);
-    font-family: var(--font-stack-sans);
-    font-size: 13px;
-    line-height: 1.45;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    font-optical-sizing: auto;
-    font-synthesis-weight: none;
-    font-feature-settings: "liga" 1, "calt" 1, "kern" 1;
-  }
-
-  ::selection {
-    background: var(--v4-civit-zemin);
-    color: var(--v4-murekkep);
-  }
-
-  /* Odak halkası çivit: klavyeyle gezinen kullanıcı nerede olduğunu görür. */
-  :focus-visible {
-    outline: 2px solid var(--v4-civit);
-    outline-offset: 1px;
-  }
-
-  button,
-  select {
-    cursor: pointer;
-    font: inherit;
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }
 
 /* ---------------------------------------------------------------------
- * Yazı tipi yığını
- *
- * Paketler `node_modules`'tan gelir ve derlemeye gömülür — panel çevrimdışı
- * çalışmak zorunda, CDN'e bağlanılmaz. `latin-ext` alt kümesi Türkçe
- * karakterleri (ğ ş ı İ Ğ Ş) kapsıyor. Serif ses sistem yığınından gelir:
- * muhakeme bloğu için ayrı bir dosya indirmek 30 gün komut verilmeyecek bir
- * panelde gereksiz ağırlıktır.
+ * Eski katmanın yazı tipi yığını — `design/*` bileşenleri bunu okuyor.
  * ------------------------------------------------------------------- */
 :root {
-  --font-stack-sans:
-    "Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-stack-mono:
-    "Geist Mono Variable", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
-    "Liberation Mono", monospace;
+  --font-stack-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    sans-serif;
+  --font-stack-mono: var(--font-mono-source), ui-monospace, SFMono-Regular, "SF Mono", Menlo,
+    Consolas, "Liberation Mono", monospace;
 }

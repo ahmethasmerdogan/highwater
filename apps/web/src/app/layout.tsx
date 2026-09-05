@@ -1,12 +1,23 @@
 import type { Metadata } from "next";
-/*
- * Sans Geist, mono Geist Mono. Paketler node_modules'tan gelir ve derlemeye
- * gömülür — panel çevrimdışı çalışmak zorunda, CDN'e bağlanılmaz.
- */
-import "@fontsource-variable/geist";
-import "@fontsource-variable/geist-mono";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
+
+/*
+ * BoardUI'nin yazı tipleri: gövde Inter, ölçüm JetBrains Mono.
+ * `next/font` dosyaları derlemeye gömer — panel çevrimdışı çalışmak zorunda,
+ * CDN'e bağlanılmaz. `latin-ext` alt kümesi Türkçe karakterleri kapsıyor.
+ */
+const inter = Inter({
+  subsets: ["latin", "latin-ext"],
+  variable: "--font-inter",
+  display: "swap",
+});
+const mono = JetBrains_Mono({
+  subsets: ["latin", "latin-ext"],
+  variable: "--font-mono-source",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "HIGHWATER — kontrol odası",
@@ -15,14 +26,19 @@ export const metadata: Metadata = {
 };
 
 /*
- * Tema seçici yoktur. Açık tema tek temadır (DESIGN-V4 §6): koyu zeminde her
- * şey biraz alarm gibi görünür ve bu tasarımda alarm nadir, pahalı olmalı.
- * Renk bütçesi ikiye bölünmemeli.
+ * Tema sayfa boyanmadan önce kararlaştırılır, yoksa koyu temada bir kare
+ * beyaz parlar. Anahtar BoardUI'nin `applyTheme`'iyle aynı ("boardui-theme");
+ * kök düzen sunucu bileşeni olduğu için betik buraya kopyalandı.
  */
+const TEMA_BETIGI = `(function(){try{var t=localStorage.getItem("boardui:theme");if(t==="dark"||(t===null&&matchMedia("(prefers-color-scheme: dark)").matches))document.documentElement.classList.add("dark");}catch(e){}})();`;
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="tr">
-      <body className="min-h-screen antialiased">
+    <html lang="tr" data-accent="blue" className={`${inter.variable} ${mono.variable}`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: TEMA_BETIGI }} />
+      </head>
+      <body className="min-h-screen bg-background-full antialiased">
         <Providers>{children}</Providers>
       </body>
     </html>

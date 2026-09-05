@@ -3,19 +3,14 @@
 /**
  * DEFTER — "Ne kazandık, hangi koşulda, kaç işlemle?"
  *
- * Kâr üçüncü sıradadır ve künyesi olmadan ekrana çıkmaz (§1). Bu ekranda
- * bilinçli olarak **yoktur**:
- *   · filo liderlik tablosu — ayırt etme gücü ±2,18R iken kâra göre
- *     sıralamak gürültüyü sıralamaktır;
- *   · kâr projeksiyonu — sistemin çıktısı ölçümdür, vaat değil;
- *   · kutlama katmanı — beklentisi negatif olan bir sistemin kullanıcısını
- *     tebrik etmesi yalandır.
- *
- * Kâr renk kazanmaz, zarar kazanır. Asimetriktir ve öyle olmalı: renk
- * bütçesi kârdan alınıp güvene aktarıldı.
+ * Kâr üçüncü sıradadır ve künyesi olmadan ekrana çıkmaz. Bu ekranda bilinçli
+ * olarak yoktur: filo liderlik tablosu (ayırt etme gücü ±2,18R iken kâra göre
+ * sıralamak gürültüyü sıralamaktır), kâr projeksiyonu (sistemin çıktısı ölçüm,
+ * vaat değil) ve kutlama katmanı.
  */
 
 import { useQuery } from "@tanstack/react-query";
+import { RiCoinsLine, RiExchangeDollarLine, RiScales3Line } from "@remixicon/react";
 import {
   api,
   type Benchmark,
@@ -23,29 +18,11 @@ import {
   type FleetRow,
   type Trade,
 } from "@/lib/api";
-import { Bolum, Izgara, Muhakeme } from "@/v4/kutu";
-import { adet, Damga, Olcum, sayi, Sessizlik } from "@/v4/olcum";
-
-/** Para: negatifse kırmızı, pozitifse renksiz. */
-function Para({ v, kunye, etiket }: { v: number | null; kunye: string; etiket: string }) {
-  return (
-    <Olcum
-      etiket={etiket}
-      deger={v === null ? "—" : `${sayi(v, 2, { isaret: true })} $`}
-      kunye={kunye}
-      durum={v !== null && v < 0 ? "bozuk" : "saglikli"}
-      olcek="duvar"
-    />
-  );
-}
-
-/** %95 belirsizlik aralığı — tek sayı basmak yalan söylemektir. */
-function belirsizlik(rler: number[]): { ort: number; yari: number } | null {
-  if (rler.length < 3) return null;
-  const ort = rler.reduce((a, b) => a + b, 0) / rler.length;
-  const varyans = rler.reduce((a, b) => a + (b - ort) ** 2, 0) / (rler.length - 1);
-  return { ort, yari: (1.96 * Math.sqrt(varyans)) / Math.sqrt(rler.length) };
-}
+import { Izgara, Kart, Not, Serit } from "@/panel/kart";
+import { adet, Damga, Kunye, MONO, Olcum, sayi, Sessizlik } from "@/panel/olcum";
+import { AlanGrafik, SutunGrafik } from "@/panel/grafik";
+import { Chip } from "@/components/base/badges/chip";
+import { cx } from "@/utils/cx";
 
 const CIKIS_ADI: Record<string, string> = {
   STOP: "stop",
@@ -60,6 +37,14 @@ const CIKIS_ADI: Record<string, string> = {
   LIQUIDATION: "tasfiye",
   PARTIAL: "kısmi",
 };
+
+/** %95 belirsizlik aralığı — tek sayı basmak yalan söylemektir. */
+function belirsizlik(rler: number[]): { ort: number; yari: number } | null {
+  if (rler.length < 3) return null;
+  const ort = rler.reduce((a, b) => a + b, 0) / rler.length;
+  const varyans = rler.reduce((a, b) => a + (b - ort) ** 2, 0) / (rler.length - 1);
+  return { ort, yari: (1.96 * Math.sqrt(varyans)) / Math.sqrt(rler.length) };
+}
 
 export default function DefterEkrani() {
   const filo = useQuery({
@@ -82,307 +67,307 @@ export default function DefterEkrani() {
 
   const kollar = (filo.data ?? []).filter((k) => k.state !== "STOPPED");
   // BIST kolu TL cinsindendir ve USD toplamına KARIŞTIRILMAZ: kur beslemesi
-  // yok, dolayısıyla 19.224 ₺ ile 400 $ toplanamaz. Karıştırıldığında toplam
-  // sessizce yanlış çıkar — payda gizlemekle aynı hata.
-  const dolarKollari = kollar.filter((k) => k.market !== "BIST");
-  const liraKollari = kollar.filter((k) => k.market === "BIST");
-  const toplamOzsermaye = dolarKollari.reduce((a, k) => a + k.equity, 0);
-  const toplamSermaye = dolarKollari.reduce((a, k) => a + k.capital, 0);
-  const toplamIslem = dolarKollari.reduce((a, k) => a + k.trades, 0);
-  const liraFark = liraKollari.reduce((a, k) => a + k.equity - k.capital, 0);
+  // yok, dolayısıyla 19.224 ₺ ile 400 $ toplanamaz.
+  const dolar = kollar.filter((k) => k.market !== "BIST");
+  const lira = kollar.filter((k) => k.market === "BIST");
+  const ozsermaye = dolar.reduce((a, k) => a + k.equity, 0);
+  const sermaye = dolar.reduce((a, k) => a + k.capital, 0);
+  const liraFark = lira.reduce((a, k) => a + k.equity - k.capital, 0);
 
   const rler = (islemler.data ?? []).map((t) => t.pnl_r).filter((r) => Number.isFinite(r));
   const bel = belirsizlik(rler);
 
-  const cikislar = (islemler.data ?? []).reduce<Record<string, number>>((acc, t) => {
-    acc[t.exit_reason] = (acc[t.exit_reason] ?? 0) + 1;
-    return acc;
-  }, {});
+  const cikislar = Object.entries(
+    (islemler.data ?? []).reduce<Record<string, number>>((acc, t) => {
+      acc[t.exit_reason] = (acc[t.exit_reason] ?? 0) + 1;
+      return acc;
+    }, {}),
+  ).sort((a, b) => b[1] - a[1]);
 
   const tutmalar = (islemler.data ?? []).reduce(
     (acc, t) => {
-      const s = t.hold_hours;
-      if (s < 6) acc.kisa.push(t.pnl_r);
-      else if (s < 24) acc.orta.push(t.pnl_r);
+      if (t.hold_hours < 6) acc.kisa.push(t.pnl_r);
+      else if (t.hold_hours < 24) acc.orta.push(t.pnl_r);
       else acc.uzun.push(t.pnl_r);
       return acc;
     },
     { kisa: [] as number[], orta: [] as number[], uzun: [] as number[] },
   );
 
+  // Kıyas eğrisi: kolların ORTANCASI ile eşit ağırlıklı al-ve-tut yan yana.
+  //
+  // Ortalama değil ortanca: kollar farklı günlerde katıldı ve re-base görenler
+  // var; tek bozuk eğri ortalamayı −%80'e çekiyordu. Ortanca o eğriyi yutar.
+  //
+  // Kaç kolun o anda rapor verdiği ipucunda yazar: eğrinin başında üç kol,
+  // sonunda otuz kol var ve bu iki nokta aynı şeyi ölçmüyor. Çizgiyi gizlemek
+  // yerine paydayı göstermek DESIGN-V4 §2'nin üçüncü kuralıdır.
+  const kiyasEgrisi = (() => {
+    const b = kiyas.data;
+    if (!b?.benchmark?.length) return [];
+    const kolNoktalari = new Map<string, number[]>();
+    for (const kol of b.bots ?? []) {
+      for (const p of kol.curve) {
+        if (!kolNoktalari.has(p.at)) kolNoktalari.set(p.at, []);
+        kolNoktalari.get(p.at)!.push(p.value);
+      }
+    }
+    const ortanca = (xs: number[]) => {
+      const s = [...xs].sort((x, y) => x - y);
+      const m = Math.floor(s.length / 2);
+      return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+    };
+    return b.benchmark.map((p) => {
+      const kol = kolNoktalari.get(p.at) ?? [];
+      return {
+        ad: new Date(p.at).toLocaleString("tr-TR", {
+          day: "2-digit",
+          month: "short",
+          hour: "2-digit",
+        }),
+        a: kol.length >= 3 ? (ortanca(kol) - 1) * 100 : null,
+        b: (p.value - 1) * 100,
+        n: kol.length,
+      };
+    });
+  })();
+
   return (
     <>
-      <Bolum
-        baslik="defter"
-        soru="Ne kazandık ve o sayı ne kadar güvenilir?"
-        sag={<span className="v4-kunye">canlı para yok · tüm emirler kağıt motorundan geçer</span>}
-      >
-        <Izgara sutun={4}>
-          <Para
-            etiket="özsermaye − sermaye"
-            v={toplamOzsermaye - toplamSermaye}
-            kunye={`${adet(dolarKollari.length)} dolar kolu · ${adet(toplamIslem)} işlem · TL kolu hariç`}
-          />
-          <Olcum
-            etiket="TL kolu (ayrı para)"
-            deger={
-              liraKollari.length
-                ? `${sayi(liraFark, 2, { isaret: true })} ₺`
-                : "kol yok"
-            }
-            kunye={`${adet(liraKollari.length)} kol · kur beslemesi yok, toplanamaz`}
-            durum={liraFark < 0 ? "bozuk" : "saglikli"}
-            olcek="duvar"
-          />
-          <Olcum
-            etiket="R beklentisi"
-            deger={
-              bel
-                ? `${sayi(bel.ort, 3, { isaret: true })} ± ${sayi(bel.yari, 3)}`
-                : "örneklem yetersiz"
-            }
-            kunye={`n=${adet(rler.length)} işlem · %95 aralık`}
-            durum={bel && bel.ort < 0 ? "bozuk" : "saglikli"}
-            olcek="duvar"
-          />
-          <Olcum
-            etiket="maliyetin brüt kâra oranı"
-            deger={
-              maliyet.data?.cost_ratio === null || maliyet.data?.cost_ratio === undefined
-                ? "brüt zararda"
-                : sayi(maliyet.data.cost_ratio, 3)
-            }
-            kunye={`n=${adet(maliyet.data?.trades ?? null)} işlem · komisyon+kayma`}
-            durum={(maliyet.data?.cost_ratio ?? 0) > 0.5 ? "bozuk" : "saglikli"}
-            olcek="duvar"
-          />
-          <Olcum
-            etiket="ölçülen tek yön maliyet"
-            deger={
-              maliyet.data?.measured_spread?.one_way_bps === undefined
-                ? "—"
-                : `${sayi(maliyet.data.measured_spread.one_way_bps, 1)} bps`
-            }
-            kunye={`varsayım ${sayi(maliyet.data?.measured_spread?.assumed_one_way_bps ?? null, 1)} bps · n=${adet(
-              maliyet.data?.measured_spread?.samples ?? null,
-            )} örnek`}
-            durum={
-              (maliyet.data?.measured_spread?.one_way_bps ?? 0) >
-              (maliyet.data?.measured_spread?.assumed_one_way_bps ?? Infinity)
-                ? "supheli"
-                : "saglikli"
-            }
-            olcek="duvar"
-          />
-        </Izgara>
-        <div className="px-4 pb-4">
-          <Muhakeme>
-            Beklenti aralığı eşikten geniş olduğu sürece bu sayı bir hüküm değil bir
-            birikimdir. Kolların hangisinin daha iyi olduğu bu ekrandan okunmaz; hüküm
-            Hipotez ekranındaki mekanizma ölçüsünden okunur.
-          </Muhakeme>
+      <Kart baslik="Defter" soru="Ne kazandık ve o sayı ne kadar güvenilir?" govdeSiz>
+        <div className="px-5 pb-4">
+          <Izgara min={190}>
+            <Olcum
+              etiket="özsermaye − sermaye"
+              ikon={RiCoinsLine}
+              deger={`${sayi(ozsermaye - sermaye, 2, { isaret: true })} $`}
+              kunye={`${adet(dolar.length)} dolar kolu · TL kolu hariç`}
+              durum={ozsermaye - sermaye < 0 ? "bozuk" : "notr"}
+              buyuk
+            />
+            <Olcum
+              etiket="TL kolu (ayrı para)"
+              ikon={RiExchangeDollarLine}
+              deger={lira.length ? `${sayi(liraFark, 2, { isaret: true })} ₺` : "kol yok"}
+              kunye={`${adet(lira.length)} kol · kur beslemesi yok, toplanamaz`}
+              durum={liraFark < 0 ? "bozuk" : "notr"}
+              buyuk
+            />
+            <Olcum
+              etiket="R beklentisi"
+              ikon={RiScales3Line}
+              deger={
+                bel ? `${sayi(bel.ort, 3, { isaret: true })} ± ${sayi(bel.yari, 3)}` : "yetersiz"
+              }
+              kunye={`n=${adet(rler.length)} işlem · %95 aralık`}
+              durum={bel && bel.ort < 0 ? "bozuk" : "notr"}
+              buyuk
+            />
+            <Olcum
+              etiket="maliyetin brüt kâra oranı"
+              deger={
+                maliyet.data?.cost_ratio === null || maliyet.data?.cost_ratio === undefined
+                  ? "brüt zararda"
+                  : sayi(maliyet.data.cost_ratio, 3)
+              }
+              kunye={`n=${adet(maliyet.data?.trades ?? null)} işlem · komisyon + kayma`}
+              durum={(maliyet.data?.cost_ratio ?? 0) > 0.5 ? "bozuk" : "notr"}
+              rozet={
+                maliyet.data?.measured_spread?.one_way_bps !== undefined
+                  ? `ölçülen ${sayi(maliyet.data.measured_spread.one_way_bps, 1)} bps`
+                  : undefined
+              }
+              rozetDurum={
+                (maliyet.data?.measured_spread?.one_way_bps ?? 0) >
+                (maliyet.data?.measured_spread?.assumed_one_way_bps ?? Infinity)
+                  ? "uyari"
+                  : "notr"
+              }
+              buyuk
+            />
+          </Izgara>
         </div>
-      </Bolum>
+        <Serit>
+          <Not>
+            Beklenti aralığı eşikten geniş olduğu sürece bu sayı bir hüküm değil bir birikimdir.
+            Kolların hangisinin daha iyi olduğu bu ekrandan okunmaz; hüküm Hipotez ekranındaki
+            mekanizma ölçüsünden okunur.
+          </Not>
+        </Serit>
+      </Kart>
 
-      <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))" }}>
-        <Bolum baslik="çıkış sebepleri" soru="Pozisyonlar neyle kapanıyor?">
-          {Object.keys(cikislar).length ? (
-            <table className="v4-tablo">
-              <thead>
-                <tr>
-                  <th>sebep</th>
-                  <th className="sayi" style={{ width: 74 }}>
-                    adet
-                  </th>
-                  <th className="sayi" style={{ width: 92 }}>
-                    ortalama R
-                  </th>
-                  <th>pay</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(cikislar)
-                  .sort((a, b) => b[1] - a[1])
-                  .map(([sebep, n]) => {
-                    const rs = (islemler.data ?? [])
-                      .filter((t) => t.exit_reason === sebep)
-                      .map((t) => t.pnl_r);
-                    const ort = rs.reduce((a, b) => a + b, 0) / (rs.length || 1);
-                    return (
-                      <tr key={sebep}>
-                        <td>{CIKIS_ADI[sebep] ?? sebep}</td>
-                        <td className="sayi">{adet(n)}</td>
-                        <td className="sayi" style={{ color: ort < 0 ? "var(--v4-kirmizi)" : undefined }}>
-                          {sayi(ort, 3, { isaret: true })}
-                        </td>
-                        <td>
-                          <div
-                            style={{
-                              height: 6,
-                              width: `${(n / (islemler.data?.length || 1)) * 100}%`,
-                              background: "var(--v4-olu)",
-                            }}
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
-          ) : (
-            <Sessizlik beklenen="Bu pencerede kapanan işlem yok." />
-          )}
-        </Bolum>
-
-        <Bolum
-          baslik="tutma süresi"
-          soru="Kenar olgunlaşmadan mı çıkıyoruz?"
-          sag={<span className="v4-kunye">maliyet bariyeri ≈ 12 saat</span>}
-        >
-          <table className="v4-tablo">
-            <thead>
-              <tr>
-                <th>pencere</th>
-                <th className="sayi" style={{ width: 74 }}>
-                  n
-                </th>
-                <th className="sayi" style={{ width: 110 }}>
-                  ortalama R
-                </th>
-                <th className="sayi" style={{ width: 96 }}>
-                  kazanma
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {(
-                [
-                  ["2–6 saat", tutmalar.kisa],
-                  ["6–24 saat", tutmalar.orta],
-                  ["24 saat +", tutmalar.uzun],
-                ] as const
-              ).map(([ad, rs]) => {
-                const ort = rs.length ? rs.reduce((a, b) => a + b, 0) / rs.length : null;
-                const kazanan = rs.filter((r) => r > 0).length;
-                return (
-                  <tr key={ad}>
-                    <td>{ad}</td>
-                    <td className="sayi">{adet(rs.length)}</td>
-                    <td
-                      className="sayi"
-                      style={{ color: (ort ?? 0) < 0 ? "var(--v4-kirmizi)" : undefined }}
-                    >
-                      {ort === null ? "—" : sayi(ort, 3, { isaret: true })}
-                    </td>
-                    <td className="sayi">
-                      {rs.length ? sayi(kazanan / rs.length, 0, { yuzde: true }) : "—"}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          <div className="px-4 py-3" style={{ borderTop: "1px solid var(--v4-cizgi)" }}>
-            <Muhakeme>
-              Ölçüldü (2026-09-05): sinyal 1–4 saatlik ufukta round-trip maliyeti
-              karşılamıyor, 12 saatte başabaş, 48–72 saatte açık ara kârlı. Bugünkü ortalama
-              tutma 12,3 saat, yani tam bariyerin dibinde.
-            </Muhakeme>
-          </div>
-        </Bolum>
-      </div>
-
-      <Bolum
-        baslik="kıyas"
+      <Kart
+        baslik="Kıyas"
         soru="Seçmemek ne getirirdi? Bir getiri, alternatifi olmadan hiçbir şey ifade etmez."
         sag={
-          kiyas.data?.sufficient === false ? (
-            <Damga tur="supheli">örneklem yetersiz</Damga>
-          ) : null
+          kiyas.data?.sufficient === false ? <Damga durum="uyari">örneklem yetersiz</Damga> : null
         }
       >
-        {kiyas.data?.verdict ? (
-          <div className="px-4 py-3">
-            <Muhakeme>{kiyas.data.verdict}</Muhakeme>
-            <div className="v4-kunye mt-2">
-              {adet(kiyas.data.span_days ?? null)} gün · {adet(kiyas.data.trades ?? null)} işlem ·
-              havuz {adet(kiyas.data.universe_size ?? null)} sembol · eşit ağırlıklı al-ve-tut
+        {kiyasEgrisi.length ? (
+          <>
+            <div className="mb-3 flex flex-wrap items-center gap-4">
+              <span className="flex items-center gap-1.5 text-body-2-regular text-text-secondary">
+                <span className="size-2 rounded-full bg-chart-6-active" aria-hidden />
+                kol ortancası
+              </span>
+              <span className="flex items-center gap-1.5 text-body-2-regular text-text-secondary">
+                <span className="size-2 rounded-full bg-chart-neutral" aria-hidden />
+                eşit ağırlıklı al-ve-tut
+              </span>
+              <Kunye className="ml-auto">
+                {adet(kiyas.data?.span_days ?? null)} gün · {adet(kiyas.data?.bots?.length ?? null)}{" "}
+                kol · havuz {adet(kiyas.data?.universe_size ?? null)} sembol · ilk noktadan % değişim
+              </Kunye>
             </div>
-          </div>
+            <AlanGrafik veri={kiyasEgrisi} adlar={["kol ortancası", "al-ve-tut"]} />
+            {kiyas.data?.verdict ? <Not className="mt-3">{kiyas.data.verdict}</Not> : null}
+          </>
         ) : (
           <Sessizlik beklenen="Kıyas ölçütü henüz kurulamadı; alternatifi olmayan bir getiri basılmaz." />
         )}
-      </Bolum>
+      </Kart>
 
-      <Bolum baslik="kollar" soru="Her kol kendi sermayesine göre nerede?">
-        <table className="v4-tablo">
-          <thead>
-            <tr>
-              <th style={{ width: 46 }}>#</th>
-              <th>kol</th>
-              <th style={{ width: 74 }}>grup</th>
-              <th style={{ width: 62 }}>pazar</th>
-              <th className="sayi" style={{ width: 92 }}>
-                özsermaye
-              </th>
-              <th className="sayi" style={{ width: 86 }}>
-                getiri
-              </th>
-              <th className="sayi" style={{ width: 86 }}>
-                düşüş
-              </th>
-              <th className="sayi" style={{ width: 66 }}>
-                işlem
-              </th>
-              <th className="sayi" style={{ width: 86 }}>
-                ortalama R
-              </th>
-              <th className="sayi" style={{ width: 74 }}>
-                açık
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {(filo.data ?? []).map((k) => (
-              <tr key={k.id} style={{ opacity: k.state === "STOPPED" ? 0.5 : 1 }}>
-                <td className="sayi" style={{ color: "var(--v4-ikincil)" }}>
-                  {k.id}
-                </td>
-                <td>{k.name}</td>
-                <td className="v4-kunye">{k.group}</td>
-                <td className="v4-kunye">{k.market}</td>
-                <td className="sayi">{sayi(k.equity, 2)}</td>
-                <td
-                  className="sayi"
-                  style={{ color: (k.return_pct ?? 0) < 0 ? "var(--v4-kirmizi)" : undefined }}
-                >
-                  {sayi(k.return_pct, 2, { yuzde: true, isaret: true })}
-                </td>
-                <td
-                  className="sayi"
-                  style={{ color: (k.drawdown_pct ?? 0) < -0.1 ? "var(--v4-kirmizi)" : undefined }}
-                >
-                  {sayi(k.drawdown_pct, 2, { yuzde: true })}
-                </td>
-                <td className="sayi">{adet(k.trades)}</td>
-                <td
-                  className="sayi"
-                  style={{ color: (k.avg_r ?? 0) < 0 ? "var(--v4-kirmizi)" : undefined }}
-                >
-                  {sayi(k.avg_r, 3, { isaret: true })}
-                </td>
-                <td className="sayi">{adet(k.open_positions)}</td>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Kart baslik="Çıkış sebepleri" soru="Pozisyonlar neyle kapanıyor?">
+          {cikislar.length ? (
+            <>
+              <SutunGrafik
+                veri={cikislar.map(([sebep, n]) => {
+                  const rs = (islemler.data ?? [])
+                    .filter((t) => t.exit_reason === sebep)
+                    .map((t) => t.pnl_r);
+                  return {
+                    ad: CIKIS_ADI[sebep] ?? sebep,
+                    deger: rs.reduce((a, b) => a + b, 0) / (rs.length || 1),
+                    n,
+                  };
+                })}
+                basamak={2}
+                birim=" R"
+                yukseklik={200}
+              />
+              <Kunye className="mt-2">
+                çubuk = ortalama R · n toplam {adet(islemler.data?.length ?? null)} işlem
+              </Kunye>
+            </>
+          ) : (
+            <Sessizlik beklenen="Bu pencerede kapanan işlem yok." />
+          )}
+        </Kart>
+
+        <Kart
+          baslik="Tutma süresi"
+          soru="Kenar olgunlaşmadan mı çıkıyoruz?"
+          sag={<Kunye>maliyet bariyeri ≈ 12 saat</Kunye>}
+        >
+          <SutunGrafik
+            veri={[
+              { ad: "2–6 sa", deger: ort(tutmalar.kisa), n: tutmalar.kisa.length },
+              { ad: "6–24 sa", deger: ort(tutmalar.orta), n: tutmalar.orta.length },
+              { ad: "24 sa +", deger: ort(tutmalar.uzun), n: tutmalar.uzun.length },
+            ]}
+            basamak={2}
+            birim=" R"
+            yukseklik={200}
+          />
+          <Not className="mt-2">
+            Ölçüldü (2026-09-05): sinyal 1–4 saatlik ufukta round-trip maliyeti karşılamıyor, 12
+            saatte başabaş, 48–72 saatte açık ara kârlı. Bugünkü ortalama tutma 12,3 saat, yani tam
+            bariyerin dibinde.
+          </Not>
+        </Kart>
+      </div>
+
+      <Kart baslik="Kollar" soru="Her kol kendi sermayesine göre nerede?" govdeSiz>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[900px] text-left">
+            <thead>
+              <tr className="border-y border-separator-border bg-background-secondary-default text-caption-1-medium text-text-tertiary">
+                <th className="w-12 px-5 py-2 font-medium">#</th>
+                <th className="px-3 py-2 font-medium">Kol</th>
+                <th className="w-20 px-3 py-2 font-medium">Grup</th>
+                <th className="w-20 px-3 py-2 font-medium">Pazar</th>
+                <th className="w-28 px-3 py-2 text-right font-medium">Özsermaye</th>
+                <th className="w-24 px-3 py-2 text-right font-medium">Getiri</th>
+                <th className="w-24 px-3 py-2 text-right font-medium">Düşüş</th>
+                <th className="w-20 px-3 py-2 text-right font-medium">İşlem</th>
+                <th className="w-24 px-3 py-2 text-right font-medium">Ort. R</th>
+                <th className="w-16 px-3 py-2 pr-5 text-right font-medium">Açık</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-        <div className="px-4 py-3" style={{ borderTop: "1px solid var(--v4-cizgi)" }}>
-          <Muhakeme>
-            Tablo kol kimliğine göre sıralı, kâra göre değil. 14 günlük belirsizlik ±2,18R
-            iken kolları kâra göre sıralamak gürültüyü sıralamaktır.
-          </Muhakeme>
+            </thead>
+            <tbody className="divide-y divide-separator-border">
+              {(filo.data ?? []).map((k) => (
+                <tr
+                  key={k.id}
+                  className={cx(
+                    "text-body-2-regular hover:bg-background-secondary-hover",
+                    k.state === "STOPPED" && "opacity-50",
+                  )}
+                >
+                  <td className={cx(MONO, "px-5 py-2 text-text-tertiary")}>{k.id}</td>
+                  <td className="px-3 py-2 text-text-primary">{k.name}</td>
+                  <td className="px-3 py-2">
+                    <Chip variant="caption" color="soft">
+                      {k.group}
+                    </Chip>
+                  </td>
+                  <td className={cx(MONO, "px-3 py-2 text-caption-1-regular text-text-tertiary")}>
+                    {k.market}
+                  </td>
+                  <td className={cx(MONO, "px-3 py-2 text-right text-text-primary")}>
+                    {sayi(k.equity, 2)}
+                  </td>
+                  <td
+                    className={cx(
+                      MONO,
+                      "px-3 py-2 text-right",
+                      (k.return_pct ?? 0) < 0 ? "text-status-rose-text" : "text-text-primary",
+                    )}
+                  >
+                    {sayi(k.return_pct, 2, { yuzde: true, isaret: true })}
+                  </td>
+                  <td
+                    className={cx(
+                      MONO,
+                      "px-3 py-2 text-right",
+                      (k.drawdown_pct ?? 0) < -0.1
+                        ? "text-status-rose-text"
+                        : "text-text-secondary",
+                    )}
+                  >
+                    {sayi(k.drawdown_pct, 2, { yuzde: true })}
+                  </td>
+                  <td className={cx(MONO, "px-3 py-2 text-right text-text-secondary")}>
+                    {adet(k.trades)}
+                  </td>
+                  <td
+                    className={cx(
+                      MONO,
+                      "px-3 py-2 text-right",
+                      (k.avg_r ?? 0) < 0 ? "text-status-rose-text" : "text-text-primary",
+                    )}
+                  >
+                    {sayi(k.avg_r, 3, { isaret: true })}
+                  </td>
+                  <td className={cx(MONO, "px-3 py-2 pr-5 text-right text-text-secondary")}>
+                    {adet(k.open_positions)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      </Bolum>
+        <Serit>
+          <Not>
+            Tablo kol kimliğine göre sıralı, kâra göre değil. 14 günlük belirsizlik ±2,18R iken
+            kolları kâra göre sıralamak gürültüyü sıralamaktır.
+          </Not>
+        </Serit>
+      </Kart>
     </>
   );
+}
+
+function ort(xs: number[]): number | null {
+  return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
 }

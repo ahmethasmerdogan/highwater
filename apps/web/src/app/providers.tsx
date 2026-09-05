@@ -1,19 +1,35 @@
 "use client";
 
-/**
- * Sağlayıcılar.
- *
- * v3'te beş sağlayıcı vardı (tema, vurgu, bildirim kutusu, sorgu, kimlik,
- * soket). Panel artık salt okunur — elle emir verme, bot başlatma ve ayar
- * düzenleme bilinçli olarak kaldırıldı (DESIGN-V4 §9: 30 gün müdahale
- * edilmeyecek bir sistemde bu düğmeler yalnızca deneyin bozulma yoludur).
- * Mutation olmayınca bildirim kutusu da gereksizdir; üçe indi.
- */
-
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ThemeProvider, useTheme } from "@/design/theme";
+import { ToastProvider, useToast } from "@/design/toast";
+import { registerToastSink } from "@/lib/toast";
 import { AuthProvider } from "@/lib/auth";
 import { WebSocketProvider } from "@/lib/ws";
+
+/** Vurgu ön ayarı: sahibin seçimi yoksa "blue" (DESIGN-V3 §2). */
+function AccentDefault() {
+  const { setAccent } = useTheme();
+  useEffect(() => {
+    try {
+      if (!window.localStorage.getItem("uicean-accent")) setAccent("blue");
+    } catch {
+      /* depo yok — html[data-accent] ilk boyamayı zaten mavi yapar */
+    }
+  }, [setAccent]);
+  return null;
+}
+
+/** Bildirim sağlayıcısının `push`'unu modül köprüsüne bağlar (`lib/toast.ts`). */
+function ToastBridge() {
+  const { push } = useToast();
+  useEffect(() => {
+    registerToastSink(push);
+    return () => registerToastSink(null);
+  }, [push]);
+  return null;
+}
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [client] = useState(
@@ -21,8 +37,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            // Sessizce eski veri göstermeyiz; her ekran kendi tazeleme
-            // aralığını belirler ve üretim zamanını künyede basar.
+            // Sessizce eski veri göstermeyiz; tazeleme sık ve görünür.
             staleTime: 10_000,
             refetchOnWindowFocus: true,
             retry: 1,
@@ -32,10 +47,16 @@ export function Providers({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <QueryClientProvider client={client}>
-      <AuthProvider>
-        <WebSocketProvider>{children}</WebSocketProvider>
-      </AuthProvider>
-    </QueryClientProvider>
+    <ThemeProvider>
+      <AccentDefault />
+      <ToastProvider>
+        <ToastBridge />
+        <QueryClientProvider client={client}>
+          <AuthProvider>
+            <WebSocketProvider>{children}</WebSocketProvider>
+          </AuthProvider>
+        </QueryClientProvider>
+      </ToastProvider>
+    </ThemeProvider>
   );
 }

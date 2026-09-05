@@ -3,157 +3,184 @@
 /**
  * HİPOTEZ — "Hangi soru soruluyor, kanıt ne durumda, karar ne zaman?"
  *
- * Bu ekran v3'ün "Botlar" sayfasının yerini alır ama aynı şey değildir: bot
- * bir nesne değil, bir hipotezin taşıyıcısıdır. Kart bot adını değil **iddiayı**
- * öne çıkarır; iddia serif, ölçüm mono.
+ * Bot bir nesne değil, bir hipotezin taşıyıcısıdır; kart bot adını değil
+ * **iddiayı** öne çıkarır. Her kart iki ölçü taşır (DESIGN-V4 §5):
  *
- * Her kart iki ölçü taşır (§5):
- *   · **Mekanizma** — yüksek güçlü, kesitsel, saatler. Hüküm buradan okunur.
- *   · **Sonuç** — R beklentisi. Düşük güçlü, birikir, hüküm vermez, kalın
- *     yazılmaz, belirsizlik aralığıyla basılır.
+ *   · Mekanizma — kesitsel, yüksek güçlü, saatler. Hüküm buradan okunur.
+ *   · Sonuç — R beklentisi. Birikir, belirsizlik aralığıyla basılır, hüküm vermez.
  *
- * Gerekçe ölçüldü (MEYDAN-OKUMA 2026-09-05): R std 2,474R, hız 0,70
- * işlem/gün/kol. +0,05R'yi ayırt etmek kol başına 38.424 işlem, yani 149 yıl
- * ister. 14 günlük belirsizlik ±2,18R, eşik +0,05R — eşiğin %2'si. Kol defteri
- * hüküm veremez; mekanizma verir.
+ * Ölçüldü (MEYDAN-OKUMA 2026-09-05): R std 2,474R, hız 0,70 işlem/gün/kol.
+ * +0,05R'yi ayırt etmek kol başına 38.424 işlem, yani 149 yıl ister.
  */
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type HipotezKarti, type HipotezTahtasi } from "@/lib/api";
-import { Bolum, Etiket, Muhakeme } from "@/v4/kutu";
-import { adet, Damga, type Durum, Olcum, sayi, Sessizlik } from "@/v4/olcum";
+import { Kart, Not } from "@/panel/kart";
+import { adet, Damga, type Durum, Kunye, MONO, sayi, Sessizlik } from "@/panel/olcum";
+import { Secim } from "@/panel/secim";
+import { Chip } from "@/components/base/badges/chip";
+import { cx } from "@/utils/cx";
 
-const DAMGA_TURU: Record<string, Durum> = {
-  KONTROL: "saglikli",
+const DAMGA_DURUMU: Record<string, Durum> = {
+  KONTROL: "notr",
   ARŞİV: "olu",
   "ÖN-KAYIT YOK": "bozuk",
   GÜÇSÜZ: "olu",
-  "KANIT TOPLUYOR": "saglikli",
+  "KANIT TOPLUYOR": "notr",
   "HEDEFE ULAŞTI": "kanit",
-  ÇÜRÜTÜLDÜ: "supheli",
+  ÇÜRÜTÜLDÜ: "uyari",
 };
 
-function Kart({ kart }: { kart: HipotezKarti }) {
+const SUZGECLER = [
+  { id: "deney", ad: "Deney kolları" },
+  { id: "kontrol", ad: "Kontrol ve arşiv" },
+] as const;
+
+/** İlerleme çubuğu: kanıt bütçesi — gereken n'in kaçta kaçı toplandı. */
+function KanitBütcesi({ n, gereken }: { n: number; gereken: number }) {
+  const oran = gereken ? Math.min(1, n / gereken) : 0;
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-caption-1-medium text-text-tertiary">kanıt bütçesi</span>
+        <span className={cx(MONO, "text-caption-1-regular text-text-secondary")}>
+          {adet(n)} / {adet(gereken)}
+        </span>
+      </div>
+      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-chart-track">
+        <div
+          className={cx(
+            "h-full rounded-full transition-[width] duration-500 ease-out",
+            oran >= 1 ? "bg-chart-6-active" : "bg-chart-neutral",
+          )}
+          style={{ width: `${oran * 100}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function HipotezKartBileseni({ kart }: { kart: HipotezKarti }) {
   const ok = kart.on_kayit;
   const m = kart.mekanizma;
   const s = kart.sonuc;
   const arsiv = kart.damga === "ARŞİV";
 
   return (
-    <article className="v4-bolum" style={{ opacity: arsiv ? 0.6 : 1 }}>
-      <header
-        className="flex items-start justify-between gap-3 px-4 pt-3 pb-2"
-        style={{ borderBottom: "1px solid var(--v4-cizgi)" }}
-      >
+    <article
+      className={cx(
+        "flex min-w-0 flex-col overflow-hidden rounded-3xl border border-border-button-default bg-background-primary-default",
+        arsiv && "opacity-60",
+      )}
+    >
+      <header className="flex items-start justify-between gap-3 px-5 pt-4 pb-3">
         <div className="min-w-0">
-          <div className="v4-etiket" style={{ color: "var(--v4-murekkep)" }}>
+          <Kunye>
             kol {kart.bot_id} · {kart.ad}
-          </div>
+          </Kunye>
           {ok?.hipotez ? (
-            <p className="v4-muhakeme mt-2" style={{ maxWidth: "62ch" }}>
-              {ok.hipotez}
-            </p>
+            <p className="mt-1.5 text-body-regular text-text-primary">{ok.hipotez}</p>
           ) : (
-            <p className="v4-muhakeme mt-2" style={{ color: "var(--v4-kirmizi)" }}>
-              Bu kol koşuyor ama hangi soruyu sorduğu hiçbir yerde kayıtlı değil. Ön-kaydı
-              olmayan bir kolun topladığı kanıt, sonradan yazılacak her hipotezi
-              doğrulayabilir.
+            <p className="mt-1.5 text-body-regular text-status-rose-text">
+              Bu kol koşuyor ama hangi soruyu sorduğu hiçbir yerde kayıtlı değil. Ön-kaydı olmayan
+              bir kolun topladığı kanıt, sonradan yazılacak her hipotezi doğrulayabilir.
             </p>
           )}
         </div>
-        <Damga tur={DAMGA_TURU[kart.damga] ?? "saglikli"}>{kart.damga}</Damga>
+        <Damga durum={DAMGA_DURUMU[kart.damga] ?? "notr"}>{kart.damga}</Damga>
       </header>
 
       {ok ? (
-        <div className="px-4 py-3" style={{ borderBottom: "1px solid var(--v4-cizgi)" }}>
-          <div className="grid gap-x-6 gap-y-2" style={{ gridTemplateColumns: "auto 1fr" }}>
-            <Etiket>tek değişken</Etiket>
-            <span className="v4-olcum">{ok.tek_degisken ?? "—"}</span>
-            <Etiket>kontrol kolu</Etiket>
-            <span className="v4-olcum">{ok.kontrol_bot_id ?? "—"}</span>
-            <Etiket>çürütme</Etiket>
-            <span style={{ fontSize: 12.5, color: "var(--v4-ikincil)" }}>{ok.curutme ?? "—"}</span>
-            <Etiket>karar günü</Etiket>
-            <span className="v4-olcum">{ok.karar_gunu ?? "—"}</span>
-            <Etiket>mühür</Etiket>
-            <span
-              className="v4-olcum"
-              style={{ color: ok.muhur_kirik ? "var(--v4-kirmizi)" : "var(--v4-ikincil)" }}
-            >
-              {ok.muhur_hash}
-              {ok.muhur_kirik ? " · KIRIK — toplanan kanıt geçersiz" : ""}
-            </span>
-          </div>
-        </div>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 border-t border-separator-border px-5 py-3">
+          <dt className="text-caption-1-medium text-text-tertiary">tek değişken</dt>
+          <dd className={cx(MONO, "text-body-2-regular text-text-primary")}>
+            {ok.tek_degisken ?? "—"}
+          </dd>
+          <dt className="text-caption-1-medium text-text-tertiary">kontrol kolu</dt>
+          <dd className={cx(MONO, "text-body-2-regular text-text-primary")}>
+            {ok.kontrol_bot_id ?? "—"}
+          </dd>
+          <dt className="text-caption-1-medium text-text-tertiary">çürütme</dt>
+          <dd className="text-body-2-regular text-text-secondary">{ok.curutme ?? "—"}</dd>
+          <dt className="text-caption-1-medium text-text-tertiary">karar günü</dt>
+          <dd className={cx(MONO, "text-body-2-regular text-text-primary")}>
+            {ok.karar_gunu ?? "—"}
+          </dd>
+          <dt className="text-caption-1-medium text-text-tertiary">mühür</dt>
+          <dd
+            className={cx(
+              MONO,
+              "text-body-2-regular",
+              ok.muhur_kirik ? "text-status-rose-text" : "text-text-tertiary",
+            )}
+          >
+            {ok.muhur_hash}
+            {ok.muhur_kirik ? " · KIRIK — toplanan kanıt geçersiz" : ""}
+          </dd>
+        </dl>
       ) : null}
 
-      <div
-        className="grid gap-x-8 gap-y-4 px-4 py-4"
-        style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}
-      >
+      <div className="flex-1 border-t border-separator-border px-5 py-4">
         {m ? (
           <>
-            <Olcum
-              etiket={m.ad}
-              deger={sayi(m.deger, 1)}
-              kunye={`n=${adet(m.n)} / ${adet(m.gereken_n)} gereken · kesitsel`}
-              durum={m.deger === null ? "olu" : "kanit"}
-            />
-            <Olcum
-              etiket="hedef"
-              deger={`${m.yon === "artis" ? "≥" : "≤"} ${sayi(m.hedef, 1)}`}
-              kunye="ön-kayıtta mühürlendi"
-            />
-            <Olcum
-              etiket="kontrol kolu"
-              deger={sayi(m.kontrol_deger, 1)}
-              kunye={`n=${adet(m.kontrol_n)}`}
-            />
-            <Olcum
-              etiket="fark (Welch t)"
-              deger={sayi(m.t, 2)}
-              kunye={
-                m.t === null
-                  ? "iki grup da ≥ 3 gözlem ister"
-                  : Math.abs(m.t) >= 2
-                    ? "|t| ≥ 2"
-                    : "|t| < 2 · gürültüden ayrışmıyor"
-              }
-              durum={m.t !== null && Math.abs(m.t) >= 2 ? "kanit" : "olu"}
-            />
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-body-2-medium text-text-secondary">{m.ad}</p>
+                <div className="mt-0.5 flex items-baseline gap-2">
+                  <span className={cx(MONO, "text-title-3-semibold text-text-primary")}>
+                    {sayi(m.deger, 1)}
+                  </span>
+                  <span className={cx(MONO, "text-body-2-regular text-text-tertiary")}>
+                    hedef {m.yon === "artis" ? "≥" : "≤"} {sayi(m.hedef, 1)}
+                  </span>
+                </div>
+                <Kunye className="mt-0.5">
+                  kontrol {sayi(m.kontrol_deger, 1)} (n={adet(m.kontrol_n)}) · kesitsel ölçü
+                </Kunye>
+              </div>
+              <Chip
+                variant="bold"
+                color={m.t !== null && Math.abs(m.t) >= 2 ? "blue" : "gray"}
+              >
+                <span className={MONO}>t {sayi(m.t, 2)}</span>
+              </Chip>
+            </div>
+            <div className="mt-3">
+              <KanitBütcesi n={m.n} gereken={m.gereken_n} />
+            </div>
           </>
         ) : (
-          <div style={{ gridColumn: "1 / -1" }}>
-            <Etiket>mekanizma ölçüsü yok</Etiket>
-            <Muhakeme>
+          <>
+            <Chip variant="caption" color="gray">
+              mekanizma ölçüsü yok
+            </Chip>
+            <Not className="mt-2">
               Bu kolun yaptığı değişiklik seçimi değil ölçeği etkiliyor; kesitsel bir ölçü
-              tanımlanamıyor. Hüküm ancak kol defterinden okunabilir ve o kanal bugünkü hızda
-              149 yıl ister. Kol sonuçlanamayacağını baştan ilan ediyor.
-            </Muhakeme>
-          </div>
+              tanımlanamıyor. Hüküm ancak kol defterinden okunabilir ve o kanal bugünkü hızda 149
+              yıl ister. Kol sonuçlanamayacağını baştan ilan ediyor.
+            </Not>
+          </>
         )}
       </div>
 
-      {/* Sonuç ölçüsü: kalın değil, belirsizlik aralığıyla. */}
-      <div
-        className="flex flex-wrap items-baseline gap-x-6 gap-y-2 px-4 py-2"
-        style={{ borderTop: "1px solid var(--v4-cizgi)", background: "var(--v4-oyuk)" }}
-      >
-        <Etiket>sonuç ölçüsü</Etiket>
-        <span className="v4-olcum" style={{ color: "var(--v4-ikincil)" }}>
+      <footer className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-separator-border bg-background-secondary-default px-5 py-2.5">
+        <span className="text-caption-1-medium text-text-tertiary">sonuç ölçüsü</span>
+        <span className={cx(MONO, "text-body-2-regular text-text-secondary")}>
           {s.deger === null
             ? "işlem yok"
             : `${sayi(s.deger, 3, { isaret: true })} R${
                 s.belirsizlik !== null ? ` ± ${sayi(s.belirsizlik, 3)}` : ""
               }`}
         </span>
-        <span className="v4-kunye">n={adet(s.n)} işlem · %95 aralık · hüküm vermez</span>
-      </div>
+        <Kunye className="ml-auto">n={adet(s.n)} işlem · %95 aralık · hüküm vermez</Kunye>
+      </footer>
     </article>
   );
 }
 
 export default function HipotezEkrani() {
+  const [suzgec, setSuzgec] = useState<"deney" | "kontrol">("deney");
   const { data, isLoading, error } = useQuery({
     queryKey: ["hipotez"],
     queryFn: () => api.get<HipotezTahtasi>("/kontrol/hipotez", { gun: 30 }),
@@ -162,93 +189,63 @@ export default function HipotezEkrani() {
 
   if (isLoading)
     return (
-      <div className="v4-kunye" style={{ padding: 16 }}>
-        hipotez tahtası okunuyor…
+      <div className="grid gap-4 xl:grid-cols-2">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="h-64 animate-pulse rounded-3xl bg-background-secondary-default" />
+        ))}
       </div>
     );
   if (error || !data)
     return (
-      <Bolum baslik="hipotez" soru="Hangi soru soruluyor?">
+      <Kart baslik="Hipotez" soru="Hangi soru soruluyor?" govdeSiz>
         <Sessizlik beklenen="Hipotez tahtası okunamadı." bulunan={String(error)} />
-      </Bolum>
+      </Kart>
     );
 
   const deneyler = data.kartlar.filter((k) => !["KONTROL", "ARŞİV"].includes(k.damga));
-  const kontroller = data.kartlar.filter((k) => k.damga === "KONTROL");
-  const arsiv = data.kartlar.filter((k) => k.damga === "ARŞİV");
+  const digerleri = data.kartlar.filter((k) => ["KONTROL", "ARŞİV"].includes(k.damga));
   const kayitsiz = deneyler.filter((k) => k.damga === "ÖN-KAYIT YOK");
   const gucsuz = deneyler.filter((k) => k.damga === "GÜÇSÜZ");
+  const gosterilen = suzgec === "deney" ? deneyler : digerleri;
 
   return (
     <>
-      <Bolum
-        baslik="hipotez tahtası"
+      <Kart
+        baslik="Hipotez tahtası"
         soru="Hüküm mekanizma ölçüsünden okunur; kol defteri yalnız birikir."
         sag={
-          <div className="flex items-center gap-3">
-            {kayitsiz.length ? (
-              <Damga tur="bozuk">{kayitsiz.length} ön-kayıtsız</Damga>
-            ) : (
-              <Damga tur="saglikli">ön-kayıtsız yok</Damga>
-            )}
-            <Damga tur="olu">{gucsuz.length} güçsüz</Damga>
-            <span className="v4-kunye">{adet(deneyler.length)} deney kolu · 30 gün</span>
-          </div>
+          <>
+            <Damga durum={kayitsiz.length ? "bozuk" : "notr"}>
+              {kayitsiz.length ? `${kayitsiz.length} ön-kayıtsız` : "ön-kayıtsız yok"}
+            </Damga>
+            <Damga durum="olu">{gucsuz.length} güçsüz</Damga>
+            <Secim
+              ariaLabel="Kol süzgeci"
+              secenekler={[...SUZGECLER]}
+              deger={suzgec}
+              degistir={setSuzgec}
+            />
+          </>
         }
       >
-        <div className="px-4 py-3">
-          <Muhakeme>
-            Ölçüldü: R standart sapması 2,474R, hız 0,70 işlem/gün/kol. Kontrol koluna göre
-            +0,05R&apos;lik bir farkı ayırt etmek kol başına 38.424 işlem ister — bugünkü hızda
-            149 yıl. 14 günlük belirsizlik ±2,18R, yani eşiğin 43 katı. Bu yüzden her ön-kayıt
-            ikinci bir ölçü taşır: günde yüzlerce karar üreten, kesitsel, yüksek güçlü bir
-            mekanizma ölçüsü. Mekanizma ölçüsü tanımlanamayan kol GÜÇSÜZ damgası alır.
-          </Muhakeme>
-        </div>
-      </Bolum>
+        <Not>
+          Ölçüldü: R standart sapması 2,474R, hız 0,70 işlem/gün/kol. Kontrol koluna göre
+          +0,05R&apos;lik bir farkı ayırt etmek kol başına 38.424 işlem ister — bugünkü hızda 149
+          yıl. 14 günlük belirsizlik ±2,18R, yani eşiğin 43 katı. Bu yüzden her ön-kayıt ikinci bir
+          ölçü taşır: günde yüzlerce karar üreten, kesitsel, yüksek güçlü bir mekanizma ölçüsü.
+          Mekanizma ölçüsü tanımlanamayan kol GÜÇSÜZ damgası alır.
+        </Not>
+        <Kunye className="mt-2">
+          {adet(deneyler.length)} deney kolu · {adet(digerleri.length)} kontrol/arşiv · 30 gün ·
+          üretim {new Date(data.uretim).toLocaleString("tr-TR")}
+        </Kunye>
+      </Kart>
 
-      <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(460px, 1fr))" }}>
-        {deneyler.map((k) => (
-          <Kart key={k.bot_id} kart={k} />
+      <div className="grid gap-4 xl:grid-cols-2">
+        {gosterilen.map((k) => (
+          <HipotezKartBileseni key={k.bot_id} kart={k} />
         ))}
       </div>
-
-      <Bolum baslik="kontrol kolları" soru="Deneyler neye karşı ölçülüyor?">
-        <table className="v4-tablo">
-          <thead>
-            <tr>
-              <th style={{ width: 46 }}>#</th>
-              <th>kol</th>
-              <th style={{ width: 110 }}>durum</th>
-              <th className="sayi" style={{ width: 78 }}>
-                işlem
-              </th>
-              <th className="sayi" style={{ width: 150 }}>
-                R beklentisi
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {[...kontroller, ...arsiv].map((k) => (
-              <tr key={k.bot_id} style={{ opacity: k.damga === "ARŞİV" ? 0.55 : 1 }}>
-                <td className="sayi" style={{ color: "var(--v4-ikincil)" }}>
-                  {k.bot_id}
-                </td>
-                <td>{k.ad}</td>
-                <td>
-                  <span className="v4-etiket">{k.damga}</span>
-                </td>
-                <td className="sayi">{adet(k.sonuc.n)}</td>
-                <td className="sayi" style={{ color: "var(--v4-ikincil)" }}>
-                  {k.sonuc.deger === null
-                    ? "—"
-                    : `${sayi(k.sonuc.deger, 3, { isaret: true })} ± ${sayi(k.sonuc.belirsizlik, 3)}`}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Bolum>
     </>
   );
 }
