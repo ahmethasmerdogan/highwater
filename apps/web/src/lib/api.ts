@@ -732,6 +732,10 @@ export interface LivePnl {
   open_positions: number;
   total_return: number;
   capital: number;
+  /** BIST kolu TL cinsindendir; USD toplamına karıştırılmaz (kur beslemesi yok). */
+  try_equity: number | null;
+  try_capital: number | null;
+  try_cash: number | null;
   bots: {
     bot_id: number;
     name: string;

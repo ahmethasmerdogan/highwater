@@ -92,6 +92,11 @@ function NabizHucresi({ r }: { r: FleetRow }) {
 
 const para = (v: number | null | undefined) => <Delta value={v} format={(x) => money(x)} size="sm" />;
 
+/** TL kolunu USD'den ayrı yazar: kur beslemesi yok, iki birim toplanmaz. */
+function lira(v: number): string {
+  return new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 0 }).format(v);
+}
+
 /* Filo defteri — sütunlar satır verisinden başka bir şeye bakmaz. */
 const FILO_COLUMNS: GridColumn<FiloSatir>[] = [
   { id: "kol", header: "Kol", width: 260, pin: true, value: (s) => kisa(s.row.name), search: (s) => `${s.row.name} ${s.row.market} ${s.row.state}`, cell: (s) => <KolHucresi r={s.row} /> },
@@ -345,7 +350,18 @@ export default function BridgePage() {
           {/* ---- Para: dört figür, tek blok ---------------------------- */}
           <Panel title="Para">
             <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-              <Metric label="Özsermaye" value={l?.equity} format={(v) => money(v)} sub={l ? `başlangıç ${money(l.capital)}` : "—"} />
+              <Metric
+                label="Özsermaye"
+                value={l?.equity}
+                format={(v) => money(v)}
+                sub={
+                  l
+                    ? l.try_equity
+                      ? `başlangıç ${money(l.capital)} · ayrıca ${lira(l.try_equity)} TL kolu`
+                      : `başlangıç ${money(l.capital)}`
+                    : "—"
+                }
+              />
               <Metric label="Bugün" value={l ? l.realized_today + l.unrealized_pnl : null} format={imzali} sub={l ? `${money(l.realized_today)} cebe girdi` : "—"} />
               <Metric label="Açık kâr/zarar" value={l?.unrealized_pnl} format={imzali} sub={l ? `${num(l.open_positions, 0)} pozisyon` : "—"} />
               <Metric label="Maruziyet" value={exposurePct} format={(v) => (v === null || v === undefined ? "—" : `%${num(v * 100, 1)}`)} sub={l ? `${money(l.cash)} nakit` : "—"} />
