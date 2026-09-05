@@ -195,15 +195,26 @@ export default function AkisTab() {
                             <button
                               type="button"
                               onClick={() => setSelected(row)}
-                              className="grid w-full grid-cols-[52px_48px_minmax(0,1fr)_auto] items-center gap-3 px-5 py-2.5 text-left hover:bg-inset/60"
+                              className="grid w-full grid-cols-[86px_46px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-1.5 text-left hover:bg-inset/60"
                             >
-                              <NumText text={time(row.at)} size="sm" />
+                              {/* Saat sarmıyor: 52px'lik sütunda "17:15:37 TSİ"
+                                  iki satıra bölünüyor ve her olay satırı iki kat
+                                  yükseliyordu. */}
+                              <NumText text={time(row.at)} size="sm" className="whitespace-nowrap" />
                               <NumText text={row.botId === null ? "—" : `#${row.botId}`} size="sm" className="text-ink-3" />
                               <span className="min-w-0">
                                 <span className="flex items-center gap-2 text-[13px] text-ink">
                                   {row.symbol && <NumText text={row.symbol} size="sm" />}
                                   <span className="truncate">{human.title}</span>
-                                  {row.live && <StatusPill tone="blue" size="sm">canlı</StatusPill>}
+                                  {/* "canlı" neredeyse her satırdaydı; rozet
+                                      yerine tek nokta, aynı bilgi, gürültüsüz. */}
+                                  {row.live && (
+                                    <span
+                                      title="canlı bağlantıdan düştü"
+                                      className="size-1.5 shrink-0 rounded-full"
+                                      style={{ background: "var(--sn-brand)" }}
+                                    />
+                                  )}
                                 </span>
                                 <span className="block truncate text-[12px] text-ink-3">{message || human.detail || payloadSummary(row.payload, 3)}</span>
                               </span>
