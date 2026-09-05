@@ -1681,3 +1681,25 @@ TL ile USD'yi toplaması; `trade_stats`'ın re-base filtresiz karne üretmesi (b
 düzelticisinin hiç IC ölçümü olmaması; kapı sayısının kollar arasında 70 kat farklı
 seçicilik üretmesi; rotasyonun 377 bin puan satırında hiç tetiklenmemesi; kalabalık
 cezasının işlem yapılan hiçbir sembolde devreye girmemesi.
+
+### H1 şeridi sonucu (75 gün, 20 Haz → 2 Eyl, 121 sembol, holdout son %30)
+
+| Varyant | in n | in beklenti | in net | out n | out beklenti | out net |
+|---|---|---|---|---|---|---|
+| kontrol | 98 | −0,0830R | −7,90% | 31 | +0,0272R | −0,46% |
+| vol 60 (V1 ağırlıkları) | 149 | −0,1106R | −12,43% | 54 | **+0,4287R** | **+11,39%** |
+| vol 75 · momentum 0 | 15 | −0,7723R | −6,90% | 71 | +0,1140R | +3,53% |
+| momentum 0 | 90 | −0,0784R | −7,97% | 30 | **+0,5522R** | **+8,32%** |
+
+**Karar: üçü de RET.** Kabul kuralı in-sample VE holdout'ta kontrol + 0,05R istiyor;
+üçü de holdout'ta kontrolü çok aşıyor (+0,40R ve +0,52R) ama in-sample'da geçemiyor.
+Kural kuraldır, kabul yok.
+
+İki not, ikisi de kayda değer:
+1. **Kontrol in-sample beklentisi −0,0830R; canlı defterin 69 işlemdeki beklentisi
+   −0,083R.** Backtest canlıyı birebir yansıtıyor — motorun doğruluğu için güçlü kanıt.
+2. Ayrışma yönü **tersine overfit**: varyantlar eskide kötü, yenide iyi. Bu, kenarın
+   rejime bağlı olduğu okumasıyla tutarlı (§6: sakinlik IC'si aşağı barlarda +0,167,
+   yukarı barlarda +0,088). İki dönem farklı rejimler; tek bir sabit ağırlık vektörü
+   ikisini birden kazanamıyor. Sıradaki soru sabit ağırlık değil, **rejime duyarlı
+   ağırlık** olmalı — ama bu yeni bir düğme, ön-kayıtla ölçülmeli.
