@@ -13,6 +13,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
+  RiAlarmWarningLine,
   RiBookOpenLine,
   RiChat3Line,
   RiDashboardLine,
@@ -41,6 +42,8 @@ import { Chip } from "@/components/base/badges/chip";
 import { api, type Nobet } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { cx } from "@/utils/cx";
+import { Badge } from "@/components/base/badges/badge";
+import { useAttention } from "@/shell/attention";
 import { TooltipHost } from "@/design/primitives";
 import { CelebrationWatcher } from "@/design/celebration";
 import { CommandPalette } from "@/shell/command-palette";
@@ -132,6 +135,7 @@ export function Kabuk({ children }: { children: React.ReactNode }) {
   const [kutuk, setKutuk] = useState(false);
   const [palet, setPalet] = useState(false);
   const [dikkat, setDikkat] = useState(false);
+  const dikkatSayisi = useAttention().data?.items.length ?? 0;
 
   const ekran = EKRANLAR.find((e) => (e.yol === "/" ? yol === "/" : yol.startsWith(e.yol)));
 
@@ -200,6 +204,15 @@ export function Kabuk({ children }: { children: React.ReactNode }) {
                 label="Komut paleti"
                 collapsed={false}
                 onClick={() => setPalet(true)}
+              />
+              <NavItem
+                icon={RiAlarmWarningLine}
+                label="Dikkat"
+                collapsed={false}
+                onClick={() => setDikkat(true)}
+                badge={
+                  dikkatSayisi ? <Badge color="neutral">{dikkatSayisi}</Badge> : undefined
+                }
               />
             </nav>
           }
