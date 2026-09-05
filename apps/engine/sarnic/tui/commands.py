@@ -22,7 +22,6 @@ GLOBAL: dict[str, str] = {
     "POS": "pozisyon",
     "ORD": "pozisyon:emirler",
     "LOG": "olay",
-    "CAL": "kalibrasyon",
     "SCORES": "nobet",
     "KILL": "kill",
 }
@@ -35,13 +34,17 @@ PER_SYMBOL: dict[str, str] = {
 
 #: Web'de var, terminalde GEREKÇELİ reddedilen komutlar.
 REJECTED: dict[str, str] = {
-    "G": "Mum grafiği terminalde çizilmez — panelin İndikatörler sayfasını kullanın.",
+    "G": (
+        "Mum grafiği terminalde çizilmez. Fiyat serisi karar birimi değil; "
+        "karar zinciri panelin Zincir ekranındadır (/zincir)."
+    ),
     "BT": (
-        "Backtest panelden çalıştırılır (Backtest sayfası). "
+        "Backtest motorun kendi komutundan çalıştırılır (uv run sarnic backtest). "
         "Koşu uzun sürer ve raporu terminalde gösterilemez."
     ),
     "CAL": (
-        "Kalibrasyon grafikleri panelde: /kalibrasyon. Terminal özet sayıyı nöbet ekranında verir."
+        "Kalibrasyon panelin Kanıt ekranındadır (/kanit). Orada kesit seçimi ZORUNLU; "
+        "terminalde tek sayı basmak beş ayrı ölçeği karıştırmak demektir."
     ),
 }
 
@@ -67,8 +70,6 @@ def parse_command(raw: str) -> Command | None:
         hedef = GLOBAL[first]
         if hedef == "kill":
             return Command(kind="kill")
-        if hedef == "kalibrasyon":
-            return Command(kind="error", message=REJECTED["CAL"])
         return Command(kind="open", target=hedef)
 
     if first == "SCAN":

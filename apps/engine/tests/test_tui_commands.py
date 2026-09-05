@@ -1,38 +1,44 @@
-"""TUI komut dilbilgisi web terminaliyle birebir mi?
+"""TUI komut dilbilgisi.
 
-Sözlük uydurulmaz: `apps/web/src/lib/terminal-commands.ts` metin olarak
-okunur, GLOBAL ve PER_SYMBOL anahtarları regex ile çıkarılır ve her birinin
-Python tarafında ya karşılandığı ya da AÇIKÇA reddedildiği doğrulanır.
-İki arayüz sessizce ayrışamaz.
+Bu dosya eskiden TUI'yi web terminaliyle karşılaştırıyordu: iki arayüz aynı
+dilbilgisini iki kez yazıyordu ve sessizce ayrışabilirlerdi. Web terminali
+2026-09-05'te kaldırıldı (DESIGN-V4 §3: "her paneli daha iyi yapan bir ekran"
+kontrol odasında bir kaçış vanasıdır, ekran değil). Karşılaştırılacak ikinci
+uygulama kalmadığı için çapraz denetim de kalktı; dilbilgisi artık tek
+kaynaklı ve bu dosya onu doğrudan koruyor.
+
+TUI'nin kendisi durur: bozulmaz kural 4 — bot headless bir servistir, TUI ona
+bağlanan bir istemcidir.
 """
 
 from __future__ import annotations
 
-import re
-from pathlib import Path
-
 from sarnic.tui.commands import GLOBAL, PER_SYMBOL, REJECTED, parse_command
 
-WEB_TS = (
-    Path(__file__).resolve().parents[2] / "web" / "src" / "lib" / "terminal-commands.ts"
-)
 
+def test_dilbilgisi_tek_kaynakli():
+    """Her komut tek yerde tanımlı; hiçbiri sessizce yutulmuyor."""
+    assert GLOBAL and PER_SYMBOL, "sözlükler boş olamaz"
+    for anahtar in (*GLOBAL, *PER_SYMBOL):
+        assert anahtar.isupper(), anahtar
+        # Hem tanımlı hem reddedilmiş komut ölü koddur: ret önce eşleştiği için
+        # hedef hiç okunmaz. CAL tam olarak bu durumdaydı.
+        assert anahtar not in REJECTED, f"{anahtar} hem tanımlı hem reddedilmiş"
 
-def _keys(block: str) -> set[str]:
-    return set(re.findall(r"^\s{2}([A-Z]+):", block, re.M))
+    # Tanımlı her komut hatasız çözümlenir.
+    for anahtar in GLOBAL:
+        assert parse_command(anahtar).kind != "error", anahtar
+    for anahtar in PER_SYMBOL:
+        assert parse_command(f"SOLUSDT {anahtar}").kind != "error", anahtar
 
+    # Reddedilen her komut GEREKÇE taşır ve gerekçe var olan bir yeri gösterir.
+    for anahtar, gerekce in REJECTED.items():
+        cevap = parse_command(f"SOLUSDT {anahtar}" if anahtar == "G" else anahtar)
+        assert cevap.kind == "error" and cevap.message == gerekce, anahtar
+        assert len(gerekce) > 20, anahtar
+        assert "sayfası" not in gerekce, f"{anahtar} silinmiş v3 sayfasına yönlendiriyor"
 
-def test_grammar_matches_web_terminal():
-    src = WEB_TS.read_text(encoding="utf-8")
-    global_block = src.split("const GLOBAL")[1].split("};")[0]
-    per_symbol_block = src.split("const PER_SYMBOL")[1].split("};")[0]
-
-    for key in _keys(global_block):
-        assert key in GLOBAL or key in REJECTED, f"web GLOBAL {key} TUI'de karşılıksız"
-    for key in _keys(per_symbol_block):
-        assert key in PER_SYMBOL or key in REJECTED, f"web PER_SYMBOL {key} TUI'de karşılıksız"
-
-    # SCAN ve BT özel biçimlidir; ikisi de ele alınmalı.
+    # Özel biçimli iki komut: biri kabul edilir, biri gerekçeyle reddedilir.
     assert parse_command("SCAN 80").kind == "scan"
     assert parse_command("BT SOLUSDT").kind == "error"
 

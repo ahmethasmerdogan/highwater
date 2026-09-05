@@ -93,7 +93,7 @@ class FakeClient:
 
     async def stream(self, on_state=None):  # pragma: no cover
         return
-        yield  # noqa
+        yield
 
 
 def _app() -> SarnicTUI:

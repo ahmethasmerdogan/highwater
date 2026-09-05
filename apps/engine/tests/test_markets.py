@@ -48,9 +48,7 @@ def test_bist_last_closed_bar_weekend():
     # Cumartesi: kapanmış son seans cumadır. Epoch aritmetiği "dün" derdi —
     # bot hafta sonu boyunca var olmayan barları puanlamaya çalışırdı.
     cumartesi = datetime(2026, 8, 29, 12, 0, tzinfo=UTC)
-    assert last_closed_bar(cumartesi, "1d", market_code="BIST") == datetime(
-        2026, 8, 28, tzinfo=UTC
-    )
+    assert last_closed_bar(cumartesi, "1d", market_code="BIST") == datetime(2026, 8, 28, tzinfo=UTC)
 
 
 def test_bist_last_closed_bar_before_close():

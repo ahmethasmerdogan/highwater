@@ -14,14 +14,15 @@ buna dayanan tüm parametre kararları geçersizdi.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import ClassVar
 
 from sarnic.backtest.engine import UniverseTimeline
 
 
 def _snap(gun: int, semboller: list[str]):
     class _S:
-        taken_at = datetime(2026, 8, gun, tzinfo=UTC)
-        symbols = [{"symbol": s} for s in semboller]
+        taken_at: datetime = datetime(2026, 8, gun, tzinfo=UTC)
+        symbols: ClassVar[list[dict]] = [{"symbol": s} for s in semboller]
 
     return _S()
 

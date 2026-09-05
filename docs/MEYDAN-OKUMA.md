@@ -1827,3 +1827,76 @@ Her ön-kayıt bundan sonra iki ölçü taşımalı:
 
 Hüküm mekanizmadan okunur. Mekanizma ölçüsü tanımlanamayan bir kol (saf kaldıraç kolları
 gibi) **sonuçlanamaz** ve bunu baştan ilan etmelidir.
+
+---
+
+## Kontrol odası kurulurken kendi ölçüm araçları bozuk çıktı — 2026-09-05
+
+Arayüz v4 yazılırken beş arıza çıktı. Beşi de **panelin kendisi tarafından** gösterildi;
+hiçbiri hata mesajı vermedi. Kayda değer olan şu: bunlar ölçüm araçlarının kendisindeki
+hatalardı, yani daha yeni kurulan bir organ daha kurulurken yalan söylüyordu.
+
+### 1. Nöbet, sağlıklı 28 kolu birden donuk ilan etti
+
+`bar_gecikmesi_bar = (şimdi − last_bar_at) ÷ bar_dakikası` yazılmıştı. `last_bar_at` barın
+**açılış** zamanıdır: 06:00 barı 07:00'de kapanır ve kol onu 07:00'de tüketir. 07:59'da ham
+fark 119 dakika, yani "2 bar geride". Eşik 2 olduğu için koşan **her kol** donuk göründü.
+
+Her satırı kırmızı olan bir ekran hiçbir şey söylemez — bu, kaçırılan arızadan daha
+tehlikelidir, çünkü gerçek bir donma bu gürültünün içinde görünmez. Ölçü barın
+**kapanışından** itibaren hesaplanacak şekilde düzeltildi: sağlıklı kol 0 çevresinde salınır,
+bir tam bar kaçırılınca 1'i geçer. Canlı doğrulama: 28 donuk → 0, koşan kollar 0,1–0,9 bar.
+
+### 2. Açık bar sayacı `30m` dilimini tanımıyordu
+
+"Kapanmamış mum kapalı yazıldı mı" sayacının SQL'ine dilim → dakika eşlemesi elle yazılmış ve
+`30m` unutulmuştu; eksik dilim sessizce 60 dakika sayıldı. Sonuç: 07:00 barındaki **121 sağlam
+30 dakikalık bar** arıza olarak raporlandı. Eşleme motorun `TIMEFRAME_MINUTES` tablosundan
+alınacak şekilde düzeltildi ve tabloda olmayan dilim artık hiç sayılmıyor. Ölçüm: 121 → 0.
+
+Bu, 5. arızanın (kapanmamış mum kapalı yazıldı, 2026-09-04) sayacıydı. Sayaç yanlış olsaydı
+gerçek tekrar sessizce geçerdi.
+
+### 3. Panelin ZORUNLU kesit seçicisi 9,86 saniye sürüyordu
+
+`/scores/configs` son barı `GROUP BY config_hash, timeframe` ile buluyordu ve bu, 582 bin
+satırlık / 1,4 GB'lık `scores` yığınını baştan sona okuyordu. Kesit seçimi yapılmadan hiçbir
+kanıt rakamı basılmadığı için (§7, 8. arızayı yapısal olarak imkânsız kılan kural) Kanıt
+ekranı bu süre boyunca **tamamen boş** kalıyordu — yani dürüstlük organı, dürüstlüğü sağlayan
+kural yüzünden erişilemiyordu.
+
+Sorgu özyinelemeli **atlamalı indeks taramasına** çevrildi: onbir grup için onbir arama.
+`(config_hash, timeframe, bar_time DESC)` indeksi eklendi (göç 0014).
+
+| Uç | Önce | Sonra |
+|---|---|---|
+| `/scores/configs` | 9,86 sn | **0,16 sn** |
+| `/kontrol/nobet` | 4,68 sn | **0,34 sn** |
+
+`/kontrol/nobet` her ekranda 30 saniyede bir çağrılıyor; açık bar taraması iki günle
+sınırlandı (en uzun dilim 1 gün olduğu için ölçüm kaybı yok).
+
+### 4. Defter, TL kolunu USD toplamına karıştırıyordu
+
+BIST kolunun özsermayesi 19.224 ₺; dolar kollarıyla toplanınca "özsermaye − sermaye" satırı
+sessizce yanlış çıkıyordu. Kur beslemesi yok, dolayısıyla iki para birimi toplanamaz. Ayrı
+satıra alındı ve kollar tablosuna pazar sütunu eklendi. Bu, paydayı gizlemekle aynı sınıftan
+bir hata: sayı basılıyor ama neyin toplamı olduğu söylenmiyor.
+
+### 5. Karar hunisi payda eksikken oran çiziyordu
+
+Karar izi 08:00'de açıldı; ondan önceki barların kapı satırı var, havuz satırı yok. Huni bu
+pencerede kapıyı havuzdan büyük gösterdi ve %120'lik bir çubuk çizdi. Payda bozukken çubuk
+çizilmiyor, bunun yerine "payda eksik" damgası ve sebebi basılıyor. Bozulmaz kural 3 paydayı
+gizlememeyi emrediyor; **bozuk paydayı gizlemek de aynı hatadır.**
+
+### Çıkarım
+
+Sekiz arıza bir ölçüm sisteminin ölçtüğü şeyde yanlış olabileceğini gösterdi. Bu beş arıza,
+**ölçüm aletinin kendisinin** yanlış olabileceğini gösteriyor. İkincisi daha sinsi çünkü
+alet, yanlış ölçtüğünü kendi diliyle "arıza var" diye rapor ediyor: 1 ve 2 numaralı arızalar
+sahte alarmdı, ve sahte alarm gerçek alarmı öldürür.
+
+Panelin kendisi için de aynı kural geçerli: **her sayının künyesi olmalı ve her sayacın
+kendisi test edilmeli.** `tests/test_kontrol_odasi.py` içindeki 14 testin her biri bir
+arızayı adıyla anıyor; 1 ve 2 numaralı arızaların ikisi de artık ayrı birer testle sabit.

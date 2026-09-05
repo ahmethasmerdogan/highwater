@@ -9,8 +9,9 @@ Revises: 0012_bildirim_temizlik_indeksi
 """
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 revision = "0013_karar_izi"
 down_revision = "0012_bildirim_temizlik_indeksi"

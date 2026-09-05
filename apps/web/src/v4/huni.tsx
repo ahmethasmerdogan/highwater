@@ -27,7 +27,7 @@ const OZELLIK_ADI: Record<string, string> = {
 
 /** Barın genişliği havuza oranlı; ölçek yanıltmasın diye kök alınmaz. */
 function genislik(adet: number, havuz: number): string {
-  if (!havuz) return "0%";
+  if (!havuz || adet > havuz) return "0%";
   return `${Math.max(0.6, (adet / havuz) * 100)}%`;
 }
 
@@ -35,6 +35,11 @@ export function KararHunisi({ veri, ozellik }: { veri: Huni; ozellik: string }) 
   const havuz = veri.basamaklar.find((b) => b.asama === "havuz")?.adet ?? 0;
   const acilan = veri.basamaklar.find((b) => b.asama === "acildi");
   const kenar = veri.kenar;
+  // Payda bozuksa (bir basamak havuzdan büyükse) huni sessizce %120'lik bir bar
+  // çizerdi. Bozulmaz kural 3 paydayı gizlememeyi emrediyor; bozuk paydayı
+  // gizlemek de aynı hatadır. Pencereye karar izinin açılmasından ÖNCEKİ barlar
+  // girdiğinde tam olarak bu olur: o barların kapı satırı var, havuz satırı yok.
+  const paydaBozuk = veri.basamaklar.some((b) => b.asama !== "havuz" && b.adet > havuz);
 
   if (!veri.basamaklar.length) {
     return (
@@ -51,6 +56,20 @@ export function KararHunisi({ veri, ozellik }: { veri: Huni; ozellik: string }) 
 
   return (
     <div>
+      {paydaBozuk ? (
+        <div
+          className="px-4 py-3"
+          style={{ borderTop: "1px solid var(--v4-cizgi)", background: "var(--v4-amber-zemin)" }}
+        >
+          <Damga tur="supheli">payda eksik</Damga>
+          <Muhakeme>
+            {" "}
+            Bir basamak havuzdan büyük görünüyor. Bu pencereye karar izinin
+            açılmasından önceki barlar giriyor: o barların kapı satırı var, havuz satırı
+            yok. Oranlar bu yüzden okunmamalı; pencereyi daraltın.
+          </Muhakeme>
+        </div>
+      ) : null}
       <table className="v4-tablo">
         <thead>
           <tr>

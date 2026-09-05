@@ -365,19 +365,32 @@ async def test_ardisik_zarar_serisi_blokajdan_sonra_sayilir(api_session):
     blok = datetime(2026, 9, 3, 7, 30, tzinfo=UTC)
     for i in range(6):  # blokajdan ÖNCE 6 zarar
         poz = Position(
-            bot_id=bot.id, symbol="XUSDT", qty=Decimal("1"),
-            entry_price=Decimal("1"), entry_time=blok - timedelta(hours=7 - i),
-            stop=Decimal("0.9"), initial_stop=Decimal("0.9"), status="CLOSED",
+            bot_id=bot.id,
+            symbol="XUSDT",
+            qty=Decimal("1"),
+            entry_price=Decimal("1"),
+            entry_time=blok - timedelta(hours=7 - i),
+            stop=Decimal("0.9"),
+            initial_stop=Decimal("0.9"),
+            status="CLOSED",
         )
         api_session.add(poz)
         await api_session.flush()
         api_session.add(
             Trade(
-                position_id=poz.id, bot_id=bot.id, symbol="XUSDT",
-                exit_price=Decimal("1"), exit_time=blok - timedelta(hours=6 - i),
-                exit_reason="STOP", pnl=Decimal("-5"), pnl_r=Decimal("-1"),
-                fees=Decimal("0"), slippage_bps=Decimal("0"),
-                mfe=Decimal("0"), mae=Decimal("-1"), hold_hours=Decimal("1"),
+                position_id=poz.id,
+                bot_id=bot.id,
+                symbol="XUSDT",
+                exit_price=Decimal("1"),
+                exit_time=blok - timedelta(hours=6 - i),
+                exit_reason="STOP",
+                pnl=Decimal("-5"),
+                pnl_r=Decimal("-1"),
+                fees=Decimal("0"),
+                slippage_bps=Decimal("0"),
+                mfe=Decimal("0"),
+                mae=Decimal("-1"),
+                hold_hours=Decimal("1"),
                 strategy_version_id=bot.strategy_version_id,
             )
         )

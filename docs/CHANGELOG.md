@@ -16,6 +16,60 @@ cevap veren tek şey odur.
 
 ---
 
+## [Arayüz] v4 "Kontrol Odası" — on sayfa yerine beş soru — 2026-09-05
+
+**Yapıldı:** Panel sıfırdan yazıldı. v3'te 10 sayfa vardı ve her biri bir **nesne türünü**
+listeliyordu (Botlar, Pozisyonlar, Piyasa, Maraton, Günlük, Terminal, Sohbet, Yönetim,
+Araştırma, Köprü). Nesne başına sayfa sentezi kullanıcıya bırakır: "bot 12 donmuş" Botlar'da,
+"BIST barı geldi" Piyasa'daydı; ikisini birleştirip "önbellek bozuk" sonucuna varmak arayüzün
+değil insanın işiydi. 2026-09-04/05'te bulunan sekiz arızanın sekizi de bu boşlukta yaşadı —
+hiçbiri hata vermedi, hiçbiri panelde görünmedi, hepsi elle ölçümle çıktı.
+
+Yerine beş ekran, her biri **tek soru**: Nöbet (sistem şu an sağlam mı), Zincir (aday nerede
+öldü), Kanıt (öngörü gücü var mı), Hipotez (kanıt ne durumda), Defter (ne kazandık). Kalıcı
+katmanlar: künye şeridi ve kütük çekmecesi (`~`).
+
+Beş bozulmaz kural bileşenlere gömüldü, belgeye değil: `Sessizlik` boş listede ne
+beklendiğini yazar; `Olcum` künyeyi **zorunlu alan** yapar; `Oran` daima iki sayı basar;
+geçersizlik üstü çizili + sebepli gösterilir; palette **yeşil yoktur** — sağlıklı durum
+renksizdir, çünkü "her şey yolunda" duygusu tam olarak sekiz arızanın verdiği sahte güvendi.
+Amiral bileşen karar hunisi: her basamakta ölen aday sayısının **yanında** ölenlerin ölçülen
+kenar özelliği durur. Canlıda ilk okumada boyutlandırmada ölenlerin sakinlik yüzdeliği 80,2,
+havuz ortalaması 50,0 — KAR-TESHISI §9'un bulgusu artık kalıcı bir organ.
+
+Motor tarafı: `entry_decisions` tablosu (karar izi: havuz · kapı · slot · veri · boyut ·
+açıldı), 21 deney kolunun ön-kaydı `bots.config.on_kayit`'e taşınıp mühürlendi,
+`/kontrol/{nobet,huni,hipotez}` uçları. Hipotez kartı iki ölçü taşır: mekanizma (kesitsel,
+yüksek güçlü, hüküm ondan okunur) ve sonuç (R beklentisi, belirsizlik aralığıyla, hüküm
+vermez). Mekanizma ölçüsü tanımlanamayan yedi kol `GÜÇSÜZ` damgası aldı.
+
+Yazarken **beş arıza** çıktı ve beşi de ölçümle kapandı: (1) Nöbet sağlıklı 28 kolu birden
+donuk ilan ediyordu — `last_bar_at` barın açılış zamanı, ölçü kapanıştan itibaren olmalıydı;
+(2) açık bar sayacı `30m` dilimini tanımıyor, 121 sağlam barı arıza sanıyordu; (3)
+`/scores/configs` 9,86 saniye sürüyordu (582 bin satır, 1,4 GB tam tarama) — özyinelemeli
+atlamalı indeks taramasıyla 0,16 saniyeye indi; (4) `/kontrol/nobet` 4,68 → 0,34 saniye;
+(5) Defter TL kolunu USD toplamına karıştırıyordu.
+
+**Bilinçli olarak yapılmadı:** Elle emir verme, bot başlatma/durdurma, ayar düzenleme — panel
+salt okunur. 30 gün müdahale edilmeyecek bir sistemde o düğmeler yalnızca deneyin bozulma
+yoludur. Kutlama katmanı (konfeti, kazanç kartı): beklentisi negatif olan bir sistemin
+kullanıcısını tebrik etmesi yalandır. Filo liderlik tablosu: ayırt etme gücü ±2,18R iken kâra
+göre sıralamak gürültüyü sıralamaktır. Koyu tema: renk bütçesi ikiye bölünmemeli. Canlı fiyat
+şeridi, bildirim zili, özelleştirilebilir düzen, mobil tam işlevsellik. Sohbet ve web
+terminali silindi; TUI durur (bozulmaz kural 4).
+
+**Kabul kriteri:** ✅ Beş ekran canlı veriyle açılıyor, konsol ve ağ hatası sıfır (Playwright
+ile beş ekran gezildi). Derleme: paylaşılan JS 103 kB, ekran başına ~5 kB. Motor testleri
+635 geçti. `/kontrol/*` uçları için 14 test; hepsi bir arızayı adıyla anıyor.
+
+**Açık kalan:** Karar izi 2026-09-05 08:00'de açıldı; `acildi` satırları henüz birikmedi, o
+yüzden hunideki "açılan sakinlik" ve Welch t sütunları boş. `measurement_invalidations`
+tablosu (geçersizlik geriye işlesin) ve 4h↔1h çapraz bar denetimi henüz yok — DESIGN-V4 §8'in
+3. ve 4. maddeleri. Kesici payı 1,44×'e düştü (kural ≥ 1,5×); bar süresi gerilemesi hâlâ
+açık.
+
+---
+
 ## [Arayüz] 2. nesil tasarım sistemi — taşıma tamamlandı — 2026-08-24
 
 **Yapıldı:** Kalan 15 sayfa (+ giriş ekranı) yeni dile taşındı; **18 sayfanın hepsi** artık 2.

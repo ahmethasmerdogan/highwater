@@ -169,17 +169,27 @@ işi o ölçümün ne zaman yapılacağını söylemek.
 
 ## 8. Motordan istenenler
 
-1. **`entry_decisions` tablosu** — `SizingEngine.steps` ve `reject_reason`
-   yapılandırılmış olarak (bugün serbest metin `bot_events`). Karar hunisi
-   bunsuz kurulamaz. Ayrıca `_consider_entries`'in bütçe erken çıkışı sayacı
-   yine artırmalı, yoksa huni eksik sayar.
-2. **`bots.config` içinde birinci sınıf ön-kayıt alanları** — `hipotez`,
-   `kontrol_bot_id`, `tek_degisken`, `mekanizma_olcusu`, `hedef`, `gereken_n`,
-   `curutme`, `on_kayit_at`, `karar_gunu`, `muhur_hash`.
-3. **`measurement_invalidations` tablosu** — geçersizlik geriye işlesin.
-4. **Çapraz bar denetimi arka plan işi** (4h ↔ 4×1h) ve `is_closed=false` sayacı.
-5. **`/calibration`'da `config_hash` zorunlu** (bugün opsiyonel; opsiyonel
-   olması 8. arızanın kendisiydi — düzeltildi, artık varsayılan doluyor).
+Durum 2026-09-05 akşamı itibarıyla işaretlendi.
+
+1. ✅ **`entry_decisions` tablosu** — `SizingEngine.steps` ve `reject_reason`
+   yapılandırılmış olarak (önceden serbest metin `bot_events`). Karar hunisi
+   bunsuz kurulamazdı. Göç 0013; basamaklar `havuz · kapi · slot · veri ·
+   boyut · acildi`. Bütçe erken çıkışında denenmeyen adaylar da sayılıyor —
+   yoksa huni eksik sayardı.
+2. ✅ **`bots.config` içinde birinci sınıf ön-kayıt alanları** — 21 deney kolu
+   `on_kayit` aldı ve mühürlendi (`scripts/on_kayit_backfill.py`). Maraton
+   kollarına dokunulmadı: onlar kontrol.
+3. ❌ **`measurement_invalidations` tablosu** — geçersizlik geriye işlesin.
+   Arayüz tarafı hazır (`Olcum`'un `gecersiz` alanı üstü çizili + sebepli
+   basıyor); tablo ve uç henüz yok.
+4. ❌ **Çapraz bar denetimi arka plan işi** (4h ↔ 4×1h). `is_closed` sayacı
+   yapıldı ve Nöbet'te duruyor; çapraz denetim yok.
+5. ✅ **`/calibration`'da `config_hash`** — varsayılan doluyor; panel tarafında
+   kesit seçimi yapılmadan hiçbir rakam basılmıyor (8. arıza yapısal olarak
+   imkânsız).
+6. ✅ **`/kontrol/{nobet,huni,hipotez}`** — üç uç, 14 test.
+7. ✅ **Kesit seçicisinin indeksi** (göç 0014) — seçici 9,86 sn'den 0,16 sn'ye
+   indi. Zorunlu bir kapı, açılması 10 saniye süren bir kapı olamaz.
 
 ## 9. Bilinçli olarak yapılmayanlar
 
