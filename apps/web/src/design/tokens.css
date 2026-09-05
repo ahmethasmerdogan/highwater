@@ -1,93 +1,74 @@
 /*
- * HIGHWATER token katmanı — v3.
+ * HIGHWATER token katmanı.
  *
- * Palet yok: her `--sn-*` rengi uicean token'ının TAKMA ADIDIR (canvas ›
- * surface › elev › inset, line, ink, brand). Açık/koyu ve vurgu ön ayarı
- * uicean'dan gelir (`.dark`, `[data-accent]`); burada yeniden tanımlanmaz.
- * Yön renkleri (kâr/zarar) ve uyarı bu dosyanın tek "kendi" rengidir —
- * marka rengi asla yön anlamı taşımaz (DESIGN-V3 §2).
+ * Palet yok: her `--sn-*` rengi bir BoardUI semantik token'ının TAKMA ADIDIR
+ * (`src/styles/theme.css`). Açık/koyu tema BoardUI token'larının kendisinde
+ * döndüğü için burada ayrı bir `.dark` bloğu YOKTUR — iki yerde tanımlı bir
+ * tema, biri unutulduğunda sessizce ayrışır.
  *
- * Sayılar için ölçek, yarıçaplar, hareket ve yardımcı sınıflar (`.sn-num`,
- * `.sn-label`, animasyonlar) aşağıda değişmeden durur.
+ * Yön renkleri (kâr/zarar) BoardUI'nin status rampasından gelir; marka rengi
+ * asla yön anlamı taşımaz (DESIGN-V3 §2).
  */
 
 :root {
   /* yüzeyler */
-  --sn-bg: var(--canvas);
-  --sn-panel: var(--surface);
-  --sn-raised: var(--elev);
-  --sn-sunken: var(--inset);
-  --sn-overlay: var(--surface);
+  --sn-bg: var(--color-background-full);
+  --sn-panel: var(--color-background-primary-default);
+  --sn-raised: var(--color-background-primary-default);
+  --sn-sunken: var(--color-background-secondary-default);
+  --sn-overlay: var(--color-background-primary-default);
 
   /* çizgiler — gölge yok, yapıyı çizgi taşır */
-  --sn-hairline: var(--line);
-  --sn-border: var(--line);
-  --sn-border-strong: var(--line-strong);
+  --sn-hairline: var(--color-separator-border);
+  --sn-border: var(--color-separator-border);
+  --sn-border-strong: var(--color-border-button-default);
 
   /* mürekkep */
-  --sn-ink: var(--ink);
-  --sn-ink-2: var(--ink2);
-  /* uicean ink3 açık temada 2,37:1 — tablo başlığı ve altyazı için
-     yetersiz. Açıkta sabit #767268 (4,6:1); koyu takma ad olarak kalır. */
-  --sn-ink-3: #767268;
-  --sn-ink-4: color-mix(in oklab, #767268 75%, transparent);
+  --sn-ink: var(--color-text-primary);
+  --sn-ink-2: var(--color-text-secondary);
+  --sn-ink-3: var(--color-text-tertiary);
+  --sn-ink-4: var(--color-text-placeholder);
 
-  /* marka — uicean vurgu ön ayarı (html[data-accent]) */
-  --sn-brand: var(--brand);
-  --sn-brand-2: var(--brand-ink);
-  --sn-brand-solid: var(--btn-brand-a);
-  --sn-on-brand: var(--btn-brand-fg);
-  --sn-brand-bg: var(--brand-soft);
-  --sn-brand-line: color-mix(in oklab, var(--brand) 45%, var(--line));
-  --sn-focus-ring: var(--brand);
+  /* marka — BoardUI vurgu rampası */
+  --sn-brand: var(--color-accent-600);
+  --sn-brand-2: var(--color-accent-700);
+  --sn-brand-solid: var(--color-accent-600);
+  --sn-on-brand: var(--color-text-white);
+  --sn-brand-bg: var(--color-status-blue-background);
+  --sn-brand-line: var(--color-accent-300);
+  --sn-focus-ring: var(--color-border-focus-ring);
 
-  /* yön ve durum — yalnız burası kendi rengini taşır */
-  --sn-up: #059669;
-  --sn-up-bg: color-mix(in oklab, #059669 12%, transparent);
-  --sn-down: #e11d48;
-  --sn-down-bg: color-mix(in oklab, #e11d48 12%, transparent);
-  --sn-on-down: #ffffff;
-  --sn-warn: #b45309;
-  --sn-warn-bg: color-mix(in oklab, #b45309 12%, transparent);
-  --sn-info: var(--brand);
-  --sn-info-bg: var(--brand-soft);
-  --sn-idle: var(--ink3);
+  /* yön ve durum — BoardUI status rampası, koyu temada kendi döner */
+  --sn-up: var(--color-status-lime-text);
+  --sn-up-bg: var(--color-status-lime-background);
+  --sn-down: var(--color-status-rose-text);
+  --sn-down-bg: var(--color-status-rose-background);
+  --sn-on-down: var(--color-text-white);
+  --sn-warn: var(--color-status-yellow-text);
+  --sn-warn-bg: var(--color-status-yellow-background);
+  --sn-info: var(--color-status-blue-text);
+  --sn-info-bg: var(--color-status-blue-background);
+  --sn-idle: var(--color-text-tertiary);
 
-  /* seriler — 1 marka, gerisi nötr aile; yeşil/kırmızı seri rengi DEĞİL */
-  --sn-series-1: var(--brand);
-  --sn-series-2: #ea580c;
-  --sn-series-3: #0d9488;
-  --sn-series-4: #7c3aed;
-  --sn-series-5: #db2777;
+  /* seriler — BoardUI grafik rampası; yeşil/kırmızı seri rengi DEĞİL */
+  --sn-series-1: var(--color-chart-6-active);
+  --sn-series-2: var(--color-chart-3-active);
+  --sn-series-3: var(--color-chart-1-active);
+  --sn-series-4: var(--color-chart-5-active);
+  --sn-series-5: var(--color-chart-8-active);
 
-  /* katman ayrımı gölgeyle değil çizgiyle */
-  --sn-shadow-pop: 0 0 0 1px var(--line-strong);
-  --sn-shadow-drag: 0 0 0 1px var(--line-strong);
-}
-
-.dark {
-  --sn-ink-3: var(--ink3);
-  --sn-ink-4: color-mix(in oklab, var(--ink3) 80%, transparent);
-  --sn-up: #34d399;
-  --sn-up-bg: color-mix(in oklab, #34d399 14%, transparent);
-  --sn-down: #fb7185;
-  --sn-down-bg: color-mix(in oklab, #fb7185 14%, transparent);
-  --sn-on-down: #14090c;
-  --sn-warn: #fbbf24;
-  --sn-warn-bg: color-mix(in oklab, #fbbf24 14%, transparent);
-  --sn-series-2: #fb923c;
-  --sn-series-3: #2dd4bf;
-  --sn-series-4: #a78bfa;
-  --sn-series-5: #f472b6;
+  /* katman ayrımı */
+  --sn-shadow-pop: var(--shadow-lg);
+  --sn-shadow-drag: var(--shadow-xl);
 }
 
 :root {
   /* Yarıçap: veri yüzeyleri keskin, etkileşim yüzeyleri yumuşak. */
-  --sn-r-xs: 4px;
-  --sn-r-sm: 6px;
-  --sn-r-md: 8px;
-  --sn-r-lg: 12px;
-  --sn-r-xl: 16px;
+  --sn-r-xs: 6px;
+  --sn-r-sm: 8px;
+  --sn-r-md: 10px;
+  --sn-r-lg: 16px;
+  --sn-r-xl: 24px;
 
   /* Satır yüksekliğinin tek kaynağı grid/types.ts:ROW_HEIGHT'tır.
      Buradaki --sn-row-* kopyaları hiç okunmuyordu; iki kaynak birbirinden

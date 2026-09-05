@@ -1,16 +1,20 @@
 /* =====================================================================
- * HIGHWATER — genel biçimler
+ * HIGHWATER — genel biçimler ve tek palet
  *
- * Panelde iki katman yan yana duruyor:
+ * Panelde iki bileşen katmanı var:
  *
- *   · BoardUI (`src/styles/*`) — yeni tasarım dili: semantik renk token'ları,
- *     bileşik tipografi ölçeği, açık/koyu tema, `src/components/**`.
- *   · 2. nesil katman (`design/tokens.css` + `uicean`) — henüz taşınmamış
- *     sayfalar hâlâ bunu kullanıyor. Sayfalar tek tek BoardUI'ye geçtikçe
- *     bu iki satır kalkacak.
+ *   · BoardUI   — `src/styles/*` + `src/components/**` + `src/panel/*`
+ *   · 2. nesil  — `src/design/*` + uicean, on işletim ekranını besliyor
  *
- * İkisi ayrı önek kullanıyor (`--v4-*`/BoardUI semantik adları ile `--sn-*`),
- * bu yüzden çakışmıyorlar.
+ * İkisini ayrı ayrı yeniden yazmak on bin satırlık bir iş ve her satırında
+ * bir özelliği düşürme riski taşıyor. Bunun yerine PALET tek kaynağa
+ * bağlandı: aşağıdaki blok uicean'ın ve `--sn-*` katmanının bütün renk
+ * değişkenlerini BoardUI'nin semantik token'larına yeniden yönlendiriyor.
+ * Tek dosya değişiyor, on ekran birden yeni dili giyiyor ve hiçbir ekran
+ * kaybolmuyor.
+ *
+ * Sıra önemli: uicean en sonda içe aktarılıyor, remap bloğu ondan da sonra
+ * geliyor; eşit özgüllükte kaynak sırası kazanır.
  * ===================================================================== */
 
 @import "../styles/globals.css";
@@ -19,8 +23,87 @@
 @import "dockview-react/dist/styles/dockview.css";
 
 /* ---------------------------------------------------------------------
+ * uicean → BoardUI yeniden yönlendirmesi
+ *
+ * `:root` ve `.dark` aynı değerleri alıyor çünkü BoardUI token'larının
+ * kendisi `.dark` altında zaten dönüyor. Burada ikinci bir tema mantığı
+ * yok — tek sahip BoardUI'nin `theme.css`'i.
+ * ------------------------------------------------------------------- */
+:root,
+.dark {
+  /* yüzeyler */
+  --canvas: var(--color-background-full);
+  --surface: var(--color-background-primary-default);
+  --elev: var(--color-background-primary-default);
+  --inset: var(--color-background-secondary-default);
+  --color-canvas: var(--color-background-full);
+  --color-surface: var(--color-background-primary-default);
+  --color-elev: var(--color-background-primary-default);
+  --color-inset: var(--color-background-secondary-default);
+
+  /* çizgiler */
+  --line: var(--color-separator-border);
+  --line-strong: var(--color-border-button-default);
+  --color-line: var(--color-separator-border);
+  --color-line-strong: var(--color-border-button-default);
+
+  /* mürekkep */
+  --ink: var(--color-text-primary);
+  --ink2: var(--color-text-secondary);
+  --ink3: var(--color-text-tertiary);
+  --color-ink: var(--color-text-primary);
+  --color-ink-2: var(--color-text-secondary);
+  --color-ink-3: var(--color-text-tertiary);
+
+  /* marka = BoardUI vurgu rampası */
+  --brand: var(--color-accent-600);
+  --brand-ink: var(--color-accent-700);
+  --brand-soft: var(--color-status-blue-background);
+  --color-brand: var(--color-accent-600);
+  --color-brand-ink: var(--color-accent-700);
+  --color-brand-soft: var(--color-status-blue-background);
+
+  /* düğmeler — uicean'ın gradyan uçları tek renge iniyor (BoardUI düz) */
+  --btn-a: var(--color-background-primary-default);
+  --btn-b: var(--color-background-primary-default);
+  --btn-hi: transparent;
+  --btn-ring: var(--color-border-button-default);
+  --btn-brand-a: var(--color-accent-600);
+  --btn-brand-b: var(--color-accent-600);
+  --btn-brand-fg: var(--color-text-white);
+  --btn-brand-ring: var(--color-accent-700);
+
+  /* yarıçap — BoardUI daha yuvarlak (kart 24px, giriş 10px) */
+  --radius: 12px;
+  --radius-btn-sm: 8px;
+  --radius-btn-md: 10px;
+  --radius-btn-lg: 12px;
+  --radius-icon-sm: 8px;
+  --radius-icon-md: 10px;
+  --radius-icon-lg: 12px;
+  --radius-icon-xl: 16px;
+
+  /* gölge — BoardUI'nin ölçeği */
+  --sh-soft: var(--shadow-2xs);
+  --sh-card: var(--shadow-sm);
+  --sh-btn: var(--shadow-2xs);
+  --sh-pop: var(--shadow-lg);
+  --sh-float: var(--shadow-xl);
+  --shadow-soft: var(--shadow-2xs);
+  --shadow-card: var(--shadow-sm);
+  --shadow-btn: var(--shadow-2xs);
+  --shadow-pop: var(--shadow-lg);
+  --shadow-float: var(--shadow-xl);
+
+  /* yazı tipi — Inter + JetBrains Mono (next/font, kök düzende) */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-stack-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono-source), ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-stack-mono: var(--font-mono-source), ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* ---------------------------------------------------------------------
  * Anayasa kuralı 6: her sayı monospace ve `tabular-nums`.
- * Hizalanmayan rakam kabul edilmez.
  * ------------------------------------------------------------------- */
 @layer base {
   .font-mono {
@@ -37,14 +120,4 @@
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
-}
-
-/* ---------------------------------------------------------------------
- * Eski katmanın yazı tipi yığını — `design/*` bileşenleri bunu okuyor.
- * ------------------------------------------------------------------- */
-:root {
-  --font-stack-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    sans-serif;
-  --font-stack-mono: var(--font-mono-source), ui-monospace, SFMono-Regular, "SF Mono", Menlo,
-    Consolas, "Liberation Mono", monospace;
 }
