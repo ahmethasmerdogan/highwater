@@ -192,7 +192,7 @@ export function Oran({
       deger={
         <>
           {adet(pay)}
-          <span className="text-text-quaternary"> / </span>
+          <span className="text-text-placeholder"> / </span>
           <span className={ihlal ? "text-status-rose-text" : "text-text-tertiary"}>
             {adet(payda)}
           </span>
@@ -231,7 +231,7 @@ export function Sayac({
         className={cx(
           MONO,
           "w-16 shrink-0 text-right text-body-medium",
-          bozuk ? "text-status-rose-text" : olu ? "text-text-quaternary" : "text-text-primary",
+          bozuk ? "text-status-rose-text" : olu ? "text-text-placeholder" : "text-text-primary",
         )}
       >
         {adet(deger)}
@@ -239,7 +239,7 @@ export function Sayac({
       <span
         className={cx(
           "min-w-0 flex-1 truncate text-body-regular",
-          olu ? "text-text-quaternary" : "text-text-primary",
+          olu ? "text-text-placeholder" : "text-text-primary",
         )}
       >
         {ad}

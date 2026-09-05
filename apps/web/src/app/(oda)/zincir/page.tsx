@@ -134,7 +134,7 @@ export default function ZincirEkrani() {
                 return (
                   <li key={f.index} className="px-5 py-2.5">
                     <div className="flex items-baseline gap-3">
-                      <span className={cx(MONO, "w-6 text-caption-1-regular text-text-quaternary")}>
+                      <span className={cx(MONO, "w-6 text-caption-1-regular text-text-placeholder")}>
                         {f.index}
                       </span>
                       <span className="flex-1 truncate text-body-2-regular text-text-primary">

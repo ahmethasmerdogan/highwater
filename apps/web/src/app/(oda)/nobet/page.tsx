@@ -284,7 +284,7 @@ export default function NobetEkrani() {
                           {k.halt}
                         </Chip>
                       ) : (
-                        <span className="text-text-quaternary">—</span>
+                        <span className="text-text-placeholder">—</span>
                       )}
                     </td>
                   </tr>

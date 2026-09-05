@@ -513,7 +513,7 @@ export function DashboardSidebar({
           {ikinciItems?.length ? (
             <nav className={cx("flex w-full flex-col gap-1", !collapsed && "px-0.5")}>
               {!collapsed && ikinciBaslik ? (
-                <p className="px-2 pt-2 pb-1 text-caption-1-medium tracking-wide text-text-quaternary uppercase">
+                <p className="px-2 pt-2 pb-1 text-caption-1-medium tracking-wide text-text-placeholder uppercase">
                   {ikinciBaslik}
                 </p>
               ) : (

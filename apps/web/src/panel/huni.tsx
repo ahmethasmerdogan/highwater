@@ -61,7 +61,7 @@ export function KararHunisi({ veri, ozellik }: { veri: Huni; ozellik: string }) 
           return (
             <li key={b.asama} className="px-5 py-3">
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                <span className="text-text-quaternary" aria-hidden>
+                <span className="text-text-placeholder" aria-hidden>
                   {i === 0 ? "" : "└"}
                 </span>
                 <span
@@ -161,7 +161,7 @@ export function KararHunisi({ veri, ozellik }: { veri: Huni; ozellik: string }) 
             <span
               className={cx(
                 "text-caption-1-regular",
-                t.adet === 0 ? "text-text-quaternary" : "text-text-secondary",
+                t.adet === 0 ? "text-text-placeholder" : "text-text-secondary",
               )}
             >
               {t.ad}
