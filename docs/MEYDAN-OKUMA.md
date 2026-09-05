@@ -1703,3 +1703,25 @@ Kural kuraldır, kabul yok.
    yukarı barlarda +0,088). İki dönem farklı rejimler; tek bir sabit ağırlık vektörü
    ikisini birden kazanamıyor. Sıradaki soru sabit ağırlık değil, **rejime duyarlı
    ağırlık** olmalı — ama bu yeni bir düğme, ön-kayıtla ölçülmeli.
+
+## Postgres bağlantı tavanı tükenmişti — 2026-09-05
+
+"Eksik kaldı mı" kontrolünde ortaya çıktı. Tam test paketinde 32 veritabanı testi
+"PostgreSQL çalışmıyor" diye atlanıyordu; Postgres çalışıyordu. Sunucuya doğrudan
+sorulduğunda cevap net: **"sorry, too many clients already"**. Ölçüm: 5432'ye
+**300 açık TCP bağlantısı**, sunucu tavanı 100.
+
+Sebep yapısal: `db_pool_size=10` + `db_max_overflow=20` **süreç başınadır** ve filo
+34 sürece çıkmıştı (29 worker + API + supervisor + marketdata + equitydata +
+notifier). Teorik tavan 34 × 30 = 1020. Üç sonucu vardı: (1) 32 DB testi sessizce
+atlanıyor, "582 geçti" yanıltıcı; (2) yeni worker bağlanamayabiliyor; (3) bağlantı
+isteyen her yol (panel dâhil) hata riski taşıyor.
+
+Düzeltme: worker havuzu süreç başına 2+2, API systemd drop-in ile 8+8. Bir worker
+tek asyncio döngüsünde sıralı iş yapar. **Sonuç: 300 → 27 bağlantı** (29 worker
+koşarken). Test: süreç başına 6'dan fazla bağlantı isteyen ayar kırmızı yanar.
+
+Bu, günün dördüncü sessiz arızası. Ortak yanları: sistem çalışıyor görünürken bir
+katman kapalıydı — nabız eşiği worker'ları öldürüyordu, önbellek BIST kolunu
+donduruyordu, boyutlandırma ölçülen tek kenarı eliyordu, bağlantı tavanı testleri
+atlatıyordu. Hiçbiri gürültü çıkarmadı; hepsi ölçümle bulundu.
