@@ -1,16 +1,16 @@
 @import "tailwindcss";
-@import "../design/tokens.css";
-@import "uicean/css";
+@import "../v4/tokens.css";
 
 /* =====================================================================
- * SARNIÇ — genel biçimler
+ * HIGHWATER — belge biçimleri
  *
- * Tasarım kararları `design/tokens.css` içinde; bu dosyada yalnızca
- * belgenin kendisine ve üçüncü taraf bir kitaplığa (dockview) ait olan
- * biçimler durur.
+ * Tasarım kararlarının tamamı `v4/tokens.css` içindedir. Burada yalnızca
+ * belgenin kendisine ait olan biçimler durur.
  *
- * 1. nesil katman (`ui/hashui.css` + öneksiz token'lar + `ui/` bileşen
- * kitaplığı) tüm sayfalar taşındıktan sonra kaldırıldı.
+ * uicean CSS'i bilinçli olarak içe aktarılmadı: v4 dili beş anlamlı renk
+ * ve üç tipografik ses üzerine kurulu; genel amaçlı bir bileşen paletinin
+ * vurgu renkleri ve gölge/yuvarlaklık ölçeği bu bütçeyi ikiye böler.
+ * Bileşen gerektiğinde uicean'dan tek tek alınır ve token'lara bağlanır.
  * ===================================================================== */
 
 @layer base {
@@ -19,10 +19,11 @@
   }
 
   body {
-    background: var(--sn-bg);
-    color: var(--sn-ink);
+    background: var(--v4-zemin);
+    color: var(--v4-murekkep);
     font-family: var(--font-stack-sans);
-    font-size: var(--sn-t-body);
+    font-size: 13px;
+    line-height: 1.45;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     font-optical-sizing: auto;
@@ -30,10 +31,21 @@
     font-feature-settings: "liga" 1, "calt" 1, "kern" 1;
   }
 
-  /* Tarayıcı varsayılanı yerine token'lı seçim rengi. */
   ::selection {
-    background: var(--sn-brand-bg);
-    color: var(--sn-ink);
+    background: var(--v4-civit-zemin);
+    color: var(--v4-murekkep);
+  }
+
+  /* Odak halkası çivit: klavyeyle gezinen kullanıcı nerede olduğunu görür. */
+  :focus-visible {
+    outline: 2px solid var(--v4-civit);
+    outline-offset: 1px;
+  }
+
+  button,
+  select {
+    cursor: pointer;
+    font: inherit;
   }
 }
 
@@ -42,7 +54,9 @@
  *
  * Paketler `node_modules`'tan gelir ve derlemeye gömülür — panel çevrimdışı
  * çalışmak zorunda, CDN'e bağlanılmaz. `latin-ext` alt kümesi Türkçe
- * karakterleri (ğ ş ı İ Ğ Ş) kapsıyor.
+ * karakterleri (ğ ş ı İ Ğ Ş) kapsıyor. Serif ses sistem yığınından gelir:
+ * muhakeme bloğu için ayrı bir dosya indirmek 30 gün komut verilmeyecek bir
+ * panelde gereksiz ağırlıktır.
  * ------------------------------------------------------------------- */
 :root {
   --font-stack-sans:
@@ -50,114 +64,4 @@
   --font-stack-mono:
     "Geist Mono Variable", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
     "Liberation Mono", monospace;
-}
-
-/* ---------------------------------------------------------------------
- * dockview — Terminal çalışma alanı
- *
- * Kitaplık kendi token setini okur; SARNIÇ paletine buradan bağlanır.
- * ------------------------------------------------------------------- */
-.dv-dockview {
-  --dv-background-color: var(--sn-bg);
-  --dv-paneview-background-color: var(--sn-panel);
-  --dv-group-view-background-color: var(--sn-panel);
-  --dv-tabs-and-actions-container-background-color: var(--sn-raised);
-  --dv-activegroup-visiblepanel-tab-background-color: var(--sn-panel);
-  --dv-activegroup-hiddenpanel-tab-background-color: var(--sn-raised);
-  --dv-inactivegroup-visiblepanel-tab-background-color: var(--sn-panel);
-  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--sn-raised);
-  --dv-tab-divider-color: var(--sn-hairline);
-  --dv-separator-border: var(--sn-hairline);
-  --dv-paneview-header-border-color: var(--sn-hairline);
-  --dv-activegroup-visiblepanel-tab-color: var(--sn-brand);
-  --dv-activegroup-hiddenpanel-tab-color: var(--sn-ink-3);
-  --dv-inactivegroup-visiblepanel-tab-color: var(--sn-ink);
-  --dv-inactivegroup-hiddenpanel-tab-color: var(--sn-ink-3);
-  --dv-drag-over-background-color: var(--sn-brand-bg);
-  --dv-drag-over-border-color: var(--sn-brand-solid);
-  --dv-tabs-container-scrollbar-color: var(--sn-border-strong);
-}
-
-.dv-tab {
-  font-size: var(--sn-t-caption);
-  border-right: 1px solid var(--sn-hairline);
-}
-
-/* ---------------------------------------------------------------------
- * Terminal — Bloomberg varyantı
- *
- * /terminal rotası HER ZAMAN koyu, kehribar-siyah çalışır; site teması
- * ne olursa olsun. Numara basit: kapsayıcı içinde sn- token'ları yeniden
- * tanımlanır — içerideki her bileşen (paneller, ızgaralar, grafikler)
- * kendiliğinden Bloomberg paletine döner. İkinci bir bileşen seti yok.
- * ------------------------------------------------------------------- */
-.sn-terminal {
-  color-scheme: dark;
-
-  --sn-bg: #050607;
-  --sn-panel: #0b0e11;
-  --sn-raised: #10141a;
-  --sn-sunken: #07090c;
-  --sn-overlay: #10141a;
-
-  --sn-hairline: #1a2126;
-  --sn-border: #232b33;
-  --sn-border-strong: #39434e;
-
-  --sn-ink: #e6dfc8;        /* Bloomberg'in sıcak beyazı */
-  --sn-ink-2: #a9a288;
-  --sn-ink-3: #6f6a58;
-  --sn-ink-4: #4c4a3f;
-
-  --sn-brand-solid: #ffb000;
-  --sn-on-brand: #14120a;
-  --sn-brand: #ffb000;
-  --sn-brand-2: #ffc94d;
-  --sn-brand-bg: rgba(255, 176, 0, 0.12);
-  --sn-brand-line: rgba(255, 176, 0, 0.38);
-  --sn-focus-ring: #ffb000;
-
-  --sn-up: #26d07c;
-  --sn-up-bg: rgba(38, 208, 124, 0.12);
-  --sn-down: #ff4d4d;
-  --sn-down-bg: rgba(255, 77, 77, 0.12);
-  --sn-on-down: #14120a;
-  --sn-warn: #ff8a3d;
-  --sn-warn-bg: rgba(255, 138, 61, 0.12);
-  --sn-info: #4ec9e0;
-  --sn-info-bg: rgba(78, 201, 224, 0.12);
-  --sn-idle: #39434e;
-
-  --sn-series-1: #4ea3ff;
-  --sn-series-2: #ff8a3d;
-  --sn-series-3: #26d07c;
-  --sn-series-4: #c084fc;
-  --sn-series-5: #ff6d9d;
-
-  background: var(--sn-bg);
-  color: var(--sn-ink);
-}
-
-/* Panel başlıkları terminalde Bloomberg dili konuşur: kehribar, ağır. */
-.sn-terminal .sn-label {
-  color: var(--sn-brand);
-}
-
-/* Komut satırı — siyah kuyu, kehribar imleç. Komutlar KOD'dur: mono doğru. */
-.sn-terminal-cmd input {
-  caret-color: var(--sn-brand-solid);
-}
-
-/* Bant: uicean Marquee'nin animasyonu; öğe ayracı elmas. */
-.sn-terminal-tape {
-  border-top: 1px solid var(--sn-hairline);
-  border-bottom: 1px solid var(--sn-hairline);
-  background: var(--sn-panel);
-}
-
-/* dockview terminal içinde de token'ları okur (globals'taki eşleme
-   .sn-terminal altında yeni değerleri görür) — ek kural gerekmez; yalnız
-   sekme vurgusu kehribara döner. */
-.sn-terminal .dv-dockview .dv-tab.dv-active-tab {
-  box-shadow: inset 0 -2px 0 0 var(--sn-brand-solid);
 }

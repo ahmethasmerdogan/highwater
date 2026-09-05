@@ -1,0 +1,157 @@
+/* =====================================================================
+ * HIGHWATER v4 — "Kontrol Odası" görsel dili
+ *
+ * Bu dosya DESIGN-V4 §6'nın makine karşılığıdır. Üç kural burada yaşar:
+ *
+ *   1. RENK BEŞ, HEPSİ ANLAM TAŞIR. Yeşil yoktur. Sağlıklı durum renksizdir;
+ *      "her şey yolunda" duygusu tam olarak sekiz arızanın verdiği sahte
+ *      güvendir (2026-09-04/05: sekiz arıza, sıfır hata mesajı).
+ *   2. TİPOGRAFİ ÜÇ SES. Muhakeme serif, etiket sans-büyük-harf, ölçüm
+ *      mono + tabular-nums. Kullanıcı bir bloğa bakınca OKUMADAN önce
+ *      "bu benim iddiam mı, makinenin ölçtüğü sayı mı" bilir.
+ *      Metin asla mono değildir; sayı asla mono olmayan bir yerde durmaz.
+ *   3. İKİ ÖLÇEK. Duvar (Nöbet, uzaktan okunur) ve masa (yoğun tablo).
+ *      Üçüncü yoğunluk yok.
+ *
+ * Açık tema tek temadır. Koyu zeminde her şey biraz alarm gibi görünür;
+ * bu tasarımda alarm nadir ve pahalı olmalı.
+ * ===================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* --- Zeminler ---------------------------------------------------- */
+  --v4-zemin: #faf9f7; /* sayfa — kağıt, saf beyaz değil */
+  --v4-kagit: #ffffff; /* bölüm gövdesi */
+  --v4-oyuk: #f3f2ef; /* gömük alan: künye şeridi, tablo başlığı */
+  --v4-cizgi: #e3e1dc; /* ayırıcı */
+  --v4-cizgi-koyu: #c9c6bf; /* vurgulu ayırıcı */
+
+  /* --- Beş anlamlı renk -------------------------------------------- */
+  --v4-murekkep: #17181c; /* metin, sağlıklı sayı */
+  --v4-ikincil: #6d6a63; /* etiket, künye, açıklama */
+  --v4-olu: #b0aca3; /* gri: hiç olmamış, üstü çizili, devre dışı */
+  --v4-kirmizi: #a4231b; /* bozuk, kural ihlali, negatif para */
+  --v4-kirmizi-zemin: #fbeceb;
+  --v4-amber: #96600a; /* şüpheli, bayat, kısmi */
+  --v4-amber-zemin: #fdf3e3;
+  --v4-civit: #2f3a8f; /* ÖLÇÜLMÜŞ KANIT: IC, desil, kabul kararı */
+  --v4-civit-zemin: #edeefa;
+
+  /* --- Üç ses ------------------------------------------------------ */
+  --v4-serif: Georgia, "Iowan Old Style", "Times New Roman", "Noto Serif", serif;
+  --v4-sans: var(--font-stack-sans);
+  --v4-mono: var(--font-stack-mono);
+
+  --v4-muhakeme: 14.5px; /* iddia, gerekçe, çürütme */
+  --v4-etiket: 11px; /* alan adı, künye başlığı */
+  --v4-olcum: 12.5px; /* masa ölçeğinde sayı */
+  --v4-duvar: 26px; /* duvar ölçeğinde sayı */
+  --v4-duvar-kucuk: 20px;
+
+  /* --- İki hareket ------------------------------------------------- */
+  --v4-gecis: 120ms cubic-bezier(0.4, 0, 0.2, 1); /* durum rengi */
+  --v4-kayma: 260ms cubic-bezier(0.32, 0.72, 0, 1); /* çekmece */
+}
+
+/* Sayaç animasyonu yoktur: okunan sayı değişmemeli. `tabular-nums`'ın
+   varlık sebebi tam olarak budur (anayasa kuralı 6). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* --- Üç sesin sınıfları ------------------------------------------- */
+.v4-muhakeme {
+  font-family: var(--v4-serif);
+  font-size: var(--v4-muhakeme);
+  line-height: 1.55;
+  color: var(--v4-murekkep);
+  letter-spacing: 0.002em;
+}
+
+.v4-etiket {
+  font-family: var(--v4-sans);
+  font-size: var(--v4-etiket);
+  font-weight: 500;
+  letter-spacing: 0.085em;
+  text-transform: uppercase;
+  color: var(--v4-ikincil);
+}
+
+.v4-olcum {
+  font-family: var(--v4-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "zero" 1;
+  letter-spacing: -0.01em;
+}
+
+/* --- Künye: her sayının kimliği ----------------------------------- */
+.v4-kunye {
+  font-family: var(--v4-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 10.5px;
+  color: var(--v4-ikincil);
+  letter-spacing: 0;
+}
+
+/* Şüpheli sayı: üretildiği dönemde bir bayrak açıktı. */
+.v4-supheli {
+  text-decoration: underline dotted var(--v4-amber);
+  text-underline-offset: 3px;
+}
+
+/* Geçersiz sayı: geriye işleyen bir geçersizlik ilanı var. */
+.v4-gecersiz {
+  text-decoration: line-through;
+  color: var(--v4-olu);
+}
+
+/* --- Bölüm: kart değil, kağıt üstünde çerçeveli alan --------------- */
+.v4-bolum {
+  background: var(--v4-kagit);
+  border: 1px solid var(--v4-cizgi);
+  border-radius: 2px;
+}
+
+/* --- Tablo: masa ölçeği, yoğun ------------------------------------ */
+.v4-tablo {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--v4-olcum);
+}
+.v4-tablo th {
+  font-family: var(--v4-sans);
+  font-size: var(--v4-etiket);
+  font-weight: 500;
+  letter-spacing: 0.085em;
+  text-transform: uppercase;
+  color: var(--v4-ikincil);
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--v4-cizgi-koyu);
+  white-space: nowrap;
+}
+.v4-tablo td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--v4-cizgi);
+  vertical-align: baseline;
+}
+.v4-tablo tbody tr:last-child td {
+  border-bottom: 0;
+}
+.v4-tablo .sayi {
+  font-family: var(--v4-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* --- Çekmece ------------------------------------------------------ */
+.v4-cekmece {
+  transition: transform var(--v4-kayma);
+}

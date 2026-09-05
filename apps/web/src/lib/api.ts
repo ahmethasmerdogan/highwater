@@ -777,3 +777,138 @@ export interface Attention {
   feeds: FeedStatus[];
   fleet: { running: number; total: number; blocked: number; halted: number };
 }
+
+/* ---------------------------------------------------------------- */
+/*  Kontrol odası (DESIGN-V4) — /kontrol/*                           */
+/* ---------------------------------------------------------------- */
+
+/** Bir bütçe satırı: ölçülen ÷ payda. Payda asla gizlenmez (§2.3). */
+export interface Butce {
+  ad: string;
+  aciklama: string;
+  olculen: number;
+  payda: number;
+  oran: number | null;
+  birim: string;
+}
+
+/**
+ * Kesici payı — supervisor nabız eşiği ÷ ölçülen p90 karar süresi.
+ *
+ * 2026-09-04'te 35 ÷ 270 = 0,13× idi ve filo günde 1697 kez yeniden doğdu.
+ * Kural: ≥ 1,5×.
+ */
+export interface KesiciPayi {
+  esik_s: number;
+  p50_s: number | null;
+  p90_s: number | null;
+  n: number;
+  pay: number | null;
+  kural: number;
+}
+
+export interface KolSatiri {
+  id: number;
+  ad: string;
+  durum: string;
+  dilim: string;
+  /** Son karar barının kaç bar geride kaldığı. 2+ ise kol donuktur. */
+  bar_gecikmesi_bar: number | null;
+  nabiz_s: number | null;
+  halt: string | null;
+  deney: boolean;
+}
+
+export interface SayacSatiri {
+  ad: string;
+  adet: number;
+  esik?: string;
+  kapsam?: string;
+}
+
+export interface Nobet {
+  uretim: string;
+  pencere_saat: number;
+  butceler: Butce[];
+  kesici_payi: KesiciPayi;
+  kollar: KolSatiri[];
+  donuk: number[];
+  sayaclar: {
+    oldu: SayacSatiri[];
+    beklendi_olmadi: SayacSatiri[];
+    hic_olmadi: SayacSatiri[];
+  };
+  acik_pozisyon: number;
+}
+
+/** Karar hunisinin bir basamağı — kaç aday öldü ve ölenlerin kenarı neydi. */
+export interface HuniBasamagi {
+  asama: string;
+  ad: string;
+  adet: number;
+  ozellikler: Record<string, number>;
+  nedenler: { neden: string; adet: number }[];
+}
+
+export interface Huni {
+  uretim: string;
+  pencere_saat: number;
+  bot_id: number | null;
+  bar_sayisi: number;
+  basamaklar: HuniBasamagi[];
+  kenar: {
+    ozellik: string;
+    olen_ortalama: number | null;
+    acilan_ortalama: number | null;
+    n_olen: number;
+    n_acilan: number;
+    t: number | null;
+  };
+  tavanlar: { ad: string; adet: number }[];
+  dolum_orani: { n: number; ortanca: number | null };
+}
+
+/** Ön-kayıt — kutuludur ve değişmezdir. Mühür kırılırsa kanıt geçersizdir. */
+export interface OnKayit {
+  hipotez: string | null;
+  kontrol_bot_id: number | null;
+  tek_degisken: string | null;
+  curutme: string | null;
+  on_kayit_at: string | null;
+  karar_gunu: string | null;
+  muhur_hash: string;
+  muhur_kirik: boolean;
+}
+
+/** Mekanizma ölçüsü — yüksek güçlü, kesitsel, saatler. Hüküm buradan okunur. */
+export interface Mekanizma {
+  olcu: string;
+  ad: string;
+  deger: number | null;
+  hedef: number | null;
+  yon: string;
+  n: number;
+  gereken_n: number;
+  kontrol_deger: number | null;
+  kontrol_n: number;
+  t: number | null;
+}
+
+export interface HipotezKarti {
+  bot_id: number;
+  ad: string;
+  durum: string;
+  /** KONTROL · ARŞİV · ÖN-KAYIT YOK · GÜÇSÜZ · KANIT TOPLUYOR · HEDEFE ULAŞTI · ÇÜRÜTÜLDÜ */
+  damga: string;
+  on_kayit: OnKayit | null;
+  mekanizma: Mekanizma | null;
+  /** Sonuç ölçüsü — düşük güçlü, birikir, hüküm vermez. */
+  sonuc: { olcu: string; n: number; deger: number | null; belirsizlik: number | null };
+}
+
+export interface HipotezTahtasi {
+  uretim: string;
+  pencere_gun: number;
+  kartlar: HipotezKarti[];
+  olculer: { anahtar: string; ad: string; kaynak: string; alan: string }[];
+}
