@@ -247,3 +247,33 @@ birden kayboluyor.
    böylece dar stop cezalandırılmaz.
 3. Stop mesafesine alt taban koy (ATR katı yerine yüzde tabanı), böylece sakin sembolde
    notional patlamaz.
+
+## 10. Ölü kurallar ve ölçülmemiş düzelticiler (denetim, doğrulandı)
+
+Sekiz boyutlu denetimin kalan bulguları canlı veriyle sınandı:
+
+**Formasyon düzelticisi girişlerin neredeyse yarısını tek başına açıyor — ve hiç
+ölçülmemiş.** Son 3 günde kapıyı geçen 958 puan satırının **tamamında** formasyon
+düzelticisi sıfırdan farklı (ortalama +3,26 puan) ve **421 tanesi (%44) yalnızca bu
+düzeltici sayesinde 80 kapısını geçiyor.** Düzeltici kesitsel normalizasyondan geçmiyor,
+mutlak puan ekliyor ve IC'si hiç ölçülmedi. Yani girişlerin yaklaşık yarısını, öngörü
+gücü bilinmeyen bir katkı belirliyor. Öncelikli ölçüm: `pattern_modifier` için kesitsel
+rank-IC (§6 yöntemi) ve düzelticisiz kontrol kolu.
+
+**Rotasyon fiilen ölü.** Tüm zamanda **1** ROTATION çıkışı var; son 7 günde hiç
+(dağılım: STOP 34, SCORE 33, TRAILING 17, BREAKEVEN 7, TIME 2). Sebep aritmetik:
+karşılaştırma DONMUŞ `score_at_entry` ile yapılıyor ve `min_score_gap` 10–15 puan
+istiyor; puan tavanı 100 olduğu için 85+ ile girilen bir pozisyonu devirmek imkânsıza
+yakın. "Portföy doluyken daha iyi aday gelirse değiştir" kuralı pratikte yok.
+
+**Kalabalık cezası fiilen ölü.** 68.212 puan satırının yalnız **297'sinde** (%0,44)
+devrede ve **işlem açılan hiçbir barda** tetiklenmemiş. Mutlak eşikler (+%25/+%40 24s
+getiri) kripto kesitinde neredeyse hiç aşılmıyor. Bu zaten biliniyordu (registry
+yorumunda kayıtlı) ama "koruma var" varsayımı yanlış: koruma yok.
+
+**Aynı kapı sayısı kollar arasında 114 kat farklı seçicilik üretiyor.** Son 2 günde
+`min_score: 80` eşiğini geçme oranı puanlama ayarına göre %20,61 ile %0,18 arasında
+değişiyor. Kesitsel yüzdelik mimaride "80" mutlak bir seçicilik değil, ağırlık
+vektörüne bağlı bir sayı. Kolları aynı kapı sayısıyla kurmak onları karşılaştırılabilir
+yapmıyor — tersine, farklı seçicilikte oldukları için sonuçları kıyaslanamaz. Kolların
+kapısı puan değil **hedef geçiş oranı** (örneğin kesitin %1'i) üzerinden tanımlanmalı.
