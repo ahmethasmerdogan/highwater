@@ -36,11 +36,11 @@ export function Page({
   const [guideOpen, setGuideOpen] = useState(false);
 
   return (
-    <div className={cx("mx-auto w-full px-5 py-6 sm:px-8", wide ? "max-w-none" : "max-w-[1440px]")}>
+    <div className={cx("mx-auto w-full px-4 py-5 sm:px-6", wide ? "max-w-none" : "max-w-[1560px]")}>
       <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
         <div className="min-w-0">
-          <h1 className="text-[22px] font-semibold tracking-[-0.01em] text-ink">{title}</h1>
-          <p className="mt-1 max-w-[78ch] text-[13.5px] leading-snug text-ink-2">{summary}</p>
+          <h1 className="text-[19px] font-semibold tracking-[-0.015em] text-ink">{title}</h1>
+          <p className="mt-0.5 max-w-[84ch] text-[13px] leading-snug text-ink-3">{summary}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {stamp && <span className="text-[12px] text-ink-3">{stamp}</span>}
@@ -63,7 +63,7 @@ export function Page({
         <div className="sn-fade-up mt-4 rounded-2xl border border-line bg-elev px-5 py-4">{guide}</div>
       )}
 
-      <div className="mt-6 flex flex-col gap-5">{children}</div>
+      <div className="mt-4 flex flex-col gap-4">{children}</div>
     </div>
   );
 }

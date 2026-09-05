@@ -60,27 +60,29 @@ export function Panel({
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-40px" }}
       transition={{ type: "spring", stiffness: 260, damping: 28, mass: 0.8 }}
-      whileHover={reduced ? undefined : { y: -1, borderColor: "var(--sn-brand-line)" }}
+      whileHover={reduced ? undefined : { borderColor: "var(--sn-brand-line)" }}
       className={cx("overflow-hidden rounded-2xl border border-line bg-surface", className)}
     >
       {(title || actions || description) && (
-        <header className="flex items-start justify-between gap-4 border-b border-line px-5 pt-4 pb-3">
+        <header className="flex items-start justify-between gap-4 border-b border-line px-4 pt-3 pb-2.5">
           <div className="min-w-0">
             {title && (
-              <h2 className="truncate text-[11.5px] font-semibold tracking-[0.06em] text-ink-3 uppercase">
+              <h2 className="truncate text-[13px] font-medium tracking-[-0.005em] text-ink">
                 {title}
               </h2>
             )}
             {description && (
-              <p className="mt-1 max-w-[72ch] text-[13px] leading-snug text-ink-2">{description}</p>
+              <p className="mt-0.5 max-w-[76ch] text-[12.5px] leading-snug text-ink-3">
+                {description}
+              </p>
             )}
           </div>
           {actions && <div className="flex shrink-0 items-center gap-1.5">{actions}</div>}
         </header>
       )}
-      <div className={padded ? "p-5" : undefined}>{children}</div>
+      <div className={padded ? "p-4" : undefined}>{children}</div>
       {footer && (
-        <div className="border-t border-line px-5 py-2.5 text-[12px] text-ink-3">{footer}</div>
+        <div className="border-t border-line px-4 py-2 text-[12px] text-ink-3">{footer}</div>
       )}
     </motion.section>
   );

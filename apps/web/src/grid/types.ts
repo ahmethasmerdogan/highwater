@@ -39,7 +39,7 @@ export interface GridColumn<T> {
 export type Density = "compact" | "default" | "relaxed";
 
 export const ROW_HEIGHT: Record<Density, number> = {
-  compact: 28,
-  default: 34,
-  relaxed: 42,
+  compact: 30,
+  default: 36,
+  relaxed: 44,
 };

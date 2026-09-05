@@ -41,7 +41,6 @@ import {
 import { Chip } from "@/components/base/badges/chip";
 import { api, type Nobet } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { cx } from "@/utils/cx";
 import { Badge } from "@/components/base/badges/badge";
 import { useAttention } from "@/shell/attention";
 import { TooltipHost } from "@/design/primitives";
@@ -94,6 +93,13 @@ function yas(iso: string | undefined): string {
 }
 
 /** Üst şerit: veri tazeliği, donuk kol ve kesici payı — üçü de kalıcı. */
+/**
+ * Durum şeridi — başlık değil.
+ *
+ * Sayfanın kendi başlığı var; kabuk onu tekrar basmaz. Burada yalnızca her
+ * ekranda geçerli olan üç ölçü durur: veri ne kadar taze, kaç kol donuk,
+ * kesici payı kuralın altında mı.
+ */
 function KunyeSeridi({ ekran }: { ekran?: (typeof EKRANLAR)[number] }) {
   const { data } = useQuery({
     queryKey: ["nobet", 24],
@@ -106,11 +112,12 @@ function KunyeSeridi({ ekran }: { ekran?: (typeof EKRANLAR)[number] }) {
   const ihlal = pay !== null && pay < (data?.kesici_payi.kural ?? 1.5);
 
   return (
-    <header className="flex flex-wrap items-center justify-between gap-3 px-1 pb-1">
-      <div className="min-w-0">
-        <h1 className="text-title-3-semibold text-text-primary">{ekran?.label ?? "Kontrol odası"}</h1>
-        <p className="mt-0.5 truncate text-body-2-regular text-text-tertiary">{ekran?.soru}</p>
-      </div>
+    <header
+      className="sticky top-0 z-30 -mx-1 flex flex-wrap items-center justify-end gap-2 border-b border-separator-border bg-background-full/85 px-4 py-1.5 backdrop-blur"
+    >
+      <span className="mr-auto truncate text-body-2-medium text-text-secondary">
+        {ekran?.label ?? "Kontrol odası"}
+      </span>
       <div className="flex flex-wrap items-center gap-2">
         <Chip variant="subtle" color={donuk ? "rose" : "soft"}>
           <span className={MONO}>{donuk}</span>
@@ -242,10 +249,10 @@ export function Kabuk({ children }: { children: React.ReactNode }) {
         />
       </div>
 
-      <main className={cx("flex min-w-0 flex-1 flex-col gap-4 p-3 lg:py-4 lg:pr-4 lg:pl-1")}>
-        <KunyeSeridi ekran={ekran} />
-        {children}
-      </main>
+        <main className="flex min-w-0 flex-1 flex-col lg:pr-3 lg:pl-0">
+          <KunyeSeridi ekran={ekran} />
+          <div className="min-w-0 flex-1">{children}</div>
+        </main>
 
       <KutukCekmecesi acik={kutuk} kapat={() => setKutuk(false)} />
       <CommandPalette open={palet} onOpenChange={setPalet} />

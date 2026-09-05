@@ -111,7 +111,9 @@
   /* Sayının tamsayısı koyu, ondalığı ve birimi açık: göz ondalığı ayırt
      etmek için fazladan iş yapmasın. */
   .sn-num-int { color: var(--sn-ink); }
-  .sn-num-frac { color: var(--sn-ink-2); }
+  /* Ondalık, tam sayıdan yalnızca bir tık açık. Eskiden ink-2 idi ve 12px'te
+     "982,0708" iki ayrı sayı gibi okunuyordu; sayının bütünlüğü kırılmasın. */
+  .sn-num-frac { color: color-mix(in oklab, var(--sn-ink) 82%, transparent); }
   .sn-num-unit {
     color: var(--sn-ink-3);
     font-size: 0.74em;

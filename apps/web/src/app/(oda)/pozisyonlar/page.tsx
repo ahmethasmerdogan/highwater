@@ -431,11 +431,7 @@ function OpenPositions({
 
   return (
     <>
-      <Panel
-        title="Açık pozisyonlar"
-        description="Satıra tıklayın: sayılar ve girişteki puan kartı."
-        padded={false}
-      >
+      <Panel description="Satıra tıklayın: sayılar ve girişteki puan kartı." padded={false}>
         <DataGrid
           rows={rows}
           columns={columns}
@@ -760,7 +756,6 @@ function ClosedTrades({ rows, query }: { rows: Trade[]; query: SorguDurumu }) {
 
   return (
     <Panel
-      title="Kapanmış işlemler"
       description="En yeniden eskiye. Satıra tıklayın: paylaşılabilir işlem kartı."
       padded={false}
     >
@@ -900,7 +895,6 @@ function Orders({ rows, query }: { rows: Order[]; query: SorguDurumu }) {
 
   return (
     <Panel
-      title="Emirler"
       description="Dolmuş, kısmi dolmuş ya da reddedilmiş — reddedilen emir sessizce kaybolmaz."
       padded={false}
     >

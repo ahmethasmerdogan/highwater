@@ -91,7 +91,7 @@ export function NumText({
         {int}
       </span>
       {frac && (
-        <span className="sn-num-frac" style={tone ? { color: tone, opacity: 0.72 } : undefined}>
+        <span className="sn-num-frac" style={tone ? { color: tone, opacity: 0.88 } : undefined}>
           {frac}
         </span>
       )}

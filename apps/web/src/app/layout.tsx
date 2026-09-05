@@ -1,23 +1,20 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 import { Providers } from "./providers";
 
 /*
- * BoardUI'nin yazı tipleri: gövde Inter, ölçüm JetBrains Mono.
- * `next/font` dosyaları derlemeye gömer — panel çevrimdışı çalışmak zorunda,
- * CDN'e bağlanılmaz. `latin-ext` alt kümesi Türkçe karakterleri kapsıyor.
+ * Yazı tipi: Vercel'in Geist ailesi (`geist` paketi, next/font ile gömülü).
+ *
+ * Neden Geist: panelin işi yoğun sayı tablosu okutmak. Geist Mono'nun rakam
+ * genişlikleri eşit, 0 çizgili, 1'in serifi var — 56 satırlık bir pozisyon
+ * tablosunda göz sütunu tarayabiliyor. Geist Sans da aynı ailenin metriklerini
+ * paylaşır, yani mono sayı ile sans etiket aynı satırda hizada durur.
+ *
+ * Değişkenler BoardUI'nin beklediği adlarla dışa verilir (`--font-inter`,
+ * `--font-mono-source`), böylece tema dosyası değişmeden aile değişebilir.
  */
-const inter = Inter({
-  subsets: ["latin", "latin-ext"],
-  variable: "--font-inter",
-  display: "swap",
-});
-const mono = JetBrains_Mono({
-  subsets: ["latin", "latin-ext"],
-  variable: "--font-mono-source",
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: "HIGHWATER — kontrol odası",
@@ -34,7 +31,7 @@ const TEMA_BETIGI = `(function(){try{var t=localStorage.getItem("boardui:theme")
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="tr" data-accent="blue" className={`${inter.variable} ${mono.variable}`} suppressHydrationWarning>
+    <html lang="tr" data-accent="blue" className={`${GeistSans.variable} ${GeistMono.variable}`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: TEMA_BETIGI }} />
       </head>

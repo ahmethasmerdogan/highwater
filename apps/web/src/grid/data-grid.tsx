@@ -82,7 +82,7 @@ export function DataGrid<T>({
   searchPlaceholder = "Ara…",
   searchable = true,
   toolbar,
-  density: initialDensity = "default",
+  density: initialDensity = "compact",
   emptyTitle = "Kayıt yok",
   emptyHint,
   maxHeight = 640,
@@ -127,6 +127,8 @@ export function DataGrid<T>({
   const [sorting, setSorting] = useState<SortingState>(defaultSort ?? []);
   const [query, setQuery] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
+  /** Sağda görünmeyen sütun kaldı mı — kenar solmasını bu belirler. */
+  const [saga, setSaga] = useState(false);
 
   /* Saklanan düzen ilk boyamadan SONRA yüklenir: sunucu ve istemci ilk
      karede aynı çıktıyı üretmezse React hydration uyuşmazlığı verir. */
@@ -249,6 +251,24 @@ export function DataGrid<T>({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [table, byId, layout.sizes, layout.hidden]);
 
+  /** Sabit blokun SON sütunu — kayan içerikle arasına gölge o çizer. */
+  const sonSabit = useMemo(() => {
+    let id: string | null = null;
+    for (const anahtar of pinnedOffsets.keys()) id = anahtar;
+    return id;
+  }, [pinnedOffsets]);
+
+  /* Solmayı ilk çizimde de doğru göster: veri ya da sütun değişince ölç. */
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const olc = () => setSaga(el.scrollWidth - el.clientWidth - el.scrollLeft > 4);
+    olc();
+    const ro = new ResizeObserver(olc);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [rows, layout.hidden, layout.sizes]);
+
   const hasFooter = columns.some((c) => c.footer);
 
   return (
@@ -301,7 +321,29 @@ export function DataGrid<T>({
       {modelRows.length === 0 ? (
         <Empty title={emptyTitle} hint={emptyHint} />
       ) : (
-        <div ref={scrollRef} className="sn-scroll overflow-auto" style={{ maxHeight }}>
+        <div className="relative">
+          {/* Sağ kenar solması: sütunlar kart kenarında ORTADAN KESİLİYORDU ve
+              tablo bozuk görünüyordu. Solma "devamı var, kaydır" der; kaydırma
+              sona gelince kaybolur. */}
+          {saga && (
+            <div
+              aria-hidden
+              className="pointer-events-none absolute top-0 right-0 bottom-0 z-30 w-10"
+              style={{
+                background:
+                  "linear-gradient(to right, transparent, color-mix(in oklab, var(--sn-panel) 92%, transparent))",
+              }}
+            />
+          )}
+          <div
+            ref={scrollRef}
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              setSaga(el.scrollWidth - el.clientWidth - el.scrollLeft > 4);
+            }}
+            className="sn-scroll overflow-auto"
+            style={{ maxHeight }}
+          >
           {/*
             Genişlik %100, taban ise sütunlar toplamı: dar tabloda ızgara
             konteyneri doldurur, geniş tabloda yatay kaydırma açılır.
@@ -330,15 +372,35 @@ export function DataGrid<T>({
                     return (
                       <th
                         key={header.id}
-                        className={cx("sn-label relative select-none px-3", column?.num && "text-right")}
+                        className={cx(
+                          "relative select-none px-3 whitespace-nowrap",
+                          column?.num && "text-right",
+                        )}
                         style={{
                           width: header.getSize(),
-                          height: 32,
+                          height: 34,
                           background: "var(--sn-sunken)",
-                          borderBottom: "1px solid var(--sn-border)",
+                          borderBottom: "1px solid var(--sn-border-strong)",
                           textAlign: column?.num ? "right" : "left",
+                          /* Başlık okunur olmalı: eski `sn-label` %60 gri +
+                             büyük harf + 0,06em aralık idi ve "STOP MESAFESİ"
+                             iki satıra sarıyordu. Artık normal yazım, koyu
+                             mürekkep, sarmıyor. */
+                          fontSize: "var(--sn-t-caption)",
+                          fontWeight: 500,
+                          letterSpacing: 0,
+                          textTransform: "none",
+                          color: "var(--sn-ink-2)",
                           ...(pinned !== undefined
-                            ? { position: "sticky", left: pinned, zIndex: 21 }
+                            ? {
+                                position: "sticky",
+                                left: pinned,
+                                zIndex: 21,
+                                boxShadow:
+                                  sonSabit === header.column.id
+                                    ? "8px 0 8px -8px rgb(0 0 0 / 0.18)"
+                                    : undefined,
+                              }
                             : null),
                         }}
                         aria-sort={
@@ -375,28 +437,55 @@ export function DataGrid<T>({
                         >
                           {column?.hint ? (
                             <Tip content={column.hint}>
-                              <span
-                                className="underline decoration-dotted underline-offset-[3px]"
-                                style={{ textDecorationColor: "var(--sn-ink-4)" }}
-                              >
+                              <span className="inline-flex items-center gap-1">
                                 {header.column.columnDef.header as string}
+                                <span
+                                  aria-hidden
+                                  style={{
+                                    fontSize: 9,
+                                    lineHeight: 1,
+                                    color: "var(--sn-ink-4)",
+                                    opacity: 0.55,
+                                    border: "1px solid currentColor",
+                                    borderRadius: "50%",
+                                    width: 11,
+                                    height: 11,
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                  }}
+                                >
+                                  i
+                                </span>
                               </span>
                             </Tip>
                           ) : (
                             (header.column.columnDef.header as string)
                           )}
-                          {sorted && (
+                          {/* Sıralanabilir sütun bunu SÖYLER: ok her zaman
+                              durur, etkin sıralamada koyulaşır. Yalnız etkin
+                              sütunda ok göstermek "hangi sütun sıralanır"
+                              sorusunu deneme yanılmaya bırakıyordu. */}
+                          {header.column.getCanSort() && (
                             <span
                               aria-hidden
-                              className="inline-flex items-center"
-                              style={{ color: "var(--sn-brand)", fontSize: 9, lineHeight: 1 }}
+                              className="inline-flex flex-col leading-none"
+                              style={{
+                                fontSize: 7,
+                                marginLeft: 1,
+                                color: sorted ? "var(--sn-brand)" : "var(--sn-ink-4)",
+                              }}
                             >
-                              {sorted === "asc" ? "▲" : "▼"}
-                              {sorting.length > 1 && (
-                                <span className="sn-num" style={{ fontSize: 9, marginLeft: 2 }}>
-                                  {order + 1}
-                                </span>
-                              )}
+                              <span style={{ opacity: sorted === "desc" ? 0.25 : 1 }}>▲</span>
+                              <span style={{ opacity: sorted === "asc" ? 0.25 : 1 }}>▼</span>
+                            </span>
+                          )}
+                          {sorted && sorting.length > 1 && (
+                            <span
+                              className="sn-num"
+                              style={{ fontSize: 9, color: "var(--sn-brand)" }}
+                            >
+                              {order + 1}
                             </span>
                           )}
                         </button>
@@ -450,7 +539,7 @@ export function DataGrid<T>({
                           key={cell.id}
                           className={cx(
                             "px-3 whitespace-nowrap transition-colors duration-[var(--sn-dur-1)]",
-                            "group-hover:bg-[var(--sn-sunken)]",
+                            "group-hover:bg-[var(--sn-brand-bg)]",
                             /* Bozulmaz kural 6 sözleşmenin kendisinde: `num`
                                işaretli sütun sağa yaslanır VE tabular-nums
                                alır. Sayfaların ayrıca NumText sarması gerekmez. */
@@ -467,7 +556,14 @@ export function DataGrid<T>({
                               ? { boxShadow: `inset 2px 0 0 0 ${accent}` }
                               : null),
                             ...(pinned !== undefined
-                              ? { position: "sticky", left: pinned, zIndex: 10 }
+                              ? {
+                                  position: "sticky",
+                                  left: pinned,
+                                  zIndex: 10,
+                                  boxShadow: sonSabit === cell.column.id
+                                    ? "8px 0 8px -8px rgb(0 0 0 / 0.18)"
+                                    : undefined,
+                                }
                               : null),
                           }}
                         >
@@ -507,7 +603,8 @@ export function DataGrid<T>({
                 </tr>
               </tfoot>
             )}
-          </table>
+            </table>
+          </div>
         </div>
       )}
 
