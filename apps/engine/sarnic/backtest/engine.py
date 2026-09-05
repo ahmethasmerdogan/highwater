@@ -480,7 +480,7 @@ class BacktestEngine:
                 equity_start_of_day=day_anchor[1],
                 equity_start_of_week=week_anchor[1],
                 equity_peak=equity_peak,
-                consecutive_losses=_streak(trades),
+                consecutive_losses=_streak(trades, entries_blocked_until),
                 entries_blocked_until=entries_blocked_until,
             )
             verdict = risk.evaluate(state, bar)
@@ -1042,9 +1042,27 @@ class BacktestEngine:
         return [s["symbol"] for s in snap.symbols] if snap else []
 
 
-def _streak(trades: list[dict]) -> int:
+def _streak(trades: list[dict], since: datetime | None = None) -> int:
+    """Ardışık zarar sayacı — canlı `portfolio.consecutive_losses` ile AYNI kural.
+
+    `since` (çekilmiş cezanın bitiş anı) verildiğinde seri o andan sonraki
+    işlemlerle başlar: **çekilmiş ceza seriyi affeder**. Canlı yol bunu baştan
+    yapıyordu (`portfolio.py`, `since=bot.entries_blocked_until`), backtest
+    yapmıyordu ve sonuç sessiz bir kilitti: blok bitince `_streak` hâlâ aynı
+    sayıyı döndürüyor (yeni işlem üretilemedi, çünkü giriş bloktaydı), blok
+    yeniden konuyor, koşu sonuna kadar hiç giriş olmuyordu. Ölçüldü
+    (2026-09-05 denetimi): bir koşuda 1260 barın 943'ü (%75) ölü, özsermaye
+    eğrisi tam sabit, `flags` boş — rapor bunu hiç söylemiyordu. Getiri,
+    Sharpe, CAGR ve max-DD o ölü eğri üzerinden hesaplanıyordu.
+    """
     streak = 0
     for t in reversed(trades):
+        if since is not None:
+            cikis = t.get("exit_time")
+            if isinstance(cikis, str):
+                cikis = datetime.fromisoformat(cikis)
+            if cikis is not None and cikis <= since:
+                break
         if t["pnl"] < 0:
             streak += 1
         else:

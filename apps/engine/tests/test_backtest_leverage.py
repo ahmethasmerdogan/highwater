@@ -203,3 +203,26 @@ def test_kismi_satis_muhasebesi_ve_agirlikli_r():
     assert trades[0]["pnl"] == pytest.approx(75.0)
     assert trades[0]["pnl_r"] == pytest.approx(1.5)
     assert trades[0]["partial"] is True
+
+
+# --------------------------------------------------------------------------- #
+#  Çekilmiş ceza seriyi affeder — canlı yolla aynı kural (2026-09-05 denetimi)
+# --------------------------------------------------------------------------- #
+def test_cekilen_ceza_seriyi_affeder_backtest():
+    """Backtest'te blok bitince `_streak` hâlâ eski seriyi sayıyordu: yeni işlem
+    üretilemediği için sayaç düşmüyor, blok yeniden konuyor ve koşu sonuna kadar
+    hiç giriş olmuyordu (bir koşuda barların %75'i ölü, rapor sessiz). Canlı yol
+    `since=entries_blocked_until` ile affediyordu; iki motor ayrışmıştı."""
+    from sarnic.backtest.engine import _streak
+
+    t0 = datetime(2026, 6, 1, tzinfo=UTC)
+    islemler = [{"pnl": -1.0, "exit_time": (t0 + timedelta(hours=i)).isoformat()} for i in range(5)]
+    assert _streak(islemler) == 5, "af olmadan seri 5"
+
+    # Ceza 5. işlemden sonra çekildi: sayaç sıfırlanmalı, aksi hâlde kısır döngü.
+    ceza_bitisi = t0 + timedelta(hours=4, minutes=30)
+    assert _streak(islemler, ceza_bitisi) == 0
+
+    # Cezadan SONRA yeni zararlar gelirse onlar sayılır.
+    islemler.append({"pnl": -2.0, "exit_time": (t0 + timedelta(hours=6)).isoformat()})
+    assert _streak(islemler, ceza_bitisi) == 1
