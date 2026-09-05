@@ -209,3 +209,41 @@ en sakin 4** → medyan +48,3 bps (193 seçim).
 Sonuç: kayıp girişte olduğuna göre (§2, §7), filonun büyük kısmı yanlış değişkeni
 tarıyor. Yeni kol kurarken öncelik **puanlama ağırlığı / seçim kuralı**; çıkış ve risk
 düğmeleri ancak giriş düzeldikten sonra anlam taşır.
+
+## 9. Sistem ölçülen tek kenarını boyutlandırmada kendisi eliyor
+
+Sekiz boyutlu denetimin en ağır bulgusu; iki bağımsız denetçi ayrı ayrı buldu, sonra
+canlı veriyle doğrulandı. Son 3 günün 926 giriş kararı (açılan + reddedilen), o barın
+`atr_pct` yüzdeliğiyle eşleştirildi. **Yüzdelik yüksek = sembol SAKİN** (ters çevrili
+özellik) ve §6'da ölçülen kenar tam olarak buydu.
+
+| Sonuç | n | sakinlik yüzdeliği | sıkışma | puan |
+|---|---|---|---|---|
+| **pozisyon açıldı** | 112 | **36,0** | 39,2 | 61,5 |
+| reddedildi — doluluk (`min_fill_ratio`) | 293 | **82,0** | 74,6 | 56,6 |
+| reddedildi — bütçe (boyut sıfır) | 402 | 62,5 | 62,6 | 57,6 |
+| reddedildi — stop çok uzak | 72 | 10,7 | 12,1 | 60,6 |
+
+Açılanların ortalama sakinliği **36,0**, reddedilenlerin **64,9**. Fark −28,9 puan,
+**t = −9,20, p < 0,0001**. Yani sistem oynak sembolleri alıyor, sakinleri eliyor —
+ölçülen kenarın tam tersi.
+
+**Mekanizma** (kod, uydurma değil): sakin sembolde ATR küçük → `stop_from_sr` dar stop
+üretir → `qty = risk / (giriş − stop)` büyür → notional büyür → `max_position_pct`,
+`serbest_nakit` ya da `toplam_maruziyet` tavanı bağlar → kırpılan boyut hedefin
+%25'inin altına düşer → `min_fill_ratio` reddeder. En sakin adaylar (yüzdelik 82) tam
+bu kapıda ölüyor. Risk-tabanlı boyutlandırma notional üretir, tavanlar notional'ı
+keser; ikisi aynı eksende çalışmadığı için kenar sessizce eleniyor.
+
+**Bu, §7'deki bulgunun ikinci yarısı.** Orada puanlamanın sakinliği yeterince
+ağırlıklandırmadığını görmüştük (vol ailesi 100 üzerinden 15). Şimdi görülüyor ki
+puanlamadan sağ çıkan sakin adaylar da boyutlandırmada eleniyor. Kenar iki katmanda
+birden kayboluyor.
+
+**Düzeltme adayları (hiçbiri ölçülmeden uygulanmamalı):**
+1. `min_fill_ratio`'yu kaldır ya da çok düşür: kırpılmış pozisyona izin ver. Risk
+   otomatik küçülür (qty küçülür, stop sabit). "Kırıntı pozisyon" endişesi ölçülmeli.
+2. Tavanları notional yerine **risk** ekseninde tanımla (pozisyon başına risk bütçesi),
+   böylece dar stop cezalandırılmaz.
+3. Stop mesafesine alt taban koy (ATR katı yerine yüzde tabanı), böylece sakin sembolde
+   notional patlamaz.
