@@ -15,6 +15,8 @@ def test_havuz_boyutu_filo_olceginde_guvenli():
     from sarnic.config import settings
 
     surec_basina = settings.db_pool_size + settings.db_max_overflow
-    assert surec_basina <= 6, f"süreç başına {surec_basina} bağlantı: 30+ süreçle tavan aşılır"
-    # 40 süreçlik bir filo bile 100'lük tavanın altında kalmalı.
-    assert surec_basina * 40 <= 240
+    assert surec_basina <= 8, f"süreç başına {surec_basina} bağlantı fazla"
+    # 40 süreçlik bir filo, compose'daki 300'lük tavanın altında kalmalı.
+    # (Tavan 2026-09-05'te 100'den 300'e çıkarıldı: 100'de 72 oturum Client
+    # beklemesine düşüyor ve bar kararı 272 sn'ye çıkıyordu.)
+    assert surec_basina * 40 <= 300

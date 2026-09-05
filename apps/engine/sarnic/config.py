@@ -29,8 +29,8 @@ class Settings(BaseSettings):
     # sessizce "PostgreSQL çalışmıyor" diye atlanıyordu ve yeni worker bağlanamıyordu.
     # Bir worker tek asyncio döngüsünde sıralı iş yapar; 2+2 fazlasıyla yeter.
     # API eşzamanlı istek aldığı için kendi ayarını env ile büyütür.
-    db_pool_size: int = 2
-    db_max_overflow: int = 2
+    db_pool_size: int = 3
+    db_max_overflow: int = 3
 
     # --- redis ---
     redis_url: str = "redis://localhost:6379/0"

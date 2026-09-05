@@ -21,6 +21,13 @@ services:
     # düşüyor, dolayısıyla en büyük tablo (787 MB, 354 bin satır) hiç
     # çözümlenmiyordu. Planlayıcı satır sayısını 15.130 sanıyordu — 23 kat yanlış.
     shm_size: 1gb
+    # Bağlantı tavanı filo ölçeğine göre. Varsayılan 100, süreç başına havuz
+    # (2+2) ile 30+ worker'da tükeniyordu: ölçüldü (2026-09-05) tavan 100,
+    # kullanılan 82, 72 oturum Client beklemesinde ve 1 saatlik kolların bar
+    # kararı 272-292 saniyeye çıkmıştı — sistem yükü yalnız 1,9 iken, yani
+    # CPU değil bağlantı beklemesi. 300 tavan, 35 süreç × 6 bağlantı için
+    # rahat pay bırakır; bellek maliyeti bağlantı başına ~2 MB.
+    command: ["postgres", "-c", "max_connections=300", "-c", "shared_buffers=256MB"]
     environment:
       POSTGRES_USER: sarnic
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sarnic}
