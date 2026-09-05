@@ -8,7 +8,7 @@ farklı karar verir ve bozulmaz kural 1 sessizce ihlal edilir.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -100,6 +100,17 @@ def test_bozuk_kayit_iska_sayilir():
 def test_karar_dilimi_yoksa_saklanmaz():
     taze = _bundle(9, "YUSDT")
     assert paketle(taze, "15m") is None
+
+
+def test_bayat_bar_onbellege_girmez():
+    """Sağlayıcı geciktiğinde elde bir önceki barın çerçevesi kalır. O çerçeve
+    yazılırsa bar sonradan gelse bile herkes bayatı okur ve seanslı pazarın
+    tazelik denetimi sonsuza kadar başarısız olur (BIST kolu, 2026-09-04)."""
+    taze = _bundle(11, "ZUSDT")
+    gercek_bar = taze.indicators[TF].bar_time.to_pydatetime()
+    assert paketle(taze, TF, gercek_bar) is not None
+    yanlis_bar = gercek_bar + timedelta(hours=1)
+    assert paketle(taze, TF, yanlis_bar) is None
 
 
 # --------------------------------------------------------------------------- #

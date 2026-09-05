@@ -40,9 +40,10 @@ from sarnic.strategy.definition import TIMEFRAME_MINUTES
 log = structlog.get_logger(__name__)
 
 #: Sözleşme sürümü — paket biçimi değişirse eski kayıtlar okunmaz.
-SURUM = 1
+SURUM = 2
 
 
+#: Sözleşme sürümü 2: paketleme artık karar barını doğruluyor (bkz. `paketle`).
 def _anahtar(timeframe: str, bar_time: datetime) -> str:
     return f"sarnic:ozellik:v{SURUM}:{timeframe}:{int(bar_time.timestamp())}"
 
@@ -59,11 +60,26 @@ def _geri(x: float | None) -> float:
     return float("nan") if x is None else float(x)
 
 
-def paketle(bundle: SymbolBundle, timeframe: str) -> str | None:
-    """Bir bundle'ı JSON'a indirger. Karar dilimi eksikse `None` (saklanmaz)."""
+def paketle(bundle: SymbolBundle, timeframe: str, bar_time: datetime | None = None) -> str | None:
+    """Bir bundle'ı JSON'a indirger.
+
+    `None` döner (yani ÖNBELLEĞE GİRMEZ) iki halde: karar dilimi eksikse, ya da
+    bundle'ın barı istenen karar barı DEĞİLSE. İkincisi kritik: sağlayıcı gün
+    sonunu gecikmeli bastığında bir kol henüz gelmemiş barı hesaplamaya çalışır
+    ve elinde bir önceki barın çerçevesi kalır. O çerçeve önbelleğe yazılırsa
+    bar sonradan gelse bile herkes bayat kaydı okur ve seanslı pazarın tazelik
+    denetimi sonsuza kadar başarısız olur — 2026-09-04'te BIST kolu tam bunu
+    yaşadı: 04.09 barı 56 sembolle veritabanındayken kol "hiçbiri puanlanamadı"
+    deyip 03.09'da dondu, üstelik 1d TTL'i üç gün.
+    """
     ind = bundle.indicators.get(timeframe)
     if ind is None:
         return None
+    if bar_time is not None:
+        if ind.bar_time is None:
+            return None
+        if ind.bar_time.timestamp() != bar_time.timestamp():
+            return None
     f = bundle.features
     sr = bundle.sr
     return json.dumps(
@@ -246,7 +262,7 @@ async def yaz(redis, timeframe: str, bar_time: datetime, bundles: list[SymbolBun
     """Hesaplanan bundle'ları önbelleğe koyar. Dönüş: yazılan sembol sayısı."""
     paket = {}
     for b in bundles:
-        veri = paketle(b, timeframe)
+        veri = paketle(b, timeframe, bar_time)
         if veri is not None:
             paket[b.symbol] = veri
     if not paket:
