@@ -1057,3 +1057,48 @@ async def test_live_tl_ile_usd_yi_toplamiyor(api_client, auth, api_session):
     assert veri["try_capital"] == pytest.approx(19232.0)
     # Kol listesi yine ikisini de taşır; ayrım yalnız toplamlarda.
     assert {b["name"] for b in veri["bots"]} >= {"usd-kol", "bist-kol"}
+
+
+async def test_kalibrasyon_tek_puanlama_ayarina_bakar(api_client, auth, api_session):
+    """Filtresiz kalibrasyon beş ayrı ölçeği ve KISA yön puanlarını tek dağılım
+    sayıyordu: havuz Spearman +0,026 iken kollar +0,006…+0,045, kısa kol −0,031.
+    Kısa puanda yüksek değer düşüş beklentisidir; hedef uzun ileri getiridir."""
+    from datetime import UTC, datetime, timedelta
+    from decimal import Decimal
+
+    from sarnic.db.models import Score, ScoreObservation
+
+    simdi = datetime.now(UTC)
+    # İki ayrı ayar, ters işaretli sinyal: karıştırılırsa ikisi de bozulur.
+    for cfg, isaret in (("aaaa1111", 1.0), ("bbbb2222", -1.0)):
+        for i in range(12):
+            puan = 50.0 + i * 4
+            skor = Score(
+                symbol=f"S{i:02d}USDT",
+                bar_time=simdi - timedelta(days=2, hours=i),
+                timeframe="1h",
+                score=Decimal(str(puan)),
+                families={},
+                modifiers={},
+                rationale={},
+                config_hash=cfg,
+            )
+            api_session.add(skor)
+            await api_session.flush()
+            api_session.add(
+                ScoreObservation(
+                    score_id=skor.id,
+                    symbol=skor.symbol,
+                    bar_time=skor.bar_time,
+                    score=Decimal(str(puan)),
+                    families={},
+                    fwd_return_24h=Decimal(str(isaret * (puan - 50) / 1000)),
+                )
+            )
+    await api_session.commit()
+
+    a = (await api_client.get("/calibration?config_hash=aaaa1111", headers=auth)).json()
+    b = (await api_client.get("/calibration?config_hash=bbbb2222", headers=auth)).json()
+    assert a.get("spearman") is not None and b.get("spearman") is not None
+    # Ters işaretli iki ayar ayrı ayrı ölçüldüğünde ters sonuç vermeli.
+    assert a["spearman"] > 0 > b["spearman"], (a["spearman"], b["spearman"])

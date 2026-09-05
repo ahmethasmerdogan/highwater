@@ -367,14 +367,26 @@ async def calibration(
     user: CurrentUser,
     horizon: str = "24h",
     days: int = 180,
+    config_hash: str | None = None,
 ) -> dict:
     """Desil grafiği, Spearman ve aile bazında IC (§5.5).
+
+    **Tek puanlama ayarı** üzerinden hesaplanır. Filtresiz hâli beş ayrı ölçeği
+    ve KISA yön puanlarını tek dağılım sayıyordu: ölçüldü (2026-09-05, 4 saatlik
+    ufuk) havuz Spearman +0,026 iken kollar tek tek +0,006 / +0,015 / +0,045 /
+    +0,043 ve kısa kol −0,031; üst desilin %59'u tek bir kolun puanıydı. Kısa
+    puanda yüksek değer tanım gereği DÜŞÜŞ beklentisidir ama hedef uzun ileri
+    getiridir — karışım "dürüstlük organı"nı yanlış okutuyordu. `config_hash`
+    verilmezse panelin varsayılan ayarı kullanılır.
 
     Sonuç 10 dakika Redis'te tutulur: gözlemler saatte bir yazılır ama panel
     5 dakikada bir yeniliyor ve önbelleksiz hâli 14,3 saniye sürüyordu —
     bot işçileriyle aynı 4 çekirdeği yiyerek.
     """
-    cache_key = f"sarnic:cache:calibration:{horizon}:{days}"
+    if config_hash is None:
+        varsayilan = await _default_config(session, redis)
+        config_hash = varsayilan[0] if varsayilan else None
+    cache_key = f"sarnic:cache:calibration:{horizon}:{days}:{config_hash or 'hepsi'}"
     cached = await redis.get(cache_key)
     if cached:
         return json.loads(cached)
@@ -395,7 +407,13 @@ async def calibration(
                 ScoreObservation.score,
                 column,
                 ScoreObservation.families,
-            ).where(ScoreObservation.bar_time >= since, column.isnot(None))
+            )
+            .join(Score, Score.id == ScoreObservation.score_id)
+            .where(
+                ScoreObservation.bar_time >= since,
+                column.isnot(None),
+                *([Score.config_hash == config_hash] if config_hash else []),
+            )
         )
     ).all()
 
