@@ -147,3 +147,29 @@ Bu bir tahmin, vaat değil. Üç ciddi çekince:
 Her madde ön-kayıtlı bir kolla sınanmalı: in-sample **ve** holdout'ta kontrol
 + 0,05R, düşüş ≤ 1,2×. Bugün kurulan K1/K2/D1 kolları 2. ve kısmen 3. maddeyi
 zaten test ediyor.
+
+## 10. Uygulanan öneri — B1 ve B2 kolları (ön-kayıt)
+
+Beş kaldıraç noktasını **tek tek değil birlikte** uygulayan iki kol kuruldu.
+Gerekçe: faktörler birbirini şart koşuyor. Geniş stop tek başına işe yaramaz
+(pozisyon puan çıkışıyla erken kapanır), uzun tutma tek başına işe yaramaz
+(dar stop önce vurur), gevşek kapı tek başına işe yaramaz (4 slot dolar).
+Tek değişkenli testler ayrıca koşuyor (K1, K2, D1, N1–N3, S1, S2).
+
+| Ayar | Kontrol (bot 1) | B1 / B2 | Gerekçe |
+|---|---|---|---|
+| Ağırlıklar | trend 30 · mom 25 · flow 20 · vol 15 · sr 10 | **vol 60** · trend 15 · mom 10 · flow 10 · sr 5 | §6: kenar yalnız vol ailesinde |
+| Kapı | 80 (kesitin %0,2'si) | **72** (üst %10 bandı) | §3: en tepe %1 negatif, tatlı nokta %5–10 |
+| Slot | 4 | **6** | §4: 6–8 tepe, 1 felaket |
+| Stop | 2,0 ATR (≈%4) | **3,5 ATR** | §5: %4 sıfır noktası, %6–8 kenarı koruyor |
+| Puan çıkışı | 60 | **50** | erken çıkış kenarı olgunlaşmadan kesiyor |
+| Başabaş | 1,0R | **1,5R** | 1,0 çok erken kilitliyor |
+| İz sürme | 2,5 ATR | **4,0 ATR** | §2: kenar 48–72 saatte olgunlaşıyor |
+| max_stop_pct | %8 | **%12** | geniş stop tavana takılmasın |
+| Yön | LONG | B1 LONG · **B2 BOTH** | §6–7: düşen piyasada seçim gücü kullanılamıyor |
+
+Kollar: **B1** (bot 34, yalnız uzun) ve **B2** (bot 35, iki yön). 400 $, deney
+etiketi, katılım damgası 2026-09-05. Kabul ölçüsü aynı: 14 gün sonunda kontrol
+koluna göre beklenti ≥ +0,05R ve düşüş ≤ 1,2×; altında kalırsa arşiv.
+
+B1 ile B2 farkı tek değişken (yön), yani kısa tarafın katkısı doğrudan ölçülecek.
