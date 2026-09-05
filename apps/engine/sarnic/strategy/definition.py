@@ -231,9 +231,22 @@ class StrategyDefinition:
             errors.append("exit.max_hold_hours en az 1 olmalı")
         if sum(self.scoring.weights.values()) <= 0:
             errors.append("scoring.weights toplamı pozitif olmalı")
-        for key in self.scoring.weights:
+        for key, value in self.scoring.weights.items():
             if key not in DEFAULT_FAMILY_WEIGHTS:
                 errors.append(f"bilinmeyen puan ailesi: {key}")
+            elif float(value) < 0:
+                # Negatif ağırlık puan ölçeğini bozar: `family_weights` toplamı
+                # 100'e ölçeklerken İŞARETİ korur, taban [0,100] dışına çıkar ve
+                # `score_cross_section` clamp'i onu 100,00'de (ya da 0,00'da)
+                # düzleştirir. Ölçüldü (bot 20, 2026-09-04): 2229 puanın 144'ü tam
+                # 100,00; bir barda altı sembol eşitlenince seçim (-puan, sembol)
+                # sıralamasıyla ALFABETİK sıraya düştü, rotasyon da imkânsız hâle
+                # geldi (100'ü devirmek 115 puan istiyor). Ters yönlü bir aile
+                # isteniyorsa yol yüzdeliği ters çevirmektir, ağırlığı değil.
+                errors.append(
+                    f"scoring.weights[{key}] negatif olamaz ({value}); "
+                    "ters yön için yüzdelik çevirme kullanılmalı"
+                )
         return errors
 
     def require_valid(self) -> StrategyDefinition:

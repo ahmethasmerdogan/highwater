@@ -1641,3 +1641,43 @@ sistem yükü 21 → 1,7.
 Bunun kâr tarafındaki karşılığı: emir artık bar kapanışından ~16 saniye sonra
 veriliyor, 157 saniye sonra değil. Teşhiste (§1) "sorun değil" diye geçilen
 4 bps ortalama dolum sapmasının (p90 34 bps) büyük kısmı bu gecikmeydi.
+
+## Sekiz boyutlu mantık denetimi — 2026-09-04 gecesi
+
+Ultracode workflow: 8 boyut paralel tarandı (karar zinciri, para akışı, risk mantığı,
+zaman/bar, veri hattı, tanım tutarlılığı, canlı davranış, üst mantık), **64 ham bulgu**
+çıktı. Doğrulama aşaması kullanım limitine takıldığı için yalnız biri iki lensten
+geçebildi; kalanları elle önceliklendirip doğruluyorum. Ham liste workflow journal'ında.
+
+**Hemen doğrulanan ve kapatılanlar:**
+
+1. **Özellik önbelleği BIST kolunu dondurmuştu (benim regresyonum).** Sağlayıcı gün
+   sonunu geç bastığında kol henüz gelmemiş barı hesaplıyor, elinde önceki barın
+   çerçevesi kalıyor ve o çerçeve önbelleğe yazılıyordu. Bar sonradan gelse bile herkes
+   bayat kaydı okuyor, seanslı pazarın tazelik denetimi sonsuza kadar başarısız oluyordu:
+   04.09 BIST barı 56 sembolle veritabanındayken bot 12 "hiçbiri puanlanamadı" deyip
+   03.09'da dondu, üstelik 1d TTL'i üç gün. `paketle()` artık karar barını doğruluyor;
+   eşleşmeyen bundle önbelleğe hiç girmiyor (sürüm 2, eski anahtarlar silindi).
+
+2. **Sistem ölçülen tek kenarını boyutlandırmada eliyor** (KAR-TESHISI §9). 926 giriş
+   kararı: açılanların sakinlik yüzdeliği 36,0, reddedilenlerin 64,9 (t = −9,20,
+   p < 0,0001). `min_fill_ratio` kapısında ölenlerin sakinliği 82,0. Dar stop büyük
+   notional üretiyor, notional tavanları kesiyor, %25 doluluk kuralı reddediyor.
+   Ön-kayıt: **K1** (yalnız `min_fill_ratio` 0) ve **K2** (min_fill_ratio 0 + vol 60)
+   kolları kuruldu; 14 gün, aynı eleme kuralı. Kabul ölçüsü: kontrol koluna göre
+   beklenti ≥ +0,05R ve düşüş ≤ 1,2×.
+
+3. **M1 kolu durduruldu — bozuk ölçüm üretiyordu.** Negatif aile ağırlıkları
+   (`trend -15`, `momentum -15`) `family_weights` içinde işaret korunarak 100'e
+   ölçekleniyor; taban puan [0,100] dışına çıkıp clamp'leniyor. 2229 puanın 144'ü tam
+   100,00; bir barda altı sembol eşitlenince seçim (-puan, sembol) sıralamasıyla
+   **alfabetik** sıraya düştü ve rotasyon imkânsız hâle geldi (100'ü devirmek 115 ister).
+   Kolun 1 günlük çıktısı geçersiz. Negatif ağırlık artık `validate()` içinde reddediliyor;
+   ters yön istenirse yol yüzdeliği çevirmektir (kısa yönde zaten öyle yapılıyor).
+
+**Sıradaki doğrulama kuyruğu** (ham bulgulardan, önem sırası): filo özsermaye eğrisinin
+TL ile USD'yi toplaması; `trade_stats`'ın re-base filtresiz karne üretmesi (bot 1 için
++483 $ görünüyor, maraton gerçeği +0,95 $); girişlerin yarısını açan formasyon
+düzelticisinin hiç IC ölçümü olmaması; kapı sayısının kollar arasında 70 kat farklı
+seçicilik üretmesi; rotasyonun 377 bin puan satırında hiç tetiklenmemesi; kalabalık
+cezasının işlem yapılan hiçbir sembolde devreye girmemesi.

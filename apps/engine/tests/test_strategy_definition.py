@@ -1,5 +1,3 @@
-
-
 def test_giris_saati_penceresi_tek_karar_yolu():
     """entry.hours_utc: None = her saat; liste = yalnız o UTC saatleri.
     Worker ve backtest aynı fonksiyonu çağırır (kural 1)."""
@@ -21,3 +19,23 @@ def test_giris_saati_penceresi_tek_karar_yolu():
         StrategyDefinition.from_dict({"entry": {"hours_utc": [25]}}).require_valid()
     with pytest.raises(ValueError):
         StrategyDefinition.from_dict({"entry": {"hours_utc": []}}).require_valid()
+
+
+def test_negatif_aile_agirligi_reddedilir():
+    """Negatif ağırlık puan ölçeğini bozar: taban [0,100] dışına çıkar, clamp
+    eşitlik yaratır ve seçim alfabetik sıraya düşer (bot 20, 2026-09-04)."""
+    import pytest
+
+    from sarnic.strategy.definition import StrategyDefinition, StrategyValidationError
+
+    d = StrategyDefinition.from_dict(
+        {"scoring": {"weights": {"trend": -15, "momentum": -15, "vol": 40, "flow": 20, "sr": 10}}}
+    )
+    hatalar = d.validate()
+    assert any("negatif olamaz" in h for h in hatalar), hatalar
+    with pytest.raises(StrategyValidationError):
+        d.require_valid()
+    # Pozitif ağırlıklar sorunsuz.
+    StrategyDefinition.from_dict(
+        {"scoring": {"weights": {"trend": 15, "momentum": 15, "vol": 40, "flow": 20, "sr": 10}}}
+    ).require_valid()
