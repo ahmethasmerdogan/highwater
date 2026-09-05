@@ -833,3 +833,27 @@ maraton sonrası karara bağlanmalı.
   bilinçli bir karar değil).
 - **Okunmamış bildirim saklama süresi yok.** Günde ~600 bildirim üretiliyor,
   hiç okunmuyor; temizlik yalnız okunmuşları siliyor. Süre koymak ürün kararı.
+
+## Bug hunt kalıntıları — 2026-09-05 kapanışı
+
+Kullanıcı izniyle uygulandı, artık açık soru değil:
+
+- **Bekleyen stop emirleri iptal edilmiyor** → `cancel_for_position` eklendi,
+  pozisyon kapanışında çağrılıyor. Karar: paper'ın "borsada duran stop"
+  kaydı gerçeği yansıtır; stopları fiilen worker yürütmeye devam eder.
+- **`check_stop_triggers` ölü ve tek yönlü** → silindi. Çağıranı yoktu,
+  `_stop_price` hiçbir yerde set edilmiyordu ve kısa yönü bilmiyordu.
+- **Kill switch yetim bırakabiliyor** → kapanamayan pozisyon varken kol
+  STOPPED yerine DEGRADED'de tutuluyor; giriş yok, kapatma yeniden denenir.
+- **Rotasyon kurbanı boşa gidebiliyor** → asıl sorun bu değilmiş: rotasyon
+  zaten ölüydü (donmuş giriş puanı). Karşılaştırma güncel puana çevrildi.
+
+Hâlâ açık:
+
+- **DELIST çıkış yolu ölü.** Tespit mekanizması yok; `MarketView.delisted`
+  hiç `True` olmuyor. Delist sinyali nereden gelecek (havuzdan düşme +
+  ticker yokluğu yeterli mi, yoksa borsa API'si mi)? Yanlış pozitif riski var.
+- **Okunmamış bildirim saklama süresi.** Günde ~600 üretiliyor, hiç okunmuyor.
+- **Kalabalık cezası fiilen ölü** (%0,44 satırda devrede, işlem açılan hiçbir
+  barda tetiklenmemiş). Kesitsel bir eşiğe çevirmek daha önce denenip geri
+  alınmıştı (registry yorumunda kayıtlı); bu yüzden dokunulmadı.
