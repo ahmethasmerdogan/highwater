@@ -1086,8 +1086,14 @@ class BotWorker:
             if candidate.symbol in snapshot.symbols:
                 continue
             if len(snapshot.positions) >= definition.entry.max_positions:
+                # Kurban GÜNCEL puanla seçilir, giriş puanıyla değil. Donmuş
+                # `score_at_entry` ile karşılaştırma rotasyonu fiilen öldürüyordu:
+                # 85 puanla girilmiş bir pozisyonu devirmek 95–100 istiyor, tavan
+                # 100 — ölçüldü (2026-09-05), tüm zamanda yalnız 1 ROTATION çıkışı,
+                # son 7 günde hiç. Oysa kural "portföy doluyken daha iyi aday
+                # gelirse değiştir" demek; "daha iyi", ikisinin de BUGÜNKÜ puanı.
                 victim = rotation_candidate(
-                    snapshot.score_pairs(),
+                    [(p.symbol, _guncel_puan(ctx, p)) for p in snapshot.positions],
                     candidate.symbol,
                     candidate.score,
                     definition.rotation,
@@ -1519,6 +1525,16 @@ class BotWorker:
             await self._redis.aclose()
             self._redis = None
         await self.bus.close()
+
+
+def _guncel_puan(ctx: BarContext, position: OpenPosition) -> float:
+    """Rotasyon karşılaştırması için pozisyonun BUGÜNKÜ puanı.
+
+    Puan bu barda üretilmediyse (sembol havuzdan düştü) giriş puanına düşülür —
+    o zaman da eski davranış geçerli olur, sessiz bir sıfır değil.
+    """
+    skor = ctx.score_for(position.symbol, position.direction)
+    return skor.score if skor is not None else position.score_at_entry
 
 
 def _view(position: OpenPosition) -> PositionView:

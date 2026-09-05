@@ -343,3 +343,25 @@ def test_kismi_kar_alma_karari_bir_kez_ve_bar_kapanisinda():
         ).partial_fraction
         == 0.0
     )
+
+
+# --------------------------------------------------------------------------- #
+#  Rotasyon güncel puanla çalışmalı (2026-09-05: tüm zamanda 1 tetiklenme)
+# --------------------------------------------------------------------------- #
+def test_rotasyon_guncel_puanla_mumkun_donmus_puanla_degil():
+    """Donmuş `score_at_entry` ile karşılaştırma rotasyonu aritmetik olarak
+    imkânsız kılıyordu: 85 ile girilmiş pozisyonu devirmek 95-100 istiyor,
+    puan tavanı 100. Ölçüldü: tüm zamanda 1 ROTATION çıkışı, son 7 günde hiç."""
+    from sarnic.execution.exits import rotation_candidate
+    from sarnic.strategy.definition import RotationSpec
+
+    spec = RotationSpec(enabled=True, min_score_gap=10.0)
+    # Pozisyon 85 ile girdi ama puanı 60'a düştü; aday 78.
+    donmus = rotation_candidate([("A", 85.0), ("B", 88.0)], "C", 78.0, spec, 2)
+    assert donmus is None, "giriş puanıyla karşılaştırma adayı reddeder"
+
+    guncel = rotation_candidate([("A", 60.0), ("B", 88.0)], "C", 78.0, spec, 2)
+    assert guncel == "A", "güncel puanla en zayıf pozisyon devredilebilmeli"
+
+    # Histerezis korunur: fark 10'un altındaysa yine değişmez.
+    assert rotation_candidate([("A", 70.0), ("B", 88.0)], "C", 78.0, spec, 2) is None

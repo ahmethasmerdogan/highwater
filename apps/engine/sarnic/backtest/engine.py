@@ -816,8 +816,18 @@ class BacktestEngine:
             if candidate.symbol in {p.symbol for p in positions}:
                 continue
             if len(positions) >= self.definition.entry.max_positions:
+                # Güncel puan (worker ile aynı kural): donmuş giriş puanı
+                # rotasyonu aritmetik olarak imkânsız kılıyordu.
                 victim = rotation_candidate(
-                    [(p.symbol, p.score_at_entry) for p in positions],
+                    [
+                        (
+                            p.symbol,
+                            (scores if p.direction > 0 else short_scores).get(p.symbol).score
+                            if (scores if p.direction > 0 else short_scores).get(p.symbol)
+                            else p.score_at_entry,
+                        )
+                        for p in positions
+                    ],
                     candidate.symbol,
                     candidate.score,
                     self.definition.rotation,
