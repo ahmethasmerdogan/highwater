@@ -1030,3 +1030,30 @@ async def test_fleet_satiri_islem_istatistigi_ve_pencereleri_tasir(api_client, a
     assert satir["equity"] == pytest.approx(5000.0 - 500.0)
     assert satir["return_pct"] == pytest.approx(-0.1)
     assert satir["rebased_at"].startswith("2026-09-01")
+
+
+async def test_live_tl_ile_usd_yi_toplamiyor(api_client, auth, api_session):
+    """BIST kolu TL, kalanı USD. İkisini toplamak anlamsız bir özsermaye üretiyordu
+    (panel 2026-09-04'te 30.860 gösteriyordu: 10.314 USD + 19.232 TL)."""
+    from decimal import Decimal
+
+    from tests.test_api import make_bot
+
+    usd, _ = await make_bot(api_session, "usd-kol")
+    usd.capital = Decimal("400")
+    usd.cash = Decimal("400")
+    tl, _ = await make_bot(api_session, "bist-kol")
+    await api_session.refresh(tl, attribute_names=["strategy_version"])
+    tanim = dict(tl.strategy_version.definition or {})
+    tanim["universe"] = {**(tanim.get("universe") or {}), "market": "BIST"}
+    tl.strategy_version.definition = tanim
+    tl.capital = Decimal("19232")
+    tl.cash = Decimal("19232")
+    await api_session.commit()
+
+    veri = (await api_client.get("/portfolio/live", headers=auth)).json()
+    assert veri["equity"] < 19232, "TL kolu USD toplamına karışmamalı"
+    assert veri["try_equity"] == pytest.approx(19232.0)
+    assert veri["try_capital"] == pytest.approx(19232.0)
+    # Kol listesi yine ikisini de taşır; ayrım yalnız toplamlarda.
+    assert {b["name"] for b in veri["bots"]} >= {"usd-kol", "bist-kol"}

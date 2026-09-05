@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 
 from fastapi import APIRouter
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
 from sarnic.api.deps import CurrentUser, RedisDep, SessionDep
 from sarnic.api.schemas import OrderOut, PositionOut, TradeOut
@@ -377,7 +378,11 @@ async def live(session: SessionDep, redis: RedisDep, user: CurrentUser) -> dict:
     tickers = await read_tickers(redis)
     prices = {s: float(t["last_price"]) for s, t in tickers.items()}
 
-    bots = (await session.execute(select(Bot))).scalars().all()
+    bots = (
+        (await session.execute(select(Bot).options(selectinload(Bot.strategy_version))))
+        .scalars()
+        .all()
+    )
     open_rows = (
         (await session.execute(select(Position).where(Position.status == PositionStatus.OPEN)))
         .scalars()
@@ -394,8 +399,18 @@ async def live(session: SessionDep, redis: RedisDep, user: CurrentUser) -> dict:
         or 0
     )
 
+    # Para birimi ayrımı: BIST kolu TL, kalanı USD. İkisini toplamak anlamsız bir
+    # sayı üretiyordu — panel 2026-09-04'te "özsermaye 30.860" gösteriyordu ki bu
+    # 10.314 USD + 19.232 TL demekti. Kur beslemesi yok; uydurmak yerine ayırıyoruz.
+    def _para_birimi(b) -> str:
+        pazar = ((b.strategy_version.definition or {}).get("universe") or {}).get(
+            "market", "CRYPTO"
+        )
+        return "TRY" if pazar == "BIST" else "USD"
+
     per_bot = []
     equity = cash = exposure = unrealized = 0.0
+    try_equity = try_cash = try_capital = 0.0
     for bot in bots:
         rows = [p for p in open_rows if p.bot_id == bot.id]
         bot_exposure = sum(float(p.qty) * prices.get(p.symbol, float(p.entry_price)) for p in rows)
@@ -423,12 +438,17 @@ async def live(session: SessionDep, redis: RedisDep, user: CurrentUser) -> dict:
                 "total_return": bot_equity / capital - 1,
             }
         )
+        if _para_birimi(bot) == "TRY":
+            try_equity += bot_equity
+            try_cash += bot_cash
+            try_capital += float(bot.capital)
+            continue
         equity += bot_equity
         cash += bot_cash
         exposure += bot_exposure
         unrealized += bot_unrealized
 
-    capital_total = sum(float(b.capital) for b in bots) or 1.0
+    capital_total = sum(float(b.capital) for b in bots if _para_birimi(b) == "USD") or 1.0
     return {
         "at": utcnow().isoformat(),
         "equity": equity,
@@ -439,6 +459,10 @@ async def live(session: SessionDep, redis: RedisDep, user: CurrentUser) -> dict:
         "open_positions": len(open_rows),
         "total_return": equity / capital_total - 1,
         "capital": capital_total,
+        # TL kolları ayrı: aynı çuvala konmaları toplamı anlamsız kılıyordu.
+        "try_equity": try_equity or None,
+        "try_capital": try_capital or None,
+        "try_cash": try_cash or None,
         "bots": per_bot,
         # Fiyatı bilinmeyen pozisyon varsa gerçekleşmemiş k/z eksik demektir;
         # sessizce yanlış sayı göstermektense bunu taşıyoruz.
@@ -460,7 +484,11 @@ async def metrics(session: SessionDep, redis: RedisDep, user: CurrentUser) -> di
     if cached:
         return json.loads(cached)
 
-    bots = (await session.execute(select(Bot))).scalars().all()
+    bots = (
+        (await session.execute(select(Bot).options(selectinload(Bot.strategy_version))))
+        .scalars()
+        .all()
+    )
     tickers = await read_tickers(redis)
     prices = {s: float(t["last_price"]) for s, t in tickers.items()}
 
