@@ -265,6 +265,7 @@ class PaperAdapter:
             requested_qty=order.qty,
             order_id=self._next_id(),
             submitted_at=now,
+            position_id=order.position_id,
         )
 
         if order.symbol in self.halted_symbols:
@@ -399,27 +400,22 @@ class PaperAdapter:
     async def get_open_orders(self) -> list[OrderResult]:
         return list(self._open_orders.values())
 
+    def cancel_for_position(self, position_id: int) -> int:
+        """Kapanan pozisyonun bekleyen emirlerini defterden düşer.
+
+        Her girişte bir `STOP_LOSS_LIMIT` bırakılıyor ama pozisyon kapanınca
+        iptal edilmiyordu: `_open_orders` süreç ömrü boyunca büyüyor ve
+        `get_open_orders()` çoktan kapanmış pozisyonların stoplarını "borsada
+        duruyor" diye raporluyordu. Stopları fiilen worker yürütür; defterin
+        yalan söylememesi için kayıt da kapanmalı.
+        """
+        iptal = [oid for oid, o in self._open_orders.items() if o.position_id == position_id]
+        for oid in iptal:
+            self._open_orders.pop(oid, None)
+        return len(iptal)
+
     def position_qty(self, symbol: str) -> float:
         return self._positions.get(symbol, 0.0)
-
-    async def check_stop_triggers(self, prices: dict[str, float]) -> list[OrderResult]:
-        """Bekleyen STOP_LOSS_LIMIT emirleri tetiklendi mi?
-
-        Paper motorunda stop'ları biz yürütürüz; canlıda borsa yapar. Karar
-        mantığı için ikisi aynı görünür.
-        """
-        triggered: list[OrderResult] = []
-        for order_id, order in list(self._open_orders.items()):
-            price = prices.get(order.symbol)
-            if price is None:
-                continue
-            stop_price = getattr(order, "_stop_price", None)
-            if stop_price is None:
-                continue
-            if price <= stop_price:
-                self._open_orders.pop(order_id, None)
-                triggered.append(order)
-        return triggered
 
 
 def _shift_book(book: Book, drift: float) -> Book:

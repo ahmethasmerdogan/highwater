@@ -576,3 +576,37 @@ async def test_worker_gonullu_kismi_kar_alir(api_session, test_database):
     kalan = acik.qty
     await worker._apply_exit_decision(api_session, bot, snapshot, acik, karar, 110.0)
     assert acik.qty == pytest.approx(kalan)
+
+
+async def test_kapanan_pozisyonun_bekleyen_emri_defterden_duser():
+    """Her girişte bir STOP_LOSS_LIMIT bırakılıyor ama pozisyon kapanınca iptal
+    edilmiyordu: `_open_orders` süreç ömrü boyunca büyüyor ve `get_open_orders()`
+    çoktan kapanmış pozisyonların stoplarını 'borsada duruyor' diye raporluyordu."""
+    a = adapter()
+    await a.submit(
+        OrderRequest(
+            "TESTUSDT",
+            OrderSide.SELL,
+            OrderType.STOP_LOSS_LIMIT,
+            5.0,
+            stop_price=90.0,
+            position_id=42,
+        )
+    )
+    await a.submit(
+        OrderRequest(
+            "TESTUSDT",
+            OrderSide.SELL,
+            OrderType.STOP_LOSS_LIMIT,
+            3.0,
+            stop_price=80.0,
+            position_id=43,
+        )
+    )
+    assert len(await a.get_open_orders()) == 2
+
+    assert a.cancel_for_position(42) == 1
+    kalan = await a.get_open_orders()
+    assert len(kalan) == 1 and kalan[0].position_id == 43
+    # Aynı pozisyon ikinci kez kapatılırsa sessizce 0 döner.
+    assert a.cancel_for_position(42) == 0

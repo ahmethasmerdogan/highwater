@@ -48,6 +48,8 @@ class OrderResult:
     slippage_bps: float = 0.0
     reject_reason: str = ""
     order_id: str = ""
+    #: Emri doğuran pozisyon; bekleyen emirleri kapanışta düşürmek için.
+    position_id: int | None = None
     submitted_at: datetime | None = None
     filled_at: datetime | None = None
     fills: list[Fill] = field(default_factory=list)

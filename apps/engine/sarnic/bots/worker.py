@@ -1048,6 +1048,9 @@ class BotWorker:
 
         snapshot.cash += d * exit_price * result.filled_qty - result.fees - borc
         snapshot.positions = [p for p in snapshot.positions if p.id != position.id]
+        # Bekleyen stop emri pozisyonla birlikte kapanır; aksi hâlde adaptör
+        # defteri kapanmış pozisyonların stoplarını "borsada duruyor" gösterir.
+        adapter.cancel_for_position(position.id)
         bot.cash = Decimal(str(round(snapshot.cash, 8)))
 
         await self._emit(
