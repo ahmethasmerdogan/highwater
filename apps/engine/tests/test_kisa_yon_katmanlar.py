@@ -520,3 +520,65 @@ async def test_rebase_tasfiyesi_karneye_girmez(api_session, test_database):
     karne = await trade_stats(api_session, bot.id)
     assert karne["trades"] == 1, "tasfiye edilen eski pozisyon karneye girmemeli"
     assert karne["total_pnl"] == pytest.approx(4.0)
+
+
+async def test_karar_izi_huniyi_besler(api_session, test_database):
+    """Retler serbest metin log olduğu için 'sistem ölçtüğü kenarı eliyor mu'
+    sorusu elle metin ayrıştırarak cevaplanabiliyordu (KAR-TESHISI §9).
+    Karar izi bunu yapılandırılmış hâle getirir: her adayın aşaması, ret sebebi,
+    bağlayan kısıtı ve kenar özelliklerinin yüzdelikleri."""
+    from datetime import UTC, datetime
+
+    from sqlalchemy import select
+
+    from sarnic.bots.worker import _karar_izi, _yuzdelik_ozeti
+    from sarnic.db.models import EntryDecision
+    from sarnic.scoring.engine import ScoreResult
+    from sarnic.sizing.engine import SizingDecision
+    from tests.test_api import make_bot
+
+    bot, _ = await make_bot(api_session, "karar-izi")
+    bar = datetime(2026, 9, 5, 8, tzinfo=UTC)
+
+    class SahteCtx:
+        bar_time = bar
+
+    def skor(sembol: str, puan: float, sakinlik: float) -> ScoreResult:
+        return ScoreResult(
+            symbol=sembol,
+            bar_time=bar,
+            score=puan,
+            base_score=puan,
+            families={},
+            modifiers={},
+            rationale={"percentiles": {"atr_pct": sakinlik, "bb_width": 50.0, "adx": 10.0}},
+            config_hash="abc",
+        )
+
+    # Reddedilen aday: bağlayan kısıt ve dolum oranı iz'e geçmeli.
+    red = SizingDecision(
+        symbol="XUSDT", accepted=False, reject_reason="kısıtlar boyutu hedefin %19"
+    )
+    red.steps = [
+        {"step": "ölçekli_notional", "value": 500.0},
+        {"step": "serbest_nakit", "value": 95.0, "binding": True},
+    ]
+    red.notional = 95.0
+    iz = _karar_izi(bot, SahteCtx(), skor("XUSDT", 81.0, 82.0), 1, "boyut", decision=red)
+    assert iz.stage == "boyut" and iz.symbol == "XUSDT"
+    assert iz.binding_constraint == "serbest_nakit"
+    assert float(iz.fill_ratio) == pytest.approx(0.19)
+    assert iz.percentiles == {"atr_pct": 82.0, "bb_width": 50.0}, "yalnız ölçülmüş kenarlar"
+    assert "kısıtlar boyutu" in iz.reject_detail
+
+    # Kapıda elenenlerin özeti: kenar özelliklerinin ortalaması.
+    ozet = _yuzdelik_ozeti(SahteCtx(), [skor("A", 40, 90.0), skor("B", 41, 70.0)])
+    assert ozet["atr_pct"] == pytest.approx(80.0)
+
+    # Yazılabilirlik: model gerçekten kalıcı.
+    api_session.add(iz)
+    await api_session.commit()
+    kayit = (
+        await api_session.execute(select(EntryDecision).where(EntryDecision.bot_id == bot.id))
+    ).scalar_one()
+    assert kayit.stage == "boyut" and kayit.rejected_by.startswith("kısıtlar")

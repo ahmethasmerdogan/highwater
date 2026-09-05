@@ -44,7 +44,7 @@ from sarnic.core.memory import bellek_iade
 from sarnic.core.observability import DECISION_ERRORS
 from sarnic.data.marketdata import data_is_stale, read_last_bars, read_tickers
 from sarnic.data.store import last_closed_bar, load_frame
-from sarnic.db.models import Bot, BotEvent, Order, Position, Score, Trade
+from sarnic.db.models import Bot, BotEvent, EntryDecision, Order, Position, Score, Trade
 from sarnic.db.session import session_scope
 from sarnic.execution.accounting import (
     net_pnl,
@@ -1097,7 +1097,33 @@ class BotWorker:
                 if s.score >= kapi and s.symbol not in snapshot.symbols
             ]
         candidates.sort(key=lambda x: -x[0].score)
+
+        # KARAR İZİ (DESIGN-V4 §4). Kapıda elenenler tek özet satırıyla, kapıyı
+        # geçen her aday kendi satırıyla yazılır. Amaç: "sistem ölçtüğü kenarı
+        # eliyor mu" sorusunun elle metin ayrıştırmadan cevaplanabilmesi
+        # (KAR-TESHISI §9 bu analizi bot_events mesajlarından yapmak zorunda kaldı).
+        izler: list[EntryDecision] = []
+        elenen = [
+            s
+            for d in definition.entry.directions()
+            for s in (ctx.scores if d > 0 else ctx.short_scores).values()
+            if s.score < kapi
+        ]
+        if elenen:
+            izler.append(
+                EntryDecision(
+                    bot_id=bot.id,
+                    bar_time=ctx.bar_time,
+                    stage="kapi",
+                    adet=len(elenen),
+                    rejected_by="kapi",
+                    reject_detail=f"puan < {kapi:g}",
+                    percentiles=_yuzdelik_ozeti(ctx, elenen),
+                )
+            )
+
         if not candidates or not entry_hour_allowed(definition.entry, ctx.bar_time):
+            await self._karar_izini_yaz(session, izler)
             return
 
         clusters = await latest_clusters(session, at=ctx.bar_time)
@@ -1219,7 +1245,10 @@ class BotWorker:
                                 f"({decision.reject_reason}); bu barda giriş aranmıyor."
                             ),
                         )
+                        izler.append(_karar_izi(bot, ctx, candidate, d, "boyut", decision=decision))
+                        await self._karar_izini_yaz(session, izler)
                         return
+                izler.append(_karar_izi(bot, ctx, candidate, d, "boyut", decision=decision))
                 await self._emit(
                     session,
                     EventKind.LOG,
@@ -1229,6 +1258,7 @@ class BotWorker:
                 )
                 continue
 
+            izler.append(_karar_izi(bot, ctx, candidate, d, "acildi", decision=decision))
             await self._open_position(
                 session,
                 bot,
@@ -1240,6 +1270,19 @@ class BotWorker:
                 leverage=lev.leverage,
                 direction=d,
             )
+
+        await self._karar_izini_yaz(session, izler)
+
+    async def _karar_izini_yaz(self, session, izler: list) -> None:
+        """Karar izlerini toplu yazar. Hata karar yolunu ASLA kesmez: iz bir
+        gözlem kaydıdır, kararın kendisi değil."""
+        if not izler:
+            return
+        try:
+            session.add_all(izler)
+            await session.flush()
+        except Exception:
+            log.exception("karar_izi_yazilamadi", bot_id=self.bot_id)
 
     async def _open_position(
         self,
@@ -1547,6 +1590,56 @@ class BotWorker:
             await self._redis.aclose()
             self._redis = None
         await self.bus.close()
+
+
+#: Karar izinde saklanan kenar özellikleri — KAR-TESHISI §6'da IC'si ölçülmüş
+#: olanlar. Tümünü saklamak satırı gereksiz şişirir.
+IZ_OZELLIKLERI = ("atr_pct", "bb_width", "trend_1d", "ret_168h_skip6", "taker_buy_ratio")
+
+
+def _yuzdelikler(skor: ScoreResult) -> dict:
+    """Puanın gerekçesinden kenar özelliklerinin yüzdeliklerini süzer."""
+    pct = (skor.rationale or {}).get("percentiles") or {}
+    return {k: pct[k] for k in IZ_OZELLIKLERI if k in pct}
+
+
+def _yuzdelik_ozeti(ctx: BarContext, skorlar: list) -> dict:
+    """Bir küme adayın kenar özelliklerinin ortalaması (kapıda elenenler için)."""
+    toplam: dict[str, float] = {}
+    sayi: dict[str, int] = {}
+    for skor in skorlar:
+        for k, v in _yuzdelikler(skor).items():
+            toplam[k] = toplam.get(k, 0.0) + float(v)
+            sayi[k] = sayi.get(k, 0) + 1
+    return {k: round(toplam[k] / sayi[k], 2) for k in toplam if sayi[k]}
+
+
+def _karar_izi(bot, ctx: BarContext, skor: ScoreResult, yon: int, asama: str, *, decision=None):
+    """Tek adayın karar izi; reddedildiyse sebebi ve bağlayan kısıtı taşır."""
+    baglayan = hedef = son = oran = None
+    reddedildi = decision is not None and not decision.accepted
+    if decision is not None:
+        adimlar = decision.steps or []
+        baglayan = next((a["step"] for a in reversed(adimlar) if a.get("binding")), None)
+        hedef = next((a["value"] for a in adimlar if a.get("step") == "ölçekli_notional"), None)
+        son = decision.notional or None
+        if hedef and son:
+            oran = round(son / hedef, 4)
+    return EntryDecision(
+        bot_id=bot.id,
+        bar_time=ctx.bar_time,
+        symbol=skor.symbol,
+        direction=yon,
+        stage=asama,
+        score=Decimal(str(round(skor.score, 2))),
+        percentiles=_yuzdelikler(skor),
+        rejected_by=(decision.reject_reason.split(":")[0][:48] if reddedildi else None),
+        reject_detail=(decision.reject_reason if reddedildi else None),
+        target_notional=Decimal(str(round(hedef, 8))) if hedef else None,
+        final_notional=Decimal(str(round(son, 8))) if son else None,
+        binding_constraint=baglayan[:32] if baglayan else None,
+        fill_ratio=Decimal(str(oran)) if oran is not None else None,
+    )
 
 
 def _guncel_puan(ctx: BarContext, position: OpenPosition) -> float:

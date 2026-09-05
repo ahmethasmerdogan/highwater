@@ -16,6 +16,7 @@ from sqlalchemy import (
     Index,
     Integer,
     Numeric,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -237,6 +238,47 @@ class Pattern(Base):
 # --------------------------------------------------------------------------- #
 #  Puanlama
 # --------------------------------------------------------------------------- #
+class EntryDecision(Base):
+    """Bir barda bir adayın giriş kararının yapılandırılmış izi.
+
+    Bugüne kadar retler serbest metin `bot_events` satırıydı ve bu yüzden
+    "sistem ölçtüğü kenarı eliyor mu" sorusu ancak elle metin ayrıştırarak
+    cevaplanabildi (KAR-TESHISI §9: açılanların sakinlik yüzdeliği 36,0,
+    reddedilenlerin 64,9, t = −9,20). Karar hunisi (DESIGN-V4 §4) bu tablo
+    olmadan kurulamaz.
+
+    Yalnız **kapıyı geçen** adaylar satır alır; kapıda elenenler kol/bar başına
+    tek özet satırında (`stage='kapi'`, `symbol=NULL`) sayılır. Günlük hacim
+    ~7.000 satır.
+    """
+
+    __tablename__ = "entry_decisions"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    bot_id: Mapped[int] = mapped_column(ForeignKey("bots.id", ondelete="CASCADE"), index=True)
+    bar_time: Mapped[datetime] = mapped_column(TimestampTZ, index=True)
+    #: Kapıda elenenlerin özet satırında NULL.
+    symbol: Mapped[str | None] = mapped_column(String(32), default=None)
+    direction: Mapped[int] = mapped_column(SmallInteger, default=1)
+    #: havuz | kapi | slot | boyut | emir | acildi
+    stage: Mapped[str] = mapped_column(String(16))
+    score: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), default=None)
+    #: Kenar özelliklerinin o bardaki yüzdelikleri (sakinlik, sıkışma, trend…).
+    percentiles: Mapped[dict] = mapped_column(JSONB, default=dict)
+    #: Özet satırında kaç aday bu basamakta elendi.
+    adet: Mapped[int] = mapped_column(Integer, default=1)
+    rejected_by: Mapped[str | None] = mapped_column(String(48), default=None)
+    reject_detail: Mapped[str | None] = mapped_column(Text, default=None)
+    target_notional: Mapped[Decimal | None] = mapped_column(Numeric(20, 8), default=None)
+    final_notional: Mapped[Decimal | None] = mapped_column(Numeric(20, 8), default=None)
+    binding_constraint: Mapped[str | None] = mapped_column(String(32), default=None)
+    fill_ratio: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), default=None)
+    position_id: Mapped[int | None] = mapped_column(default=None)
+    created_at: Mapped[datetime] = mapped_column(TimestampTZ, server_default=func.now())
+
+    __table_args__ = (Index("ix_entry_dec_bot_bar", "bot_id", "bar_time"),)
+
+
 class Score(Base):
     __tablename__ = "scores"
 
