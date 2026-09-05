@@ -21,6 +21,7 @@ import httpx
 import websockets
 
 from sarnic.config import settings
+from sarnic.core.clock import utcnow
 from sarnic.core.enums import TIMEFRAME_MINUTES
 from sarnic.core.logging import get_logger
 from sarnic.core.observability import WS_RECONNECTS
@@ -150,7 +151,15 @@ def parse_kline_row(symbol: str, timeframe: str, row: list) -> Kline:
         trades=int(d["trades"]),
         taker_buy_base=Decimal(str(d["taker_buy_base"])),
         taker_buy_quote=Decimal(str(d["taker_buy_quote"])),
-        is_closed=True,
+        # Kapanış zamanı GEÇMİŞTE mi? REST uç noktası oluşmakta olan mumu da
+        # döndürür; burada koşulsuz `True` yazmak bozulmaz kural 2'yi (bar
+        # kapanmadan verisi karara giremez) doğrudan ihlal ediyordu. Ölçüldü
+        # (2026-09-05): havuzdaki 121 sembolün 7'sinde bugünün oluşmakta olan
+        # 1d/4h barı karara giriyordu, `trend_4h` hatası %26'ya varıyor; ayrıca
+        # sembol izlenen kümeden düşünce kısmi bar geçmişte donuyor (131
+        # sembolde 230 bozuk 4h barı). WS yolu bunu zaten doğru yapıyordu
+        # (`is_closed=bool(k["x"])`); REST yolunda `close_time` okunup atılıyordu.
+        is_closed=_ms_to_dt(d["close_time"]) <= utcnow(),
     )
 
 
