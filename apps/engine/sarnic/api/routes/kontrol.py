@@ -305,7 +305,11 @@ async def nobet(
     acik_yazilan = (
         await session.execute(
             text(
+                # Zaman sınırı: en uzun dilim 1 gün, dolayısıyla 2 günden eski
+                # bir bar her koşulda kapanmıştır. Sınır olmadan sorgu 1,4 GB'lık
+                # hypertable'ı baştan sona okuyor ve 3,9 saniye sürüyordu.
                 "select count(*) from ohlcv where is_closed = true "
+                "and open_time > now() - interval '2 days' "
                 "and timeframe in :dilimler and open_time + "
                 f"make_interval(mins => case timeframe {dilim_sql} end) > now()"
             ).bindparams(bindparam("dilimler", expanding=True)),
@@ -317,7 +321,15 @@ async def nobet(
     kollar = []
     for b in bots:
         dakika = TIMEFRAME_MINUTES.get(b.timeframe, 60)
-        gecikme = (simdi - b.last_bar_at).total_seconds() / 60 if b.last_bar_at else None
+        # `last_bar_at` barın AÇILIŞ zamanıdır. 06:00 barı 07:00'de kapanır ve
+        # kol onu 07:00'de tüketir; 07:59'da ham fark 119 dakika, yani "2 bar
+        # geride" çıkar. İlk sürüm bunu yaptı ve SAĞLIKLI 28 kolu birden donuk
+        # ilan etti — her satırı kırmızı olan bir ekran hiçbir şey söylemez.
+        # Doğru ölçü barın KAPANIŞINDAN bu yana geçen süredir: sıfır çevresinde
+        # salınır, ancak bir tam bar kaçırılınca 1'i geçer.
+        gecikme = (
+            (simdi - b.last_bar_at).total_seconds() / 60 / dakika - 1.0 if b.last_bar_at else None
+        )
         nabiz = (simdi - b.last_heartbeat_at).total_seconds() if b.last_heartbeat_at else None
         kollar.append(
             {
@@ -325,7 +337,7 @@ async def nobet(
                 "ad": b.name,
                 "durum": str(b.state),
                 "dilim": b.timeframe,
-                "bar_gecikmesi_bar": round(gecikme / dakika, 1) if gecikme is not None else None,
+                "bar_gecikmesi_bar": round(gecikme, 1) if gecikme is not None else None,
                 "nabiz_s": round(nabiz) if nabiz is not None else None,
                 "halt": b.halt_reason,
                 "deney": bool((b.config or {}).get("deney")),
@@ -336,7 +348,7 @@ async def nobet(
         for k in kollar
         if k["durum"] == BotState.PAPER_RUNNING
         and k["bar_gecikmesi_bar"] is not None
-        and k["bar_gecikmesi_bar"] >= 2
+        and k["bar_gecikmesi_bar"] >= 1
     ]
 
     # --- Sayaçlar ---

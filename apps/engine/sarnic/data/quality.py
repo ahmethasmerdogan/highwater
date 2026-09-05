@@ -104,9 +104,7 @@ def find_gaps(df: pd.DataFrame, symbol: str, timeframe: str) -> list[Gap]:
     return gaps
 
 
-def _find_session_gaps(
-    df: pd.DataFrame, symbol: str, timeframe: str, market
-) -> list[Gap]:
+def _find_session_gaps(df: pd.DataFrame, symbol: str, timeframe: str, market) -> list[Gap]:
     """Takvim-farkında boşluk: yalnızca GERÇEK seans günleri sayılır."""
     if timeframe != "1d":
         return []  # v1: hisselerde yalnız 1d toplanır

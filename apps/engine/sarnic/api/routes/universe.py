@@ -29,9 +29,7 @@ VALID_MARKETS = {"CRYPTO", "BIST", "US"}
 
 
 @router.get("/current", response_model=SnapshotDetail)
-async def current(
-    session: SessionDep, user: CurrentUser, market: str = "CRYPTO"
-) -> SnapshotDetail:
+async def current(session: SessionDep, user: CurrentUser, market: str = "CRYPTO") -> SnapshotDetail:
     """Pazarın güncel havuzu. Havuz pazar başınadır — TRY cirosu USD
     cirosuyla aynı sıralamaya girmez; panel pazarları ayrı sekmelerde gösterir."""
     if market not in VALID_MARKETS:

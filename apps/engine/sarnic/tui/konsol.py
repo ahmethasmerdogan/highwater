@@ -190,9 +190,7 @@ class Konsol:
         selam.append(email.split("@")[0].capitalize() + ".", style=f"bold {GREEN}")
 
         noktalar = Text("  ".join("●" * 1 for _ in range(8)))
-        for i, stil in enumerate(
-            [DIM, "white", CYAN, "#a855f7", "#1d4ed8", CYAN, GREEN, RED]
-        ):
+        for i, stil in enumerate([DIM, "white", CYAN, "#a855f7", "#1d4ed8", CYAN, GREEN, RED]):
             noktalar.stylize(stil, i * 3, i * 3 + 1)
 
         sag = Group(

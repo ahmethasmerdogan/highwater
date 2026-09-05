@@ -76,9 +76,7 @@ class ExchangeSessionCalendar:
 
     def _sessions(self, start: datetime, end: datetime):
         cal = self._cal
-        return cal.sessions_in_range(
-            _utc(start).date().isoformat(), _utc(end).date().isoformat()
-        )
+        return cal.sessions_in_range(_utc(start).date().isoformat(), _utc(end).date().isoformat())
 
     def last_closed_session(self, moment: datetime) -> datetime | None:
         """`moment` anında KAPANMIŞ son seansın tarihi (UTC gece yarısı).

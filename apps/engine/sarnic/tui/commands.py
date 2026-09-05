@@ -41,8 +41,7 @@ REJECTED: dict[str, str] = {
         "Koşu uzun sürer ve raporu terminalde gösterilemez."
     ),
     "CAL": (
-        "Kalibrasyon grafikleri panelde: /kalibrasyon. "
-        "Terminal özet sayıyı nöbet ekranında verir."
+        "Kalibrasyon grafikleri panelde: /kalibrasyon. Terminal özet sayıyı nöbet ekranında verir."
     ),
 }
 

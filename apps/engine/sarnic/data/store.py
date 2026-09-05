@@ -162,9 +162,7 @@ async def load_frames(
         # Hafta sonu + tatil payı: pencere ×1,6 açılır; `.tail(limit)`
         # zaten tam `limit` bara kırpar — fazla satır maliyeti önemsiz.
         yogunluk = 1.6 if any(market_of(s).code != "CRYPTO" for s in symbols[:1]) else 1.0
-        earliest = end - timedelta(
-            minutes=TIMEFRAME_MINUTES[timeframe] * limit * yogunluk
-        )
+        earliest = end - timedelta(minutes=TIMEFRAME_MINUTES[timeframe] * limit * yogunluk)
         stmt = stmt.where(OHLCV.open_time >= earliest)
     stmt = stmt.order_by(OHLCV.symbol, OHLCV.open_time)
 
@@ -252,9 +250,7 @@ def _coerce(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def expected_bar_count(
-    start: datetime, end: datetime, timeframe: str, symbol: str = ""
-) -> int:
+def expected_bar_count(start: datetime, end: datetime, timeframe: str, symbol: str = "") -> int:
     """Beklenen bar sayısı — pazar-farkında.
 
     Kripto için eski aritmetiğin birebir aynısı. Hisse sembolünde (ekli ad)

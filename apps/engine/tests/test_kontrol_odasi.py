@@ -161,7 +161,7 @@ async def test_nobet_uc_sayac_sinifini_ayirir(api_client, auth, api_session, tes
 
 
 async def test_nobet_donuk_kolu_bar_cinsinden_olcer(api_client, auth, api_session, test_database):
-    """Sessizlik bir durumdur: son barı 2 bar geride kalan kol ekranda yer kaplar."""
+    """Sessizlik bir durumdur: bir tam bar kaçıran kol ekranda yer kaplar."""
     bot, _ = await make_bot(api_session, "donuk")
     bot.state = BotState.PAPER_RUNNING
     bot.timeframe = "1h"
@@ -170,8 +170,28 @@ async def test_nobet_donuk_kolu_bar_cinsinden_olcer(api_client, auth, api_sessio
 
     body = (await api_client.get("/kontrol/nobet", headers=auth)).json()
     kol = next(k for k in body["kollar"] if k["id"] == bot.id)
-    assert kol["bar_gecikmesi_bar"] >= 3.0
+    assert kol["bar_gecikmesi_bar"] >= 1.5
     assert bot.id in body["donuk"]
+
+
+async def test_saglikli_kol_donuk_sayilmaz(api_client, auth, api_session, test_database):
+    """`last_bar_at` barın AÇILIŞ zamanıdır: 06:00 barı 07:00'de kapanır ve kol
+    onu 07:00'de tüketir. Ham fark 07:59'da 119 dakika, yani "2 bar geride".
+    İlk sürüm bunu donuk saydı ve sağlıklı 28 kolu birden alarma soktu —
+    her satırın kırmızı olduğu bir ekran hiçbir şey söylemez."""
+    bot, _ = await make_bot(api_session, "saglikli")
+    bot.state = BotState.PAPER_RUNNING
+    bot.timeframe = "1h"
+    # Bir önceki bar tüketilmiş, içinde bulunulan bar henüz kapanmamış.
+    bot.last_bar_at = datetime.now(UTC).replace(minute=0, second=0, microsecond=0) - timedelta(
+        hours=1
+    )
+    await api_session.commit()
+
+    body = (await api_client.get("/kontrol/nobet", headers=auth)).json()
+    kol = next(k for k in body["kollar"] if k["id"] == bot.id)
+    assert kol["bar_gecikmesi_bar"] < 1.0, "kapanmamış bar gecikme sayılmaz"
+    assert bot.id not in body["donuk"]
 
 
 async def test_iz_yazmak_karar_yolunu_kesmez(api_session, test_database):
