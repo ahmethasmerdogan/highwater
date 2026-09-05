@@ -429,7 +429,8 @@ async def test_trade_stats_katilim_damgasini_filtreler(api_session, test_databas
             side="BUY",
             qty=Decimal("1"),
             entry_price=Decimal("100"),
-            entry_time=utc(2026, 8, 20, 0),
+            # Giriş, kendi çıkışından bir saat önce: süzgeç POZİSYON AÇILIŞINA bakar.
+            entry_time=(utc(2026, 8, gun, 11) if gun != 9 else utc(2026, 9, 1, 11)),
             stop=Decimal("90"),
             initial_stop=Decimal("90"),
             score_at_entry=Decimal("85"),
@@ -461,3 +462,61 @@ async def test_trade_stats_katilim_damgasini_filtreler(api_session, test_databas
     assert karne["total_pnl"] == pytest.approx(-5.0)
     hepsi = await trade_stats(api_session, bot.id, since=utc(2026, 1, 1, 0))
     assert hepsi["trades"] == 3, "açık istekle tüm geçmiş görülebilmeli"
+
+
+async def test_rebase_tasfiyesi_karneye_girmez(api_session, test_database):
+    """Re-base anında açık olan pozisyon tasfiye edilir ve tasfiye emri damgadan
+    saniyenin beşte biri SONRA kaydedilir. Çıkışa bakan bir süzgeç onu yeni döneme
+    sokuyordu: bot 5'in karnesi +7,16 $ görünüyordu, gerçeği +25,43 $."""
+    from datetime import UTC, datetime, timedelta
+    from decimal import Decimal
+
+    from sarnic.bots.portfolio import trade_stats
+    from sarnic.db.models import Position, Trade
+    from tests.test_api import make_bot
+
+    damga = datetime(2026, 8, 31, 22, 15, 29, 556361, tzinfo=UTC)
+    bot, _ = await make_bot(api_session, "tasfiye")
+    bot.config = {"rebased_at": damga.isoformat()}
+    # (giriş, çıkış, pnl): ilki ESKİ dönemin pozisyonu, tasfiyesi damgadan 0,22 sn sonra.
+    kayitlar = [
+        (damga - timedelta(minutes=30), damga + timedelta(milliseconds=220), -18.27),
+        (damga + timedelta(hours=1), damga + timedelta(hours=3), 4.0),
+    ]
+    for giris, cikis, pnl in kayitlar:
+        poz = Position(
+            bot_id=bot.id,
+            symbol="TESTUSDT",
+            side="BUY",
+            qty=Decimal("1"),
+            entry_price=Decimal("100"),
+            entry_time=giris,
+            stop=Decimal("90"),
+            initial_stop=Decimal("90"),
+            score_at_entry=Decimal("85"),
+            status="CLOSED",
+        )
+        api_session.add(poz)
+        await api_session.flush()
+        api_session.add(
+            Trade(
+                position_id=poz.id,
+                bot_id=bot.id,
+                symbol="TESTUSDT",
+                exit_price=Decimal("100"),
+                exit_time=cikis,
+                exit_reason="MANUAL" if pnl < 0 else "STOP",
+                pnl=Decimal(str(pnl)),
+                pnl_r=Decimal("-1") if pnl < 0 else Decimal("1"),
+                fees=Decimal("0.1"),
+                slippage_bps=1,
+                mfe=Decimal("0"),
+                mae=Decimal("0"),
+                hold_hours=1,
+            )
+        )
+    await api_session.commit()
+
+    karne = await trade_stats(api_session, bot.id)
+    assert karne["trades"] == 1, "tasfiye edilen eski pozisyon karneye girmemeli"
+    assert karne["total_pnl"] == pytest.approx(4.0)

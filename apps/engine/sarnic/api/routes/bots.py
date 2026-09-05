@@ -167,16 +167,20 @@ async def fleet(session: SessionDep, redis: RedisDep, user: CurrentUser) -> list
     # 7 gün) bu yana; kol başına bellekte ayrıştırılır.
     rebases = {b.id: _rebase_of(b, marathon_start) for b in bots}
     alt_sinir = min([now - timedelta(days=7), *rebases.values()])
+    # Pozisyonun AÇILIŞ zamanı da alınır: re-base tasfiyesi damgadan hemen sonra
+    # kaydedildiği için yalnız çıkışa bakan bir süzgeç eski dönemin zararını yeni
+    # kola yazıyordu (bot 5: +7,16 $ yerine +25,43 $).
     islemler = (
         await session.execute(
-            select(Trade.bot_id, Trade.pnl, Trade.pnl_r, Trade.exit_time)
+            select(Trade.bot_id, Trade.pnl, Trade.pnl_r, Trade.exit_time, Position.entry_time)
+            .join(Position, Position.id == Trade.position_id)
             .where(Trade.exit_time >= alt_sinir)
             .order_by(Trade.exit_time.desc())
         )
     ).all()
-    bot_islem: dict[int, list[tuple[float, float, datetime]]] = {}
-    for bot_id, pnl, pnl_r, at in islemler:
-        bot_islem.setdefault(bot_id, []).append((float(pnl), float(pnl_r or 0), at))
+    bot_islem: dict[int, list[tuple[float, float, datetime, datetime]]] = {}
+    for bot_id, pnl, pnl_r, at, giris in islemler:
+        bot_islem.setdefault(bot_id, []).append((float(pnl), float(pnl_r or 0), at, giris))
 
     gun_basi = now.replace(hour=0, minute=0, second=0, microsecond=0)
     out: list[FleetRowOut] = []
@@ -203,7 +207,8 @@ async def fleet(session: SessionDep, redis: RedisDep, user: CurrentUser) -> list
 
         # İşlem pencereleri: liste zaten yeniye göre sıralı.
         tum = bot_islem.get(bot.id, [])
-        since = [t for t in tum if t[2] >= rebase]
+        # Katılımdan beri: pozisyon damgadan SONRA açılmış olmalı (tasfiye hariç).
+        since = [t for t in tum if t[3] >= rebase]
         pnls = [t[0] for t in since]
         rs = [t[1] for t in since]
         wins = [p for p in pnls if p > 0]

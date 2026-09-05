@@ -292,7 +292,15 @@ async def trade_stats(session: AsyncSession, bot_id: int, *, since: datetime | N
         Trade.bot_id == bot_id
     )
     if since is not None:
-        stmt = stmt.where(Trade.exit_time >= since)
+        # Ölçüt POZİSYONUN AÇILIŞ zamanı, çıkışı değil. Re-base anında açık olan
+        # pozisyonlar tasfiye edilir ve tasfiye emri damgadan saniyenin beşte
+        # biri SONRA kaydedilir; çıkışa bakan bir süzgeç onları yeni döneme
+        # sokar. Ölçüldü (2026-09-05): bot 5'in karnesi +7,16 $ görünüyordu,
+        # maraton gerçeği +25,43 $ — eski sermayeyle (notional ~1527 $) açılmış
+        # bir pozisyonun 18,27 $'lık tasfiye zararı yeni kola yazılmıştı.
+        stmt = stmt.join(Position, Position.id == Trade.position_id).where(
+            Position.entry_time >= since
+        )
     rows = (await session.execute(stmt)).all()
     if not rows:
         return {
