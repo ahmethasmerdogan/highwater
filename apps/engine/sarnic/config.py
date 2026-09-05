@@ -22,8 +22,15 @@ class Settings(BaseSettings):
 
     # --- veritabanı ---
     database_url: str = "postgresql+asyncpg://sarnic:sarnic@localhost:5432/sarnic"
-    db_pool_size: int = 10
-    db_max_overflow: int = 20
+    # Havuz boyutu SÜREÇ BAŞINADIR ve filo 30+ sürece çıktı: 10+20 varsayılanı
+    # süreç başına 30 bağlantı demekti, 34 süreç × 30 = 1020 potansiyel bağlantı,
+    # Postgres tavanı ise 100. Ölçüldü (2026-09-05): 5432'ye 300 açık TCP, sunucu
+    # "sorry, too many clients already" veriyor; tam test paketinde 32 DB testi
+    # sessizce "PostgreSQL çalışmıyor" diye atlanıyordu ve yeni worker bağlanamıyordu.
+    # Bir worker tek asyncio döngüsünde sıralı iş yapar; 2+2 fazlasıyla yeter.
+    # API eşzamanlı istek aldığı için kendi ayarını env ile büyütür.
+    db_pool_size: int = 2
+    db_max_overflow: int = 2
 
     # --- redis ---
     redis_url: str = "redis://localhost:6379/0"
