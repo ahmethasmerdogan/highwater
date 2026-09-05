@@ -274,15 +274,26 @@ async def record_equity(
         snapshot.equity_peak = equity
 
 
-async def trade_stats(session: AsyncSession, bot_id: int) -> dict:
-    """Panel için özet — kazanma oranı, profit factor, ortalama R, çıkış dağılımı."""
-    rows = (
-        await session.execute(
-            select(Trade.pnl, Trade.pnl_r, Trade.exit_reason, Trade.fees).where(
-                Trade.bot_id == bot_id
-            )
-        )
-    ).all()
+async def trade_stats(session: AsyncSession, bot_id: int, *, since: datetime | None = None) -> dict:
+    """Panel için özet — kazanma oranı, profit factor, ortalama R, çıkış dağılımı.
+
+    `since` verilmezse botun **katılım damgası** (`config.rebased_at`) kullanılır.
+    Bu şart: re-base bir kolun sermayesini ve ölçüm penceresini sıfırlar; öncesindeki
+    işlemleri karneye katmak paneli yanıltır. Ölçüldü (2026-09-04, bot 1): filtresiz
+    karne 32 işlem / +483,41 $ / +1,264R gösteriyordu, maraton gerçeği 3 işlem /
+    +0,95 $ / −0,068R. Kullanıcı bu sayıya bakarak kol karşılaştırıyor.
+    """
+    if since is None:
+        bot = (await session.execute(select(Bot).where(Bot.id == bot_id))).scalar_one_or_none()
+        damga = (bot.config or {}).get("rebased_at") if bot is not None else None
+        if damga:
+            since = datetime.fromisoformat(damga)
+    stmt = select(Trade.pnl, Trade.pnl_r, Trade.exit_reason, Trade.fees).where(
+        Trade.bot_id == bot_id
+    )
+    if since is not None:
+        stmt = stmt.where(Trade.exit_time >= since)
+    rows = (await session.execute(stmt)).all()
     if not rows:
         return {
             "trades": 0,

@@ -405,3 +405,59 @@ async def test_canli_yolda_likidasyon_kapatir(api_session, test_database):
     assert kapatilan, "likidasyon seviyesinin altında pozisyon kapatılmalı"
     assert kapatilan[0][1] is ExitReason.LIQUIDATION
     assert "likidasyon" in kapatilan[0][2]
+
+
+async def test_trade_stats_katilim_damgasini_filtreler(api_session, test_database):
+    """Re-base bir kolun sermayesini ve ölçüm penceresini sıfırlar; öncesindeki
+    işlemler karneye girerse panel yanlış kol karşılaştırması gösterir
+    (bot 1: filtresiz +483,41 $ / +1,264R, maraton gerçeği +0,95 $ / −0,068R)."""
+    from datetime import UTC, datetime
+    from decimal import Decimal
+
+    from sarnic.bots.portfolio import trade_stats
+    from sarnic.db.models import Position, Trade
+    from tests.conftest import utc
+    from tests.test_api import make_bot
+
+    damga = datetime(2026, 8, 31, 22, 15, tzinfo=UTC)
+    bot, _ = await make_bot(api_session, "karne")
+    bot.config = {"rebased_at": damga.isoformat()}
+    for gun, pnl in ((25, 100.0), (30, 50.0), (9, -5.0)):  # ilk ikisi damgadan ÖNCE
+        poz = Position(
+            bot_id=bot.id,
+            symbol="TESTUSDT",
+            side="BUY",
+            qty=Decimal("1"),
+            entry_price=Decimal("100"),
+            entry_time=utc(2026, 8, 20, 0),
+            stop=Decimal("90"),
+            initial_stop=Decimal("90"),
+            score_at_entry=Decimal("85"),
+            status="CLOSED",
+        )
+        api_session.add(poz)
+        await api_session.flush()
+        api_session.add(
+            Trade(
+                position_id=poz.id,
+                bot_id=bot.id,
+                symbol="TESTUSDT",
+                exit_price=Decimal("100"),
+                exit_time=utc(2026, 8, gun, 12) if gun != 9 else utc(2026, 9, 1, 12),
+                exit_reason="STOP",
+                pnl=Decimal(str(pnl)),
+                pnl_r=Decimal("1") if pnl > 0 else Decimal("-1"),
+                fees=Decimal("0.1"),
+                slippage_bps=1,
+                mfe=Decimal("0"),
+                mae=Decimal("0"),
+                hold_hours=1,
+            )
+        )
+    await api_session.commit()
+
+    karne = await trade_stats(api_session, bot.id)
+    assert karne["trades"] == 1, "yalnız katılımdan sonraki işlem sayılmalı"
+    assert karne["total_pnl"] == pytest.approx(-5.0)
+    hepsi = await trade_stats(api_session, bot.id, since=utc(2026, 1, 1, 0))
+    assert hepsi["trades"] == 3, "açık istekle tüm geçmiş görülebilmeli"
