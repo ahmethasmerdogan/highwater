@@ -978,7 +978,14 @@ async def test_fleet_satiri_islem_istatistigi_ve_pencereleri_tasir(api_client, a
                 symbol=pos.symbol,
                 position_id=pos.id,
                 exit_price=Decimal("100"),
-                exit_time=simdi - timedelta(hours=1 + i),
+                # Gün başından sonra VE 24 saat içinde: aksi hâlde test gece
+                # yarısı civarında koşunca 'bugün' ile '24 saat' pencereleri
+                # ayrışır ve kod doğruyken kırılır.
+                exit_time=max(
+                    simdi - timedelta(hours=1 + i),
+                    simdi.replace(hour=0, minute=0, second=0, microsecond=0)
+                    + timedelta(minutes=1 + i),
+                ),
                 exit_reason="STOP",
                 pnl=Decimal(str(pnl)),
                 pnl_r=Decimal(str(pnl_r)),
