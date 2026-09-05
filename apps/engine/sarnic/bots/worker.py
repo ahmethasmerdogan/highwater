@@ -674,6 +674,25 @@ class BotWorker:
 
         if verdict.kill:
             await self._close_all(session, bot, snapshot, ExitReason.KILL_SWITCH)
+            # Kapanamayan pozisyon YETİM KALMAMALI. `_close_all` emir reddi ya da
+            # kısmi dolum yüzünden pozisyon bırakabilir; bot bu arada STOPPED
+            # yapıldıysa worker onu bir daha hiç yönetmez (stop taşınmaz, çıkış
+            # denenmez) — "bir sonraki tur" hiç gelmez. Elde pozisyon varken
+            # durum DEGRADED'de tutulur: giriş yok, yönetim sürer, her turda
+            # kapatma yeniden denenir.
+            if snapshot.positions:
+                kalan = ", ".join(p.symbol for p in snapshot.positions)
+                if bot.state == BotState.STOPPED:
+                    bot.state = BotState.DEGRADED
+                await self._emit(
+                    session,
+                    EventKind.LOG,
+                    level="CRITICAL",
+                    message=(
+                        f"kill switch {len(snapshot.positions)} pozisyonu kapatamadı ({kalan}); "
+                        "kol DEGRADED'de tutuluyor — giriş yok, kapatma yeniden denenecek."
+                    ),
+                )
         return verdict
 
     # ------------------------------------------------------------------ #
