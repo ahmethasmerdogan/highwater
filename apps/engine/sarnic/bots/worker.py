@@ -1103,6 +1103,21 @@ class BotWorker:
         # eliyor mu" sorusunun elle metin ayrıştırmadan cevaplanabilmesi
         # (KAR-TESHISI §9 bu analizi bot_events mesajlarından yapmak zorunda kaldı).
         izler: list[EntryDecision] = []
+        havuz = [
+            s
+            for d in definition.entry.directions()
+            for s in (ctx.scores if d > 0 else ctx.short_scores).values()
+        ]
+        if havuz:
+            izler.append(
+                EntryDecision(
+                    bot_id=bot.id,
+                    bar_time=ctx.bar_time,
+                    stage="havuz",
+                    adet=len(havuz),
+                    percentiles=_yuzdelik_ozeti(ctx, havuz),
+                )
+            )
         elenen = [
             s
             for d in definition.entry.directions()
@@ -1130,7 +1145,7 @@ class BotWorker:
         sizing = SizingEngine(definition.sizing_params())
         butce_red_sayisi = 0
 
-        for candidate, d in candidates:
+        for sira, (candidate, d) in enumerate(candidates):
             if candidate.symbol in snapshot.symbols:
                 continue
             if len(snapshot.positions) >= definition.entry.max_positions:
@@ -1148,6 +1163,21 @@ class BotWorker:
                     definition.entry.max_positions,
                 )
                 if victim is None:
+                    kalan = [c for c, _ in candidates[sira:]]
+                    izler.append(
+                        EntryDecision(
+                            bot_id=bot.id,
+                            bar_time=ctx.bar_time,
+                            stage="slot",
+                            adet=len(kalan),
+                            rejected_by="slot",
+                            reject_detail=(
+                                f"portföy dolu ({definition.entry.max_positions}) ve "
+                                "rotasyon eşiği aşılmadı"
+                            ),
+                            percentiles=_yuzdelik_ozeti(ctx, kalan),
+                        )
+                    )
                     break
                 target = snapshot.find(victim)
                 if target is not None:
@@ -1177,6 +1207,16 @@ class BotWorker:
                         f"{'stop' if stop is None else 'fiyat'} hesaplanamadı "
                         f"({definition.timeframe} çerçevesi)"
                     ),
+                )
+                izler.append(
+                    _karar_izi(
+                        bot,
+                        ctx,
+                        candidate,
+                        d,
+                        "veri",
+                        neden=("stop" if stop is None else "fiyat") + " hesaplanamadı",
+                    )
                 )
                 continue
 
@@ -1246,6 +1286,22 @@ class BotWorker:
                             ),
                         )
                         izler.append(_karar_izi(bot, ctx, candidate, d, "boyut", decision=decision))
+                        kalan = [c for c, _ in candidates[sira + 1 :]]
+                        if kalan:
+                            izler.append(
+                                EntryDecision(
+                                    bot_id=bot.id,
+                                    bar_time=ctx.bar_time,
+                                    stage="boyut",
+                                    adet=len(kalan),
+                                    rejected_by="bütçe",
+                                    reject_detail=(
+                                        "bütçe tükendi, kalan adaylar denenmedi: "
+                                        + decision.reject_reason
+                                    ),
+                                    percentiles=_yuzdelik_ozeti(ctx, kalan),
+                                )
+                            )
                         await self._karar_izini_yaz(session, izler)
                         return
                 izler.append(_karar_izi(bot, ctx, candidate, d, "boyut", decision=decision))
@@ -1614,7 +1670,16 @@ def _yuzdelik_ozeti(ctx: BarContext, skorlar: list) -> dict:
     return {k: round(toplam[k] / sayi[k], 2) for k in toplam if sayi[k]}
 
 
-def _karar_izi(bot, ctx: BarContext, skor: ScoreResult, yon: int, asama: str, *, decision=None):
+def _karar_izi(
+    bot,
+    ctx: BarContext,
+    skor: ScoreResult,
+    yon: int,
+    asama: str,
+    *,
+    decision=None,
+    neden: str | None = None,
+):
     """Tek adayın karar izi; reddedildiyse sebebi ve bağlayan kısıtı taşır."""
     baglayan = hedef = son = oran = None
     reddedildi = decision is not None and not decision.accepted
@@ -1633,8 +1698,10 @@ def _karar_izi(bot, ctx: BarContext, skor: ScoreResult, yon: int, asama: str, *,
         stage=asama,
         score=Decimal(str(round(skor.score, 2))),
         percentiles=_yuzdelikler(skor),
-        rejected_by=(decision.reject_reason.split(":")[0][:48] if reddedildi else None),
-        reject_detail=(decision.reject_reason if reddedildi else None),
+        rejected_by=(
+            decision.reject_reason.split(":")[0][:48] if reddedildi else (asama if neden else None)
+        ),
+        reject_detail=(decision.reject_reason if reddedildi else neden),
         target_notional=Decimal(str(round(hedef, 8))) if hedef else None,
         final_notional=Decimal(str(round(son, 8))) if son else None,
         binding_constraint=baglayan[:32] if baglayan else None,

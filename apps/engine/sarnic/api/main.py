@@ -19,7 +19,17 @@ from sqlalchemy import func, select, text, update
 from starlette.responses import Response
 
 from sarnic.api.deps import CurrentUser, RedisDep, SessionDep, close_redis, get_redis
-from sarnic.api.routes import admin, auth, bots, portfolio, scores, social, strategies, symbols
+from sarnic.api.routes import (
+    admin,
+    auth,
+    bots,
+    kontrol,
+    portfolio,
+    scores,
+    social,
+    strategies,
+    symbols,
+)
 from sarnic.api.routes import universe as universe_routes
 from sarnic.api.ws import hub
 from sarnic.api.ws import router as ws_router
@@ -125,6 +135,7 @@ def create_app() -> FastAPI:
         strategies.router,
         social.router,
         admin.router,
+        kontrol.router,
         ws_router,
     ):
         app.include_router(router)
