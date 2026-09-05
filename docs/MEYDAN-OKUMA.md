@@ -1721,6 +1721,10 @@ Düzeltme: worker havuzu süreç başına 2+2, API systemd drop-in ile 8+8. Bir 
 tek asyncio döngüsünde sıralı iş yapar. **Sonuç: 300 → 27 bağlantı** (29 worker
 koşarken). Test: süreç başına 6'dan fazla bağlantı isteyen ayar kırmızı yanar.
 
+Doğrulandı: düzeltme sonrası tam paket **615 geçti, 0 atlandı** (öncesi 582 geçti,
+32 atlandı). "582 test geçiyor" raporu yanıltıcıydı; kapsam boşluğu kırmızı testten
+tehlikeli, çünkü yeşil görünüyor.
+
 Bu, günün dördüncü sessiz arızası. Ortak yanları: sistem çalışıyor görünürken bir
 katman kapalıydı — nabız eşiği worker'ları öldürüyordu, önbellek BIST kolunu
 donduruyordu, boyutlandırma ölçülen tek kenarı eliyordu, bağlantı tavanı testleri
