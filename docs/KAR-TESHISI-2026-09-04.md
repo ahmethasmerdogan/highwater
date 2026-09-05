@@ -277,3 +277,18 @@ değişiyor. Kesitsel yüzdelik mimaride "80" mutlak bir seçicilik değil, ağ�
 vektörüne bağlı bir sayı. Kolları aynı kapı sayısıyla kurmak onları karşılaştırılabilir
 yapmıyor — tersine, farklı seçicilikte oldukları için sonuçları kıyaslanamaz. Kolların
 kapısı puan değil **hedef geçiş oranı** (örneğin kesitin %1'i) üzerinden tanımlanmalı.
+
+### §10 eki: düzelticiler ölçüldü (35.995 satır, 397 bar)
+
+| Düzeltici | 4s IC | t | 24s IC | t | aktif olduğu satır |
+|---|---|---|---|---|---|
+| formasyon (`pattern`) | +0,004 | +0,8 | **−0,011** | **−2,6** | %99,0 |
+| mum (`candle`) | −0,012 | −2,1 | −0,011 | −1,8 | %30,8 |
+
+Formasyon düzelticisi 4 saatte sıfır, 24 saatte **negatif ve anlamlı**. Seçim kuralı
+karşılaştırması da aynı yönde: düzelticili puanla top-4 medyan +15,3 bps, düzelticileri
+çıkarılmış ham puanla **+16,8 bps**. Fark küçük ama işaret tutarlı — girişlerin %44'ünü
+tek başına açan bir katkının öngörü gücü yok.
+
+Ön-kayıt: **D1** kolu (formasyon ve mum düzelticileri kapalı, kalan her şey kontrolle
+aynı) kuruldu. 14 gün, aynı kabul kuralı.
