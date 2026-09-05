@@ -279,6 +279,39 @@ class EntryDecision(Base):
     __table_args__ = (Index("ix_entry_dec_bot_bar", "bot_id", "bar_time"),)
 
 
+class MeasurementInvalidation(Base):
+    """Geçersizlik geriye işler — DESIGN-V4 §2 kural 4.
+
+    Bir ölçüm sonradan geçersiz ilan edilebilir: veri kaynağı bozuk çıkar,
+    bir bayrak açıkken üretildiği anlaşılır, ya da hesabın kendisi yanlış
+    bulunur. O ölçüm silinmez; **üstü çizili durur ve sebebi yazılıdır.**
+
+    Silmek yerine çizmenin sebebi ölçülmüş bir olaydır: 2026-09-04'te
+    kalibrasyon rakamı beş ayrı ölçeği tek dağılım sayıyordu ve o rakam
+    haftalarca kararlara girdi. Kayıt silinseydi hangi kararın hangi yanlış
+    sayıya dayandığı bir daha bulunamazdı.
+
+    `scope` + `key` neyin geçersiz olduğunu söyler (`kalibrasyon` + config_hash,
+    `hipotez` + bot_id, `defter` + bot_id). Aralık boşsa geçersizlik o anahtarın
+    TÜM geçmişini kapsar.
+    """
+
+    __tablename__ = "measurement_invalidations"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    scope: Mapped[str] = mapped_column(String(24), index=True)
+    key: Mapped[str] = mapped_column(String(64), index=True)
+    period_start: Mapped[datetime | None] = mapped_column(TimestampTZ, default=None)
+    period_end: Mapped[datetime | None] = mapped_column(TimestampTZ, default=None)
+    reason: Mapped[str] = mapped_column(Text)
+    created_by: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), default=None
+    )
+    created_at: Mapped[datetime] = mapped_column(TimestampTZ, server_default=func.now())
+
+    __table_args__ = (Index("ix_gecersizlik_kapsam", "scope", "key"),)
+
+
 class Score(Base):
     __tablename__ = "scores"
 

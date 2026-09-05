@@ -20,16 +20,17 @@ import math
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import bindparam, func, select, text
 
-from sarnic.api.deps import CurrentUser, RedisDep, SessionDep
+from sarnic.api.deps import CurrentUser, RedisDep, RequireAdmin, SessionDep
 from sarnic.core.enums import BotState, ExitReason, PositionStatus
 from sarnic.db.models import (
     Bot,
     BotEvent,
     CorrelationCluster,
     EntryDecision,
+    MeasurementInvalidation,
     Position,
     Score,
     Trade,
@@ -672,3 +673,104 @@ async def hipotez(
             for k, v in MEKANIZMA_OLCULERI.items()
         ],
     }
+
+
+# --------------------------------------------------------------------------- #
+#  Geçersizlik — geriye işleyen ölçüm iptalleri
+# --------------------------------------------------------------------------- #
+KAPSAMLAR = ("kalibrasyon", "hipotez", "huni", "defter")
+
+
+@router.get("/gecersizlik")
+async def gecersizlikler(
+    session: SessionDep,
+    user: CurrentUser,
+    scope: str | None = None,
+    key: str | None = None,
+) -> list[dict]:
+    """Geçerli geçersizlik ilanları — DESIGN-V4 §2 kural 4.
+
+    Panel her sayıyı basmadan önce buraya bakar: ilan varsa sayı **silinmez**,
+    üstü çizili basılır ve sebebi yanına yazılır. Silmek yerine çizmenin sebebi
+    ölçülmüş bir olaydır — 2026-09-04'te kalibrasyon rakamı beş ayrı ölçeği tek
+    dağılım sayıyordu ve o rakam haftalarca kararlara girdi. Kayıt silinseydi
+    hangi kararın hangi yanlış sayıya dayandığı bir daha bulunamazdı.
+    """
+    kosul = []
+    if scope:
+        kosul.append(MeasurementInvalidation.scope == scope)
+    if key:
+        kosul.append(MeasurementInvalidation.key == key)
+    satirlar = (
+        (
+            await session.execute(
+                select(MeasurementInvalidation)
+                .where(*kosul)
+                .order_by(MeasurementInvalidation.created_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        {
+            "id": r.id,
+            "scope": r.scope,
+            "key": r.key,
+            "period_start": r.period_start.isoformat() if r.period_start else None,
+            "period_end": r.period_end.isoformat() if r.period_end else None,
+            "reason": r.reason,
+            "created_at": r.created_at.isoformat(),
+        }
+        for r in satirlar
+    ]
+
+
+@router.post("/gecersizlik", status_code=status.HTTP_201_CREATED)
+async def gecersiz_ilan_et(
+    govde: dict,
+    session: SessionDep,
+    admin: RequireAdmin,
+) -> dict:
+    """Bir ölçümü geriye dönük geçersiz ilan eder.
+
+    Panelin tek yazma yolu budur ve bilinçlidir: kol başlatma, emir verme ve
+    ayar düzenleme kaldırıldı (30 gün müdahale edilmeyecek bir sistemde o
+    düğmeler deneyin bozulma yoludur), ama bir ölçümün yanlış olduğunu ilan
+    etmek müdahale değil **ölçüm disiplinidir**.
+
+    Sebep zorunlu ve en az 20 karakter: "bozuk" diye bir gerekçe, gerekçe
+    değildir. Aralık verilmezse ilan o anahtarın tüm geçmişini kapsar.
+    """
+    kapsam = str(govde.get("scope") or "")
+    anahtar = str(govde.get("key") or "")
+    sebep = str(govde.get("reason") or "").strip()
+    if kapsam not in KAPSAMLAR:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, f"scope şunlardan biri olmalı: {', '.join(KAPSAMLAR)}"
+        )
+    if not anahtar:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "key zorunlu (config_hash ya da bot_id).")
+    if len(sebep) < 20:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Gerekçe en az 20 karakter olmalı. Geçersizlik kalıcı bir kayıttır; "
+            "'bozuk' diye bir gerekçe gerekçe değildir.",
+        )
+
+    def _zaman(deger) -> datetime | None:
+        if not deger:
+            return None
+        return datetime.fromisoformat(str(deger).replace("Z", "+00:00"))
+
+    kayit = MeasurementInvalidation(
+        scope=kapsam,
+        key=anahtar,
+        period_start=_zaman(govde.get("period_start")),
+        period_end=_zaman(govde.get("period_end")),
+        reason=sebep,
+        created_by=admin.id,
+    )
+    session.add(kayit)
+    await session.commit()
+    return {"id": kayit.id, "scope": kapsam, "key": anahtar, "reason": sebep}

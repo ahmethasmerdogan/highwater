@@ -912,3 +912,22 @@ export interface HipotezTahtasi {
   kartlar: HipotezKarti[];
   olculer: { anahtar: string; ad: string; kaynak: string; alan: string }[];
 }
+
+/**
+ * Geçersizlik ilanı — DESIGN-V4 §2 kural 4: geçersizlik geriye işler.
+ *
+ * Bir ölçüm sonradan geçersiz ilan edilebilir. Kayıt silinmez; ekranda **üstü
+ * çizili** durur ve sebebi yazılıdır. `period_*` boşsa ilan o anahtarın tüm
+ * geçmişini kapsar.
+ */
+export interface Gecersizlik {
+  id: number;
+  /** kalibrasyon | hipotez | huni | defter */
+  scope: string;
+  /** config_hash ya da bot_id */
+  key: string;
+  period_start: string | null;
+  period_end: string | null;
+  reason: string;
+  created_at: string;
+}

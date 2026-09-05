@@ -16,8 +16,8 @@
 
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, type Calibration, type ScoreConfig } from "@/lib/api";
-import { Bolum, Izgara, Muhakeme } from "@/v4/kutu";
+import { api, type Calibration, type Gecersizlik, type ScoreConfig } from "@/lib/api";
+import { Bolum, Etiket, Izgara, Muhakeme } from "@/v4/kutu";
 import { adet, Damga, Olcum, sayi, Sessizlik } from "@/v4/olcum";
 
 const UFUKLAR = ["4h", "24h", "72h"];
@@ -92,7 +92,7 @@ function DesilCubugu({ veri }: { veri: Calibration }) {
 
 export default function KanitEkrani() {
   const [ufuk, setUfuk] = useState("24h");
-  const [kesit, setKesit] = useState<string | null>(null);
+  const [kesit, setKesit] = useState<{ hash: string; dilim: string } | null>(null);
 
   const configs = useQuery({
     queryKey: ["kesitler"],
@@ -101,17 +101,32 @@ export default function KanitEkrani() {
 
   // Kesit seçici zorunlu: seçim yapılmadan hiçbir rakam basılmaz.
   useEffect(() => {
-    if (!kesit && configs.data?.length) setKesit(configs.data[0].config_hash);
+    if (!kesit && configs.data?.length) {
+      setKesit({ hash: configs.data[0].config_hash, dilim: configs.data[0].timeframe });
+    }
   }, [kesit, configs.data]);
 
-  const kalibrasyon = useQuery({
-    queryKey: ["kalibrasyon", ufuk, kesit],
-    queryFn: () => api.get<Calibration>("/calibration", { horizon: ufuk, config_hash: kesit }),
+  // Geçersizlik geriye işler: bu kesit için bir ilan varsa rakamlar üstü
+  // çizili basılır ve sebebi yanlarında durur (§2 kural 4).
+  const gecersizlik = useQuery({
+    queryKey: ["gecersizlik", "kalibrasyon", kesit?.hash],
+    queryFn: () =>
+      api.get<Gecersizlik[]>("/kontrol/gecersizlik", { scope: "kalibrasyon", key: kesit?.hash }),
     enabled: Boolean(kesit),
   });
 
-  const secili = configs.data?.find((c) => c.config_hash === kesit);
+  const kalibrasyon = useQuery({
+    queryKey: ["kalibrasyon", ufuk, kesit?.hash],
+    queryFn: () => api.get<Calibration>("/calibration", { horizon: ufuk, config_hash: kesit?.hash }),
+    enabled: Boolean(kesit),
+  });
+
+  const secili = configs.data?.find(
+    (c) => c.config_hash === kesit?.hash && c.timeframe === kesit?.dilim,
+  );
   const k = kalibrasyon.data;
+  const iptal = gecersizlik.data?.[0] ?? null;
+  const iptalSebebi = iptal ? iptal.reason : null;
 
   return (
     <>
@@ -163,11 +178,11 @@ export default function KanitEkrani() {
             </thead>
             <tbody>
               {configs.data.map((c) => {
-                const aktif = c.config_hash === kesit;
+                const aktif = c.config_hash === kesit?.hash && c.timeframe === kesit?.dilim;
                 return (
                   <tr
                     key={`${c.config_hash}-${c.timeframe}`}
-                    onClick={() => setKesit(c.config_hash)}
+                    onClick={() => setKesit({ hash: c.config_hash, dilim: c.timeframe })}
                     style={{
                       cursor: "pointer",
                       background: aktif ? "var(--v4-civit-zemin)" : undefined,
@@ -210,7 +225,9 @@ export default function KanitEkrani() {
             baslik="öngörü gücü"
             soru="Puan ile ileri getiri arasında ölçülebilir bir ilişki var mı?"
             sag={
-              k.sufficient ? (
+              iptal ? (
+                <Damga tur="bozuk">geçersiz ilan edildi</Damga>
+              ) : k.sufficient ? (
                 <Damga tur="kanit">örneklem yeterli</Damga>
               ) : (
                 <Damga tur="supheli">örneklem yetersiz</Damga>
@@ -221,9 +238,10 @@ export default function KanitEkrani() {
               <Olcum
                 etiket="Spearman"
                 deger={sayi(k.spearman, 4)}
-                kunye={`n=${adet(k.n)} · ${adet(k.span_days)} gün · ${secili?.timeframe ?? "?"} · ${kesit.slice(0, 8)}`}
+                kunye={`n=${adet(k.n)} · ${adet(k.span_days)} gün · ${secili?.timeframe ?? "?"} · ${kesit.hash.slice(0, 8)}`}
                 durum="kanit"
                 olcek="duvar"
+                gecersiz={iptalSebebi}
               />
               <Olcum
                 etiket="kapı kenarı"
@@ -231,6 +249,7 @@ export default function KanitEkrani() {
                 kunye={`n=${adet(k.gate_n)} · ${adet(k.gate_days)} gün · havuza göre fark`}
                 durum="kanit"
                 olcek="duvar"
+                gecersiz={iptalSebebi}
               />
               <Olcum
                 etiket="kapı kenarı t (gün-kümelenmiş)"
@@ -256,6 +275,25 @@ export default function KanitEkrani() {
             <div className="px-4 pb-4">
               <Muhakeme>{k.verdict}</Muhakeme>
             </div>
+            {iptal ? (
+              <div
+                className="px-4 py-3"
+                style={{
+                  borderTop: "1px solid var(--v4-cizgi)",
+                  background: "var(--v4-kirmizi-zemin)",
+                }}
+              >
+                <Etiket>geçersizlik ilanı</Etiket>
+                <Muhakeme>{iptal.reason}</Muhakeme>
+                <div className="v4-kunye mt-1">
+                  ilan {new Date(iptal.created_at).toLocaleString("tr-TR")}
+                  {iptal.period_end
+                    ? ` · kapsam ${new Date(iptal.period_end).toLocaleDateString("tr-TR")} öncesi`
+                    : " · tüm geçmiş"}
+                  {" · kayıt silinmedi, üstü çizildi"}
+                </div>
+              </div>
+            ) : null}
           </Bolum>
 
           <Bolum

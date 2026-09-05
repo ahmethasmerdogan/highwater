@@ -393,3 +393,53 @@ async def test_acik_bar_sayaci_her_dilimi_tanir(api_client, auth, api_session, t
         r for r in body["sayaclar"]["beklendi_olmadi"] if r["ad"] == "açık bar kapalı yazıldı"
     )
     assert satir["adet"] == 1
+
+
+# --------------------------------------------------------------------------- #
+#  Geçersizlik — geriye işleyen ölçüm iptalleri
+# --------------------------------------------------------------------------- #
+async def test_gecersizlik_kayit_birakir_silmez(api_client, auth, test_database):
+    """Geçersiz ilan edilen ölçüm SİLİNMEZ; kayıt kalır ve sebebi taşır.
+
+    2026-09-04'te kalibrasyon rakamı beş ayrı ölçeği tek dağılım sayıyordu ve
+    o rakam haftalarca kararlara girdi. Kayıt silinseydi hangi kararın hangi
+    yanlış sayıya dayandığı bir daha bulunamazdı."""
+    cevap = await api_client.post(
+        "/kontrol/gecersizlik",
+        headers=auth,
+        json={
+            "scope": "kalibrasyon",
+            "key": "5a21a501e5",
+            "reason": "Kesit beş ayrı ölçeği ve KISA yön puanlarını tek dağılım sayıyordu.",
+            "period_end": "2026-09-05T00:00:00+00:00",
+        },
+    )
+    assert cevap.status_code == 201
+
+    liste = (
+        await api_client.get("/kontrol/gecersizlik", headers=auth, params={"scope": "kalibrasyon"})
+    ).json()
+    assert len(liste) == 1
+    assert liste[0]["key"] == "5a21a501e5"
+    assert liste[0]["period_end"].startswith("2026-09-05")
+    assert "tek dağılım" in liste[0]["reason"]
+
+
+async def test_gecersizlik_gerekcesiz_kabul_edilmez(api_client, auth, test_database):
+    """'Bozuk' diye bir gerekçe, gerekçe değildir."""
+    cevap = await api_client.post(
+        "/kontrol/gecersizlik",
+        headers=auth,
+        json={"scope": "kalibrasyon", "key": "abc", "reason": "bozuk"},
+    )
+    assert cevap.status_code == 400 and "20 karakter" in cevap.json()["detail"]
+
+    # Tanınmayan kapsam da sessizce kabul edilmez.
+    cevap = await api_client.post(
+        "/kontrol/gecersizlik",
+        headers=auth,
+        json={"scope": "uydurma", "key": "abc", "reason": "yeterince uzun bir gerekçe metni"},
+    )
+    assert cevap.status_code == 400
+
+    assert (await api_client.get("/kontrol/gecersizlik", headers=auth)).json() == []
