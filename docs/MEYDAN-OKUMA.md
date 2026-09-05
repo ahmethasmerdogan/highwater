@@ -1765,3 +1765,30 @@ açılış zamanı.
 
 Bu, günün beşinci ve altıncı sessiz arızası. Hepsinin ortak yanı aynı:
 sistem çalışıyor görünüyordu, hiçbiri hata vermiyordu, hepsi ölçümle bulundu.
+
+## Ölçüm araçlarının kendisi bozukmuş — 2026-09-05
+
+Denetimin doğrulanmamış bulgularından ikisi elle sınandı; ikisi de **ölçüm
+altyapısını** vuruyordu, yani bugüne kadarki kararların dayanağını.
+
+**1. Backtest ardışık-zarar kesicisi sonsuz kilit yapıyordu.** Blok konduğunda
+`_streak(trades)` tüm geçmişi sayıyor; blok bitince yeni işlem üretilemediği
+için sayaç düşmüyor ve blok yeniden konuyor. Bir koşuda 1260 barın 943'ü (%75)
+ölü, özsermaye eğrisi tam sabit, `flags` boş — rapor bunu hiç söylemiyordu.
+Getiri, Sharpe, CAGR ve max-DD o ölü eğri üzerinden hesaplanıyordu. Canlı yol
+bunu baştan doğru yapıyordu (`consecutive_losses(since=entries_blocked_until)`:
+çekilmiş ceza seriyi affeder); backtest'te af yoktu — **bozulmaz kural 1
+ihlali**. Düzeltildi ve testlendi. **H şeridi tarama sonuçları bu hatayla
+üretildiği için geçersiz sayıldı; tarama düzeltilmiş motorla yeniden başlatıldı.**
+
+**2. Kalibrasyon beş ayrı puan ölçeğini tek havuzda karıştırıyordu.**
+`backfill_observations` yalnız `timeframe` süzüyor, `/calibration` yalnız
+`bar_time`. Ölçüldü (4 saatlik ufuk): havuz Spearman +0,026 iken kollar tek tek
++0,006 / +0,015 / +0,045 / +0,043 ve **kısa kol −0,031**; üst desilin %59'u tek
+bir kolun puanıydı. Kısa puanda yüksek değer tanım gereği DÜŞÜŞ beklentisidir
+ama hedef uzun ileri getiridir. Panelin "dürüstlük organı" yanlış okutuyordu.
+`/calibration` artık tek `config_hash` üzerinden hesaplıyor.
+
+**Not — kendi ölçümlerim etkilenmedi:** §6/§7/§9'daki IC ve seçim ölçümlerinde
+`config_hash` baştan süzülmüştü (ana ayar seçilerek). Etkilenen, panelin
+gösterdiği kalibrasyon ve H şeridi backtest sıralamasıydı.
