@@ -188,3 +188,128 @@ async def test_iz_yazmak_karar_yolunu_kesmez(api_session, test_database):
 
     bos = (await api_session.execute(select(EntryDecision))).scalars().all()
     assert bos == []
+
+
+# --------------------------------------------------------------------------- #
+#  Hipotez tahtası
+# --------------------------------------------------------------------------- #
+ON_KAYIT = {
+    "hipotez": "Doluluk kapısı sistemin ölçtüğü kenarı eliyor.",
+    "kontrol_bot_id": None,  # fixture doldurur
+    "tek_degisken": "min_fill_ratio 0,25 → 0,00",
+    "mekanizma": {"olcu": "acilan_sakinlik", "hedef": 60.0, "gereken_n": 4, "yon": "artis"},
+    "curutme": "sakinlik 60'a çıkmazsa eleme başka yerden geliyordur",
+    "karar_gunu": "2026-09-19",
+}
+
+
+async def test_hipotez_mekanizmayi_kol_defterinden_ayirir(
+    api_session, api_client, auth, test_database
+):
+    """Hüküm mekanizmadan okunur, kol defterinden değil: R beklentisi bugünkü
+    hızda +0,05R'yi 149 yılda ayırt ediyor (MEYDAN-OKUMA 2026-09-05)."""
+    kontrol, _ = await make_bot(api_session, "kontrol")
+    kol, _ = await make_bot(api_session, "K1")
+    kol.config = {"deney": True, "on_kayit": {**ON_KAYIT, "kontrol_bot_id": kontrol.id}}
+    bar = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
+    api_session.add_all(
+        [
+            *[
+                _iz(
+                    kontrol.id,
+                    bar,
+                    "acildi",
+                    adet=1,
+                    symbol=f"K{i}",
+                    percentiles={"atr_pct": 35.0 + i},
+                )
+                for i in range(5)
+            ],
+            *[
+                _iz(
+                    kol.id, bar, "acildi", adet=1, symbol=f"D{i}", percentiles={"atr_pct": 70.0 + i}
+                )
+                for i in range(5)
+            ],
+        ]
+    )
+    await api_session.commit()
+
+    body = (await api_client.get("/kontrol/hipotez", headers=auth)).json()
+    kart = {k["bot_id"]: k for k in body["kartlar"]}
+
+    m = kart[kol.id]["mekanizma"]
+    assert m["deger"] == 72.0 and m["kontrol_deger"] == 37.0
+    assert m["n"] == 5 and m["gereken_n"] == 4
+    assert m["t"] > 2, "kesitsel kanal yüksek güçlü — t büyük çıkmalı"
+    assert kart[kol.id]["damga"] == "HEDEFE ULAŞTI"
+
+    assert kart[kol.id]["sonuc"]["n"] == 0 and kart[kol.id]["sonuc"]["deger"] is None
+    assert kart[kontrol.id]["damga"] == "KONTROL"
+
+
+async def test_hipotez_mekanizmasiz_kolu_gucsuz_damgalar(
+    api_session, api_client, auth, test_database
+):
+    """Saf kaldıraç kolunun mekanizma ölçüsü yoktur; sonuçlanamayacağını
+    baştan ilan eder (DESIGN-V4 §5)."""
+    kol, _ = await make_bot(api_session, "A1")
+    kol.config = {"deney": True, "on_kayit": {**ON_KAYIT, "mekanizma": {}}}
+    await api_session.commit()
+
+    body = (await api_client.get("/kontrol/hipotez", headers=auth)).json()
+    kart = next(k for k in body["kartlar"] if k["bot_id"] == kol.id)
+    assert kart["damga"] == "GÜÇSÜZ" and kart["mekanizma"] is None
+    assert kart["on_kayit"]["muhur_hash"], "mühür her ön-kayıtta hesaplanır"
+
+
+async def test_hipotez_on_kayitsiz_deney_kolunu_gizlemez(
+    api_session, api_client, auth, test_database
+):
+    """Sessizlik bir durumdur: ön-kaydı olmayan deney kolu listede kalır."""
+    kol, _ = await make_bot(api_session, "kayıtsız")
+    kol.config = {"deney": True}
+    await api_session.commit()
+
+    body = (await api_client.get("/kontrol/hipotez", headers=auth)).json()
+    kart = next(k for k in body["kartlar"] if k["bot_id"] == kol.id)
+    assert kart["damga"] == "ÖN-KAYIT YOK" and kart["on_kayit"] is None
+
+
+async def test_hipotez_kirik_muhru_bildirir(api_session, api_client, auth, test_database):
+    """Mühür kırılırsa toplanan kanıt geçersizdir; kart bunu söylemek zorunda."""
+    kol, _ = await make_bot(api_session, "mühür")
+    kol.config = {"deney": True, "on_kayit": {**ON_KAYIT, "muhur_hash": "eskimuhur000000"}}
+    await api_session.commit()
+
+    body = (await api_client.get("/kontrol/hipotez", headers=auth)).json()
+    kart = next(k for k in body["kartlar"] if k["bot_id"] == kol.id)
+    assert kart["on_kayit"]["muhur_kirik"] is True
+
+
+async def test_kisa_payi_olcusu_sakinligi_bozmaz(api_session, api_client, auth, test_database):
+    """KISA yönlü açılış, ölçü 'kisa_payi' DEĞİLKEN de kendi yüzdeliğiyle
+    sayılmalı. Üçlü işleç önceliği yüzünden her kısa açılış 100 dönüyordu."""
+    kontrol, _ = await make_bot(api_session, "uzun-kontrol")
+    kol, _ = await make_bot(api_session, "S2")
+    kol.config = {"deney": True, "on_kayit": {**ON_KAYIT, "kontrol_bot_id": kontrol.id}}
+    bar = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
+    api_session.add_all(
+        [
+            _iz(
+                kol.id,
+                bar,
+                "acildi",
+                adet=1,
+                symbol=f"S{i}",
+                direction=-1,
+                percentiles={"atr_pct": 40.0},
+            )
+            for i in range(5)
+        ]
+    )
+    await api_session.commit()
+
+    body = (await api_client.get("/kontrol/hipotez", headers=auth)).json()
+    kart = next(k for k in body["kartlar"] if k["bot_id"] == kol.id)
+    assert kart["mekanizma"]["deger"] == 40.0, "kısa yön sakinlik ölçüsünü ezmemeli"

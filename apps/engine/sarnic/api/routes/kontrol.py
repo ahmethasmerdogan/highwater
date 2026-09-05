@@ -425,3 +425,234 @@ async def nobet(
         },
         "acik_pozisyon": await say(Position, [Position.status == PositionStatus.OPEN]),
     }
+
+
+# --------------------------------------------------------------------------- #
+#  Hipotez tahtası — ön-kayıt + mekanizma ölçüsü
+# --------------------------------------------------------------------------- #
+#: Mekanizma ölçüleri (DESIGN-V4 §5). Hepsi **kesitsel**: örneklem günde
+#: yüzlerce karar, t = +5 mertebesinde cevap. Kol defteri (R beklentisi)
+#: ölçüldü ki bugünkü hızda +0,05R'yi 149 yılda ayırt ediyor — hüküm oradan
+#: okunamaz. Her ölçü kol başına bir **gözlem listesi** döndürür; ortalamanın
+#: yanında t hesaplanabilsin diye.
+MEKANIZMA_OLCULERI: dict[str, tuple[str, str, str]] = {
+    # anahtar: (insan adı, kaynak, kaynak alanı)
+    "acilan_sakinlik": ("açılan pozisyonun sakinlik yüzdeliği", "iz", "atr_pct"),
+    "acilan_sikisma": ("açılan pozisyonun sıkışma yüzdeliği", "iz", "bb_width"),
+    "acilan_trend": ("açılan pozisyonun trend yüzdeliği", "iz", "trend_1d"),
+    "acilan_akis": ("açılan pozisyonun alıcı akışı yüzdeliği", "iz", "taker_buy_ratio"),
+    "kisa_payi": ("açılan pozisyonların kısa oranı", "iz", "yon"),
+    "tutma_saati": ("kapanan pozisyonun tutma süresi (saat)", "islem", "sure"),
+    "kismi_cikis_payi": ("kısmi kâr alınan pozisyon oranı", "pozisyon", "partial"),
+}
+
+
+async def _mekanizma_gozlemleri(session, olcu: str, since: datetime) -> dict[int, list[float]]:
+    """Kol başına mekanizma gözlemleri — her karar/işlem bir gözlem.
+
+    Ortalamanın yanında t hesaplanabilsin diye ham liste döner: kol defterinin
+    aksine bu kanal günde yüzlerce gözlem üretir ve hüküm ondan okunur.
+    """
+    tanim = MEKANIZMA_OLCULERI.get(olcu)
+    if tanim is None:
+        return {}
+    _, kaynak, alan = tanim
+    out: dict[int, list[float]] = {}
+
+    if kaynak == "iz":
+        satirlar = (
+            await session.execute(
+                select(
+                    EntryDecision.bot_id, EntryDecision.percentiles, EntryDecision.direction
+                ).where(EntryDecision.stage == "acildi", EntryDecision.bar_time >= since)
+            )
+        ).all()
+        for bot_id, pct, yon in satirlar:
+            deger = (100.0 if yon < 0 else 0.0) if alan == "yon" else (pct or {}).get(alan)
+            if deger is not None:
+                out.setdefault(bot_id, []).append(float(deger))
+        return out
+
+    if kaynak == "islem":
+        satirlar = (
+            await session.execute(
+                select(Trade.bot_id, Trade.exit_time, Position.entry_time)
+                .join(Position, Position.id == Trade.position_id)
+                .where(Trade.exit_time >= since)
+            )
+        ).all()
+        for bot_id, cikis, giris in satirlar:
+            out.setdefault(bot_id, []).append((cikis - giris).total_seconds() / 3600)
+        return out
+
+    satirlar = (
+        await session.execute(
+            select(Position.bot_id, Position.partial_done).where(Position.entry_time >= since)
+        )
+    ).all()
+    for bot_id, kismi in satirlar:
+        out.setdefault(bot_id, []).append(100.0 if kismi else 0.0)
+    return out
+
+
+def _muhur(on_kayit: dict) -> str:
+    """Ön-kaydın mührü. Kırılırsa toplanan kanıt geçersizdir."""
+    import hashlib
+    import json as _json
+
+    govde = {
+        k: on_kayit.get(k)
+        for k in ("hipotez", "kontrol_bot_id", "tek_degisken", "mekanizma", "curutme", "karar_gunu")
+    }
+    return hashlib.sha256(
+        _json.dumps(govde, sort_keys=True, ensure_ascii=False).encode()
+    ).hexdigest()[:16]
+
+
+@router.get("/hipotez")
+async def hipotez(
+    session: SessionDep,
+    user: CurrentUser,
+    gun: int = Query(30, ge=1, le=365),
+) -> dict:
+    """Hipotez tahtası — "hangi soru soruluyor, kanıt ne durumda?"
+
+    Her kol iki ölçü taşır. **Mekanizma** yüksek güçlüdür, kesitseldir ve
+    hüküm ondan okunur. **Sonuç** (R beklentisi) düşük güçlüdür, birikir,
+    hüküm vermez ve belirsizlik aralığıyla basılır.
+
+    Mekanizma ölçüsü tanımlanamayan kol `GÜÇSÜZ` damgası alır: sonuçlanamayacağını
+    baştan ilan eder. Ön-kaydı hiç olmayan kol `ÖN-KAYIT YOK` damgası alır ve
+    listede kalır — sessizlik bir durumdur, eksik ön-kayıt gizlenmez.
+    """
+    since = _now() - timedelta(days=gun)
+    bots = (await session.execute(select(Bot).order_by(Bot.id))).scalars().all()
+
+    # Kol defteri: katılım damgasından beri kapanan işlemler.
+    islemler = (
+        await session.execute(
+            select(Trade.bot_id, Trade.pnl_r, Position.entry_time)
+            .join(Position, Position.id == Trade.position_id)
+            .where(Trade.exit_time >= since)
+        )
+    ).all()
+    defter: dict[int, list[tuple[float, datetime]]] = {}
+    for bot_id, r, giris in islemler:
+        defter.setdefault(bot_id, []).append((float(r or 0), giris))
+
+    # Mekanizma gözlemleri, ölçü başına bir kez çekilir.
+    gozlem_onbellek: dict[str, dict[int, list[float]]] = {}
+
+    kartlar = []
+    for bot in bots:
+        cfg = bot.config or {}
+        on_kayit = cfg.get("on_kayit")
+        rebase = cfg.get("rebased_at")
+        rebase_dt = datetime.fromisoformat(rebase) if isinstance(rebase, str) else since
+        kol_r = [r for r, giris in defter.get(bot.id, []) if giris >= rebase_dt]
+
+        sonuc = {
+            "olcu": "R beklentisi",
+            "n": len(kol_r),
+            "deger": round(sum(kol_r) / len(kol_r), 3) if kol_r else None,
+            "belirsizlik": None,
+        }
+        if len(kol_r) >= 3:
+            ort = sum(kol_r) / len(kol_r)
+            sd = math.sqrt(sum((x - ort) ** 2 for x in kol_r) / (len(kol_r) - 1))
+            sonuc["belirsizlik"] = round(1.96 * sd / math.sqrt(len(kol_r)), 3)
+
+        if not isinstance(on_kayit, dict):
+            kartlar.append(
+                {
+                    "bot_id": bot.id,
+                    "ad": bot.name,
+                    "durum": str(bot.state),
+                    "damga": (
+                        "ARŞİV"
+                        if bot.state == BotState.STOPPED
+                        else ("ÖN-KAYIT YOK" if cfg.get("deney") else "KONTROL")
+                    ),
+                    "on_kayit": None,
+                    "mekanizma": None,
+                    "sonuc": sonuc,
+                }
+            )
+            continue
+
+        mek_tanim = on_kayit.get("mekanizma") or {}
+        olcu = mek_tanim.get("olcu")
+        mekanizma: dict[str, Any] | None = None
+        damga = "GÜÇSÜZ"
+
+        if olcu in MEKANIZMA_OLCULERI:
+            if olcu not in gozlem_onbellek:
+                gozlem_onbellek[olcu] = await _mekanizma_gozlemleri(session, olcu, since)
+            gozlemler = gozlem_onbellek[olcu]
+            benim = gozlemler.get(bot.id, [])
+            kontrol_id = on_kayit.get("kontrol_bot_id")
+            kontrol = gozlemler.get(kontrol_id, []) if kontrol_id else []
+            hedef = mek_tanim.get("hedef")
+            gereken = int(mek_tanim.get("gereken_n") or 0)
+            deger = round(sum(benim) / len(benim), 1) if benim else None
+            t = _t_testi(benim, kontrol)
+            ulasti = (
+                deger is not None
+                and hedef is not None
+                and (
+                    deger >= float(hedef)
+                    if mek_tanim.get("yon", "artis") == "artis"
+                    else deger <= float(hedef)
+                )
+            )
+            damga = (
+                "KANIT TOPLUYOR"
+                if len(benim) < gereken
+                else ("HEDEFE ULAŞTI" if ulasti and (t or 0) >= 2 else "ÇÜRÜTÜLDÜ")
+            )
+            mekanizma = {
+                "olcu": olcu,
+                "ad": MEKANIZMA_OLCULERI[olcu][0],
+                "deger": deger,
+                "hedef": hedef,
+                "yon": mek_tanim.get("yon", "artis"),
+                "n": len(benim),
+                "gereken_n": gereken,
+                "kontrol_deger": round(sum(kontrol) / len(kontrol), 1) if kontrol else None,
+                "kontrol_n": len(kontrol),
+                "t": round(t, 2) if t is not None else None,
+            }
+
+        muhur = _muhur(on_kayit)
+        kartlar.append(
+            {
+                "bot_id": bot.id,
+                "ad": bot.name,
+                "durum": str(bot.state),
+                "damga": damga,
+                "on_kayit": {
+                    "hipotez": on_kayit.get("hipotez"),
+                    "kontrol_bot_id": on_kayit.get("kontrol_bot_id"),
+                    "tek_degisken": on_kayit.get("tek_degisken"),
+                    "curutme": on_kayit.get("curutme"),
+                    "on_kayit_at": on_kayit.get("on_kayit_at"),
+                    "karar_gunu": on_kayit.get("karar_gunu"),
+                    "muhur_hash": muhur,
+                    "muhur_kirik": bool(
+                        on_kayit.get("muhur_hash") and on_kayit["muhur_hash"] != muhur
+                    ),
+                },
+                "mekanizma": mekanizma,
+                "sonuc": sonuc,
+            }
+        )
+
+    return {
+        "uretim": _now().isoformat(),
+        "pencere_gun": gun,
+        "kartlar": kartlar,
+        "olculer": [
+            {"anahtar": k, "ad": v[0], "kaynak": v[1], "alan": v[2]}
+            for k, v in MEKANIZMA_OLCULERI.items()
+        ],
+    }
