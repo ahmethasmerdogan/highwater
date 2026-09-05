@@ -1729,3 +1729,39 @@ Bu, günün dördüncü sessiz arızası. Ortak yanları: sistem çalışıyor g
 katman kapalıydı — nabız eşiği worker'ları öldürüyordu, önbellek BIST kolunu
 donduruyordu, boyutlandırma ölçülen tek kenarı eliyordu, bağlantı tavanı testleri
 atlatıyordu. Hiçbiri gürültü çıkarmadı; hepsi ölçümle bulundu.
+
+## Bozulmaz kural 2 fiilen ihlal ediliyormuş — 2026-09-05
+
+Denetimin zaten rapor üretemeyen iki boyutu ayrı ajanlarla yeniden koşturuldu.
+Zaman/bar boyutu sistemin **temel kuralının ihlal edildiğini** buldu.
+
+**Kök sebep tek satır:** `data/binance.py::parse_kline_row` koşulsuz
+`is_closed=True` yazıyordu. REST uç noktası oluşmakta olan mumu da döndürür;
+`close_time` alanı zaten okunuyor ve atılıyordu. WS yolu bunu baştan doğru
+yapıyor (`is_closed=bool(k["x"])`). `store.upsert_klines`'daki "kapanmamış bar
+yazılmaz" savunması bu yüzden **ölüydü**.
+
+**Ölçülen etki.** Denetim anında havuzdaki 121 sembolün 7'sinde bugünün
+oluşmakta olan 1d/4h barı karara giriyordu; aynı bundle kapanmamış bar
+atılarak yeniden hesaplandığında `trend_4h` hatası **%26**'ya varıyor.
+Puanlama kesitsel olduğu için 7 sembolün bozulması 121 sembolün sırasını
+kaydırır. Daha ağırı **kalıcılaşma**: sembol izlenen kümeden düşünce kısmi bar
+geçmişte donuyor. Çapraz denetim (4h ↔ 4×1h, 152.844 pencere) **131 sembolde
+230 bozuk 4h barı** buldu; iki toplu olay (08-27 ve 08-31) güncel havuzun
+95 ve 93 sembolünü etkiliyor. En kötüsü CHIPUSDT 08-27: kapanış %15,1 sapmış,
+hacmin yalnız %6,2'si kaydedilmiş — pencerenin ilk birkaç dakikası.
+
+**Yapılanlar.** (1) Kök sebep düzeltildi ve test edildi. (2) Bozuk veri
+temizlendi: 11 açık bar + 213 kısmi 4h + 8 kısmi 1d silindi; boşluk denetimi
+bunları artık doğru kodla yeniden çekecek. (3) `test_lookahead.py`'ye YAZMA
+yolu testi eklendi — denetimin gösterdiği gibi mevcut 30 test yalnız saf
+fonksiyonları kapsıyordu ve `is_closed` bayrağını hiç sınamıyordu.
+
+**Aynı denetimin ikinci bulgusu (düzeltildi):** re-base tasfiyesi karneye
+giriyordu. Damga tasfiye emirlerinden 0,22 saniye önce yazıldığı için çıkışa
+bakan süzgeç eski dönemin zararını yeni kola yazıyordu: bot 5 karnesi
++7,16 $ görünüyordu, maraton gerçeği **+25,43 $**. Ölçüt artık pozisyonun
+açılış zamanı.
+
+Bu, günün beşinci ve altıncı sessiz arızası. Hepsinin ortak yanı aynı:
+sistem çalışıyor görünüyordu, hiçbiri hata vermiyordu, hepsi ölçümle bulundu.
