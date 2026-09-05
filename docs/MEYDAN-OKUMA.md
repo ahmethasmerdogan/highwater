@@ -1792,3 +1792,38 @@ ama hedef uzun ileri getiridir. Panelin "dürüstlük organı" yanlış okutuyor
 **Not — kendi ölçümlerim etkilenmedi:** §6/§7/§9'daki IC ve seçim ölçümlerinde
 `config_hash` baştan süzülmüştü (ana ayar seçilerek). Etkilenen, panelin
 gösterdiği kalibrasyon ve H şeridi backtest sıralamasıydı.
+
+## Kabul kuralı istatistiksel olarak karar veremiyor — 2026-09-05
+
+Arayüz tasarımı için yapılan bir inceleme, **deney programının temelini** sorguladı ve
+ölçüm doğruladı. Canlı defterin 309 işlemi üzerinden:
+
+| Ayırt edilecek fark | Gereken n / kol | Bugünkü hızda süre |
+|---|---|---|
+| +0,05R (kabul eşiği) | 38.424 | **149 yıl** |
+| +0,10R | 9.606 | 37 yıl |
+| +0,25R | 1.537 | 6 yıl |
+| +0,50R | 384 | 1,5 yıl |
+
+İşlem başına R sapması **2,474R**, kol başına hız **0,70 işlem/gün**. 14 günde kol başına
+**10 işlem** birikiyor; iki kolun farkının standart hatası ±1,114R, yani %95 aralık **±2,18R**.
+Kabul eşiği +0,05R, bu aralığın **%2'si** kadar.
+
+**Sonuç: "14 gün sonunda kontrol koluna göre beklenti ≥ +0,05R" kuralı bir yazı-turadır.**
+20 deney kolunun hepsi bu kurala bağlı. 14. günde verilecek her kabul/ret kararı gürültüyü
+sıralamak olur. Bu, bugüne kadar kurulan ön-kayıt disiplininin en ciddi kusuru — disiplin
+doğruydu, ölçü aleti yanlıştı.
+
+**Çözüm yönü: mekanizma ölçüsü.** Sonuç (R beklentisi) düşük güçlü bir kanaldır çünkü
+örneklem kol başına birkaç işlem. Ama **kolun yapması gerekeni yapıp yapmadığı** kesitsel
+olarak ölçülebilir ve orada örneklem günde yüzlerce karardır. Örnek: K1 kolu
+`min_fill_ratio`'yu kaldırdı; sorulacak soru "daha çok kazandı mı" değil, **"açılan
+pozisyonların sakinlik yüzdeliği 36'dan yükseldi mi"**. O ölçü saatler içinde t = +5
+mertebesinde cevap verir; §9'daki t = −9,20 ölçümüyle aynı yöntem.
+
+Her ön-kayıt bundan sonra iki ölçü taşımalı:
+1. **Mekanizma ölçüsü** (yüksek güç, kesitsel, saatler): kol yapması gerekeni yaptı mı?
+2. **Sonuç ölçüsü** (düşük güç, kol defteri, aylar): para ne oldu? Birikir, hüküm vermez.
+
+Hüküm mekanizmadan okunur. Mekanizma ölçüsü tanımlanamayan bir kol (saf kaldıraç kolları
+gibi) **sonuçlanamaz** ve bunu baştan ilan etmelidir.

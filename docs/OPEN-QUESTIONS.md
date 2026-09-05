@@ -857,3 +857,21 @@ Hâlâ açık:
 - **Kalabalık cezası fiilen ölü** (%0,44 satırda devrede, işlem açılan hiçbir
   barda tetiklenmemiş). Kesitsel bir eşiğe çevirmek daha önce denenip geri
   alınmıştı (registry yorumunda kayıtlı); bu yüzden dokunulmadı.
+
+## Kabul kuralının gücü (2026-09-05) — SPEC KARARI GEREKİYOR
+
+Ölçüldü: 14 günlük "kontrol + 0,05R" kuralı, bugünkü işlem hızı (0,70/gün/kol) ve R
+sapması (2,474R) ile **+0,05R'yi 149 yılda** ayırt eder. 14 günlük belirsizlik ±2,18R.
+Kural bugünkü hâliyle karar veremez.
+
+Seçenekler (biri seçilmeli, uydurulmadı):
+1. **Mekanizma ölçüsüne geç.** Her ön-kayıt bir kesitsel mekanizma ölçüsü ve hedefi
+   tanımlasın (K1 için: açılan pozisyonların sakinlik yüzdeliği ≥ 60). Hüküm ondan okunur,
+   R beklentisi yalnız birikir. En güçlü seçenek; her kol için ölçü tanımlamak gerekir.
+2. **Eşiği gerçekçi yap.** +0,50R gibi bir fark 1,5 yılda ayırt edilir — yine uzun.
+3. **İşlem hacmini topla.** Kol sayısını azaltıp her kola daha çok işlem düşür; 30 kol
+   yerine 6 kol, kol başına hız 5×.
+4. **Backtest'i birincil hakem yap.** Tarama tek koşuda in-sample + holdout veriyor;
+   canlı kol yalnız "canlı ile backtest ayrışıyor mu" sorusunu cevaplasın.
+
+Mevcut 20 deney kolunun hepsi 1. seçenek olmadan sonuçlanamaz.
