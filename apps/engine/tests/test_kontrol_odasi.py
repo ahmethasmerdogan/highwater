@@ -313,3 +313,63 @@ async def test_kisa_payi_olcusu_sakinligi_bozmaz(api_session, api_client, auth, 
     body = (await api_client.get("/kontrol/hipotez", headers=auth)).json()
     kart = next(k for k in body["kartlar"] if k["bot_id"] == kol.id)
     assert kart["mekanizma"]["deger"] == 40.0, "kısa yön sakinlik ölçüsünü ezmemeli"
+
+
+async def test_acik_bar_sayaci_her_dilimi_tanir(api_client, auth, api_session, test_database):
+    """Sayacın kendisi yalan söylememeli.
+
+    İlk sürüm dilim eşlemesini SQL'e elle yazdı ve '30m'i unuttu; eksik dilim
+    sessizce 60 dakika sayıldığı için 121 sağlam 30 dakikalık bar "açıkken
+    kapalı yazıldı" diye raporlandı. Eşleme artık motorun tablosundan gelir ve
+    tabloda olmayan dilim hiç sayılmaz."""
+    from sarnic.db.models import OHLCV
+    from sarnic.strategy.definition import TIMEFRAME_MINUTES
+
+    simdi = datetime.now(UTC).replace(second=0, microsecond=0)
+    # Her dilimden bir bar: barın kendisi çoktan kapanmış olmalı.
+    api_session.add_all(
+        [
+            OHLCV(
+                symbol=f"T{i}USDT",
+                timeframe=dilim,
+                open_time=simdi - timedelta(minutes=dakika * 3),
+                open=1,
+                high=1,
+                low=1,
+                close=1,
+                volume=1,
+                quote_volume=1,
+                is_closed=True,
+            )
+            for i, (dilim, dakika) in enumerate(TIMEFRAME_MINUTES.items())
+        ]
+    )
+    await api_session.commit()
+
+    body = (await api_client.get("/kontrol/nobet", headers=auth)).json()
+    satir = next(
+        r for r in body["sayaclar"]["beklendi_olmadi"] if r["ad"] == "açık bar kapalı yazıldı"
+    )
+    assert satir["adet"] == 0, "kapanmış bar hiçbir dilimde 'açık' sayılmamalı"
+
+    # Gerçekten kapanmamış bir bar kapalı yazılırsa sayaç artmalı.
+    api_session.add(
+        OHLCV(
+            symbol="ACIKUSDT",
+            timeframe="1h",
+            open_time=simdi.replace(minute=0),
+            open=1,
+            high=1,
+            low=1,
+            close=1,
+            volume=1,
+            quote_volume=1,
+            is_closed=True,
+        )
+    )
+    await api_session.commit()
+    body = (await api_client.get("/kontrol/nobet", headers=auth)).json()
+    satir = next(
+        r for r in body["sayaclar"]["beklendi_olmadi"] if r["ad"] == "açık bar kapalı yazıldı"
+    )
+    assert satir["adet"] == 1

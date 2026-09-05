@@ -21,7 +21,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Query
-from sqlalchemy import func, select, text
+from sqlalchemy import bindparam, func, select, text
 
 from sarnic.api.deps import CurrentUser, RedisDep, SessionDep
 from sarnic.core.enums import BotState, ExitReason, PositionStatus
@@ -298,14 +298,18 @@ async def nobet(
         ).scalar_one()
 
     # --- Açık bar sayacı: kapanmamış mum kapanmış diye yazıldı mı (5. arıza) ---
+    #: Dilim → dakika. Eksik bir dilim sessizce 60 sayılırsa sayaç yalan söyler:
+    #: ilk sürüm '30m'i kaçırdı ve 121 sağlam 30 dakikalık barı "açıkken kapalı
+    #: yazıldı" diye raporladı. Eşleme motorun tablosundan gelir.
+    dilim_sql = " ".join(f"when '{k}' then {v}" for k, v in TIMEFRAME_MINUTES.items())
     acik_yazilan = (
         await session.execute(
             text(
                 "select count(*) from ohlcv where is_closed = true "
-                "and open_time + make_interval(mins => case timeframe "
-                "  when '1h' then 60 when '4h' then 240 when '1d' then 1440 "
-                "  when '15m' then 15 else 60 end) > now()"
-            )
+                "and timeframe in :dilimler and open_time + "
+                f"make_interval(mins => case timeframe {dilim_sql} end) > now()"
+            ).bindparams(bindparam("dilimler", expanding=True)),
+            {"dilimler": list(TIMEFRAME_MINUTES)},
         )
     ).scalar_one()
 
